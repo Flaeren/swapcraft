@@ -4,6 +4,10 @@ All notable changes to voidflare are listed here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-30
+
+First public release. The programs are not code-signed.
+
 ### Added
 
 - The hub with a drop panel: drop or choose a file, then pick the format it should become.
