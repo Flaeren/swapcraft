@@ -547,7 +547,7 @@ impl Hub {
         let (label, color, hint): (String, Color32, &str) = match &self.upd {
             Upd::Idle => ("CHECK FOR UPDATES".into(), t.faint, "Asks github.com/Flaeren/voidflare for the latest release. Nothing else is sent."),
             Upd::Checking => ("CHECKING GITHUB…".into(), t.faint, ""),
-            Upd::UpToDate => ("UP TO DATE ✓ · CHECK AGAIN".into(), t.good, ""),
+            Upd::UpToDate => ("UP TO DATE · CHECK AGAIN".into(), t.good, ""),
             Upd::Available(r) => match &r.zip {
                 Some(z) if r.sums.is_some() => (format!("v{} AVAILABLE · DOWNLOAD {}", r.version, human_size(z.size)), t.accent_ink, "Downloads the ZIP from GitHub into your Downloads folder and checks its checksum. It does not install anything."),
                 _ => (format!("v{} AVAILABLE ↗", r.version), t.accent_ink, "Opens the release page in your browser."),

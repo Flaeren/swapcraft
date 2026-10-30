@@ -296,6 +296,21 @@ mod tests {
         assert!(!out.join("fake.zip").exists() && !out.join("fake.zip.part").exists(), "nothing is left behind");
     }
 
+    /// Against the real GitHub release (about 210 MB): `cargo test --release -p vf-core real_release -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "downloads the published release"]
+    fn real_release_is_found_and_verified() {
+        let release = latest().expect("the latest release is readable");
+        println!("latest: {} ({})", release.version, release.page);
+        assert!(release.zip.is_some() && release.sums.is_some(), "the release carries the ZIP and SHA256SUMS.txt");
+        let dir = std::env::temp_dir().join("voidflare-update-test");
+        let _ = fs::remove_dir_all(&dir);
+        let saved = download_verified(&release, &dir, &|_, _| {}, &AtomicBool::new(false)).expect("the real download verifies");
+        println!("saved: {} ({} bytes)", saved.display(), fs::metadata(&saved).unwrap().len());
+        assert!(is_newer("9.9.9", &release.version) && !is_newer(&release.version, &release.version));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn sha256_matches_a_known_value() {
         assert_eq!(hex(Sha256::digest(b"abc").as_slice()), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
