@@ -88,12 +88,13 @@ Available in English, Italiano, Español, Français and Deutsch. Image, audio an
 
 ## Build from source
 
-You need Windows and the Rust toolchain. For now the ArtCraft engines must also be installed on the build machine, because `build-apps.ps1` copies them into each app's folder. Making that step reproducible from pinned versions is planned.
+You need Windows, the Rust toolchain and an internet connection for the first build. The engines are not installed by hand: `fetch-engines.ps1` downloads the exact versions pinned in [`src/engines.json`](src/engines.json) from the official ArtCraft releases and refuses any file whose SHA-256 differs from the pinned one. CADCraft is built from source at a pinned commit with our patch.
 
 ```powershell
 cd src
-powershell -File build-apps.ps1   # writes ..\portable\voidflare.exe and ..\portable\apps\
-cargo test --release -p vf-core   # tests that need an engine skip themselves when it is missing
+powershell -File fetch-engines.ps1 -BuildCadcraft   # engines, pinned and hash-checked (-BuildCadcraft needs git)
+powershell -File build-apps.ps1                     # writes ..\portableoidflare.exe and ..\portableppspowershell -File release.ps1                        # packs portable\ into the ZIP and SHA256SUMS.txt
+cargo test --release -p vf-core                     # tests that need an engine skip themselves when it is missing
 ```
 
 ```
@@ -105,6 +106,8 @@ src/
     app-*/        one crate per app
   vendor/         the patch for CADCraft
   licenses/       licence texts copied next to each bundled engine
+  engines.json    the engines bundled, pinned by version and SHA-256
+  fetch-engines.ps1  downloads and verifies them (and builds CADCraft with our patch)
   build-apps.ps1  builds everything into portable/
   release.ps1     packs portable/ into the release ZIP and SHA256SUMS.txt
 site/             the website (voidflare.app)

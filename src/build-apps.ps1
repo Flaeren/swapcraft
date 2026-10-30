@@ -31,10 +31,13 @@ try {
         $engine = $engines[$id]
         if ($engine) {
             $lower = $engine.ToLower()
-            # CADCraft is our own patched build (vendor\), the others are the installed ArtCraft engines
-            $installed = if ($id -eq "dwg-to-pdf") { Join-Path $src "vendor\cadcraft" } else { Join-Path ${env:ProgramFiles} $engine }
+            # The engines come from src\engines\, filled by fetch-engines.ps1 with the versions pinned in engines.json
+            # (official releases, hash-checked; CADCraft built from source with our patch, see -BuildCadcraft).
+            # Until CADCraft has been built that way, the patched build kept in vendor\ is used.
+            $installed = Join-Path $src "engines\$lower"
+            if ($id -eq "dwg-to-pdf" -and -not (Test-Path (Join-Path $installed "$lower-cli.exe"))) { $installed = Join-Path $src "vendor\cadcraft" }
             $target = Join-Path $dest $lower
-            if (-not (Test-Path (Join-Path $installed "$lower-cli.exe"))) { throw "$engine is not installed: cannot bundle it" }
+            if (-not (Test-Path (Join-Path $installed "$lower-cli.exe"))) { throw "$engine is not in $installed : run fetch-engines.ps1 first" }
             if (Test-Path $target) { Remove-Item -LiteralPath $target -Recurse -Force }
             New-Item -ItemType Directory -Force $target | Out-Null
             # everything except the engine's own window (<engine>.exe, not needed here)

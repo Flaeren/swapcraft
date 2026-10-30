@@ -1,0 +1,52 @@
+{
+  "comment": "The engines voidflare bundles, pinned. fetch-engines.ps1 downloads each asset, refuses it unless its SHA-256 is the one below, and unpacks it into src/engines/<name>/. To move to a newer engine: change tag, asset and sha256 together (the hash is in the release's SHA256SUMS.txt), run the tests, then build.",
+  "engines": [
+    {
+      "name": "wordcraft",
+      "app": "word-to-pdf",
+      "repo": "storytold/wordcraft",
+      "tag": "v0.12.0",
+      "asset": "wordcraft-0.12.0-windows-x64-portable.zip",
+      "sha256": "60d2da7dce7ee219300e50968297df63730f9407f8b5daf01da9109f0a64e67e",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "name": "gridcraft",
+      "app": "excel-to-pdf",
+      "repo": "storytold/gridcraft",
+      "tag": "v0.13.0",
+      "asset": "gridcraft-0.13.0-windows-x64-portable.zip",
+      "sha256": "ff184e31ceb9284cbbb6c7ade71ac968d930c0dab1ca9de1147a1358a83bd8fd",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "name": "deckcraft",
+      "app": "slides-to-pdf",
+      "repo": "storytold/deckcraft",
+      "tag": "v0.12.0",
+      "asset": "deckcraft-0.12.0-windows-x64-portable.zip",
+      "sha256": "3cffd4abee0b7f330ae406bc6fd33a74e3b7b5e7919ebc5d20faa77cef5b3bea",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "name": "pdfcraft",
+      "app": "pdf-tools",
+      "repo": "storytold/pdfcraft",
+      "tag": "v0.15.0",
+      "asset": "pdfcraft-0.15.0-windows-x64-portable.zip",
+      "sha256": "92df7bef0b4c1eb7a59d0410716903e69fe4d2c4ea0074c6b53780096c3e20f9",
+      "license": "MIT OR Apache-2.0"
+    }
+  ],
+  "cadcraft": {
+    "name": "cadcraft",
+    "app": "dwg-to-pdf",
+    "repo": "storytold/cadcraft",
+    "tag": "v0.14.0",
+    "commit": "fbd97d432cdf36a566c0c53739481bd6f0c32b0d",
+    "patch": "vendor/cadcraft-tilted-insert.patch",
+    "package": "cadcraft-cli",
+    "license": "MIT OR Apache-2.0",
+    "note": "Built from source at this commit with our patch (the official binary draws blocks inserted with a tilted extrusion as a ramp). The patch applies cleanly to v0.14.0 (checked with git apply --check). Drop the patch when storytold/cadcraft#1158 is fixed upstream."
+  }
+}
