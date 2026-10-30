@@ -29,6 +29,9 @@ __pycache__/
 # Design explorations for the icons and the flame mark (the generator scripts stay).
 /src/tools/*.html
 
+# Local tooling settings of the maintainer's assistant.
+/.impeccable/
+
 # Editors and the OS
 *.lnk
 .vscode/
