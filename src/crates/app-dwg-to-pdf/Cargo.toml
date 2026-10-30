@@ -1,0 +1,21 @@
+[package]
+name = "app-dwg-to-pdf"
+description = "DWG to PDF: sheets or the whole drawing to PDF offline on the CADCraft engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "dwg-to-pdf"
+path = "src/main.rs"
+
+[dependencies]
+vf-ui.workspace = true
+vf-core.workspace = true
+eframe.workspace = true
+rfd = "0.17"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1.34"

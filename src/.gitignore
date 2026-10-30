@@ -1,0 +1,4 @@
+/target
+*.pdb
+# the patched CADCraft engine build (60 MB); the patch is vendor/cadcraft-tilted-insert.patch
+/vendor/cadcraft/*.exe

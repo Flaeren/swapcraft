@@ -1,0 +1,31 @@
+# The product folder is built from src\ and published as a release asset, never committed.
+/portable/
+
+# The old Python converter, kept locally until the Rust one has proven itself.
+/legacy/
+
+# Build output and the patched CADCraft engine build (the patch is src/vendor/cadcraft-tilted-insert.patch).
+/src/target/
+/src/vendor/cadcraft/*.exe
+*.pdb
+__pycache__/
+
+# Website
+/site/node_modules/
+/site/dist/
+/site/.astro/
+
+# Working notes written for the maintainer's own sessions.
+/src/CLAUDE.md
+/src/TODO.md
+/src/MORNING-REPORT.md
+
+# Design explorations for the icons and the flame mark (the generator scripts stay).
+/src/tools/*.html
+
+# Editors and the OS
+*.lnk
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

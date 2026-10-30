@@ -1,0 +1,10 @@
+key	en	it	es	fr	de
+app.list_label	Word documents to convert (you can also drag them onto the program icon)	Documenti Word da convertire (puoi anche trascinarli sull'icona del programma)	Documentos de Word que convertir (también puedes arrastrarlos al icono del programa)	Documents Word à convertir (vous pouvez aussi les glisser sur l'icône du programme)	Zu konvertierende Word-Dokumente (Sie können sie auch auf das Programmsymbol ziehen)
+app.opt_fields	Update fields before converting (table of contents, page numbers, cross-references)	Aggiorna i campi prima di convertire (indice, numeri di pagina, riferimenti)	Actualizar los campos antes de convertir (índice, números de página, referencias)	Mettre à jour les champs avant la conversion (table des matières, numéros de page, renvois)	Felder vor der Konvertierung aktualisieren (Inhaltsverzeichnis, Seitenzahlen, Querverweise)
+app.opt_markup	Print comments and tracked changes beside the pages	Stampa commenti e modifiche tracciate accanto alle pagine	Imprimir comentarios y cambios controlados junto a las páginas	Imprimer les commentaires et les modifications suivies à côté des pages	Kommentare und nachverfolgte Änderungen neben den Seiten drucken
+app.password	Password (protected documents only):	Password (solo per documenti protetti):	Contraseña (solo para documentos protegidos):	Mot de passe (documents protégés uniquement) :	Kennwort (nur für geschützte Dokumente):
+app.convert	Convert to PDF	Converti in PDF	Convertir a PDF	Convertir en PDF	In PDF umwandeln
+app.pick_files	Choose Word documents	Scegli i documenti Word	Elige documentos de Word	Choisir des documents Word	Word-Dokumente auswählen
+app.filetype	Word documents	Documenti Word	Documentos de Word	Documents Word	Word-Dokumente
+app.pick_folder	Choose a folder with Word documents	Scegli una cartella con documenti Word	Elige una carpeta con documentos de Word	Choisir un dossier contenant des documents Word	Ordner mit Word-Dokumenten auswählen
+app.nothing_text	Add at least one Word document.	Aggiungi almeno un documento Word.	Añade al menos un documento de Word.	Ajoutez au moins un document Word.	Fügen Sie mindestens ein Word-Dokument hinzu.

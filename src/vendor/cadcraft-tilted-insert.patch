@@ -1,0 +1,60 @@
+diff --git a/crates/io/src/dxf_read/entities.rs b/crates/io/src/dxf_read/entities.rs
+index aba1bdc..6edb6eb 100644
+--- a/crates/io/src/dxf_read/entities.rs
++++ b/crates/io/src/dxf_read/entities.rs
+@@ -142,9 +142,13 @@ pub(super) fn entity_with_table_budget(kind: &str, tags: &[Tag], table_cells_lef
+             // is the mirrored point, a negative x scale, the opposite rotation and a negative column
+             // spacing. Noise of up to 1e-3 in the extrusion's x/y moves the projection by ~1e-7 of the
+             // size, so it still counts as mirrored. A truly tilted extrusion (block plane not parallel
+-            // to XY) needs the full 3D block transform, which Insert cannot hold; it is left as read.
++            // to XY) needs the full 3D block transform, which Insert cannot hold. Its insertion point
++            // and direction are still mapped to the WCS (the block is drawn flat there, turned to the
++            // projected direction): read as WCS, the OCS point of a block in a drawing far from the
++            // origin lands millions of units away and the extents take it in.
+             let n = c.extrusion;
+             let mirrored = n.z < 0.0 && n.x.hypot(n.y) <= 1e-3 * n.z.abs();
++            let tilted = !mirrored && n.x.hypot(n.y) > 1e-3 * n.z.abs();
+             let mut p = t.p(10);
+             let mut scale = Vec3::new(t.fd(41, 1.0), t.fd(42, 1.0), t.fd(43, 1.0));
+             let mut rotation = t.fd(50, 0.0).to_radians();
+@@ -154,6 +158,12 @@ pub(super) fn entity_with_table_budget(kind: &str, tags: &[Tag], table_cells_lef
+                 scale.x = -scale.x;
+                 rotation = -rotation;
+                 col_spacing = -col_spacing;
++            } else if tilted {
++                let dir = ocs(&c, Vec3::new(rotation.cos(), rotation.sin(), 0.0));
++                p = ocs(&c, p);
++                if dir.x.hypot(dir.y) > 1e-9 {
++                    rotation = dir.y.atan2(dir.x);
++                }
+             }
+             EntityKind::Insert(Insert {
+                 block: t.s(2).unwrap_or_default(),
+diff --git a/crates/io/src/tests.rs b/crates/io/src/tests.rs
+index 977a7c1..475dc24 100644
+--- a/crates/io/src/tests.rs
++++ b/crates/io/src/tests.rs
+@@ -2072,6 +2072,23 @@ fn mirrored_insert_extrusion_maps_to_negative_x_scale() {
+     assert!((b2.min - b.min).len() < 1e-9 && (b2.max - b.max).len() < 1e-9, "{b2:?} vs {b:?}");
+ }
+ 
++#[test]
++fn tilted_insert_extrusion_maps_point_and_direction_to_wcs() {
++    // Extrusion (0.6,0,0.8): the arbitrary axis algorithm gives OCS x = (0,1,0), y = (-0.8,0,0.6), so
++    // OCS (2000,-800,600) is WCS (1000,2000,0). Read as WCS, the block landed at (2000,-800) and the
++    // extents took it in. The block is drawn flat at the WCS point, turned to the OCS x axis (90°).
++    let text = "0\nSECTION\n2\nBLOCKS\n0\nBLOCK\n2\nB\n10\n0\n20\n0\n0\nLINE\n8\n0\n10\n0\n20\n0\n11\n2\n21\n0\n0\nENDBLK\n0\nENDSEC\n\
++                0\nSECTION\n2\nENTITIES\n0\nINSERT\n8\n0\n2\nB\n10\n2000\n20\n-800\n30\n600\n210\n0.6\n220\n0\n230\n0.8\n0\nENDSEC\n0\nEOF\n";
++    let d = read(text.as_bytes(), "t.dxf").unwrap();
++    let ins = first(&d, |k| if let EntityKind::Insert(i) = k { Some(i.clone()) } else { None });
++    assert!((ins.insert - Vec3::new(1000.0, 2000.0, 0.0)).len() < 1e-6, "{:?}", ins.insert);
++    assert!((ins.rotation - std::f64::consts::FRAC_PI_2).abs() < 1e-9, "{}", ins.rotation);
++    let b = d.extents(&Space::Model);
++    for (got, want) in [(b.min.x, 1000.0), (b.min.y, 2000.0), (b.max.x, 1000.0), (b.max.y, 2002.0)] {
++        assert!((got - want).abs() < 1e-6, "extents {b:?}");
++    }
++}
++
+ #[test]
+ fn mirrored_ellipse_extrusion_reverses_parameters() {
+     // Extrusion (0,0,-1) flips the minor axis (extrusion × major): parameters 0..90° of the ellipse

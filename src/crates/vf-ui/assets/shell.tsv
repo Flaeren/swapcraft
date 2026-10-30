@@ -1,0 +1,30 @@
+key	en	it	es	fr	de
+ui.language	Language:	Lingua:	Idioma:	Langue :	Sprache:
+ui.files_title	Files	File	Archivos	Fichiers	Dateien
+ui.options	Options	Opzioni	Opciones	Options	Optionen
+ui.opt_recursive	Also search subfolders when I add a folder	Cerca anche nelle sottocartelle quando aggiungo una cartella	Buscar también en las subcarpetas al añadir una carpeta	Chercher aussi dans les sous-dossiers quand j'ajoute un dossier	Beim Hinzufügen eines Ordners auch Unterordner durchsuchen
+ui.remove	Remove selected	Rimuovi selezionati	Quitar seleccionados	Retirer la sélection	Auswahl entfernen
+ui.add_files	Add files…	Aggiungi file…	Añadir archivos…	Ajouter des fichiers…	Dateien hinzufügen…
+ui.add_folder	Add folder…	Aggiungi cartella…	Añadir carpeta…	Ajouter un dossier…	Ordner hinzufügen…
+ui.clear	Clear	Svuota	Vaciar	Vider	Leeren
+ui.count_one	{n} file	{n} file	{n} archivo	{n} fichier	{n} Datei
+ui.count_many	{n} files	{n} file	{n} archivos	{n} fichiers	{n} Dateien
+ui.save_where	Where to save	Dove salvare	Dónde guardar	Où enregistrer	Speicherort
+ui.save_beside	Next to each document	Accanto a ogni documento	Junto a cada documento	À côté de chaque document	Neben jedem Dokument
+ui.save_in	In this folder:	In questa cartella:	En esta carpeta:	Dans ce dossier :	In diesem Ordner:
+ui.browse	Browse…	Sfoglia…	Examinar…	Parcourir…	Durchsuchen…
+ui.cancel	Cancel	Annulla	Cancelar	Annuler	Abbrechen
+ui.open_when_done	Open the folder when done	Apri la cartella alla fine	Abrir la carpeta al terminar	Ouvrir le dossier à la fin	Ordner am Ende öffnen
+ui.ft_all	All files	Tutti	Todos	Tous	Alle Dateien
+ui.dlg_dest	Destination folder	Cartella di destinazione	Carpeta de destino	Dossier de destination	Zielordner
+ui.nothing_title	Nothing to convert	Niente da convertire	Nada que convertir	Rien à convertir	Nichts zu konvertieren
+ui.dest_title	Destination	Destinazione	Destino	Destination	Ziel
+ui.dest_text	Choose the destination folder.	Scegli la cartella di destinazione.	Elige la carpeta de destino.	Choisissez le dossier de destination.	Wählen Sie den Zielordner.
+ui.cancelled	Cancelled.	Annullato.	Cancelado.	Annulé.	Abgebrochen.
+ui.line_error	    ERROR: {msg}	    ERRORE: {msg}	    ERROR: {msg}	    ERREUR : {msg}	    FEHLER: {msg}
+ui.finished	Done: {ok} converted, {bad} with errors.	Finito: {ok} convertiti, {bad} con errori.	Terminado: {ok} convertidos, {bad} con errores.	Terminé : {ok} convertis, {bad} avec erreurs.	Fertig: {ok} konvertiert, {bad} mit Fehlern.
+ui.engine_missing_title	Engine missing	Motore mancante	Falta el motor	Moteur introuvable	Engine fehlt
+job.timeout	timeout after {m} minutes	timeout oltre {m} minuti	tiempo agotado tras {m} minutos	délai dépassé après {m} minutes	Zeitüberschreitung nach {m} Minuten
+job.password_hint	 (protected document: enter the password in the password field)	 (documento protetto: inserisci la password nel campo apposito)	 (documento protegido: introduce la contraseña en el campo correspondiente)	 (document protégé : saisissez le mot de passe dans le champ prévu)	 (geschütztes Dokument: Kennwort im entsprechenden Feld eingeben)
+ui.engine_missing	{cli} not found.\nInstall {engine}, or put its folder next to this program.	{cli} non trovato.\nInstalla {engine}, oppure metti la sua cartella accanto a questo programma.	No se encuentra {cli}.\nInstala {engine} o pon su carpeta junto a este programa.	{cli} est introuvable.\nInstallez {engine} ou placez son dossier à côté de ce programme.	{cli} wurde nicht gefunden.\nInstalliere {engine} oder lege den Ordner daneben.
+ui.line_note	    Note: {msg}	    Nota: {msg}	    Nota: {msg}	    Remarque : {msg}	    Hinweis: {msg}

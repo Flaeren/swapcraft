@@ -1,0 +1,18 @@
+voidflare
+Copyright (c) 2026 Gabriele Denaro (Flaeren) and the voidflare contributors
+
+This product is licensed under the MIT License or the Apache License 2.0, at your option (see LICENSE-MIT and LICENSE-APACHE).
+
+This product includes software developed by others:
+
+  - The ArtCraft suite engines (WordCraft, GridCraft, DeckCraft, PdfCraft, CADCraft), used under the terms
+    "MIT License or Apache License 2.0, at your option". The release package keeps each engine's own
+    LICENSE-MIT, LICENSE-APACHE, NOTICE and ATTRIBUTION files next to it; they apply to the engine and to the
+    components, fonts and models it bundles. The CADCraft build in the release contains the change published
+    as src/vendor/cadcraft-tilted-insert.patch.
+  - Rust libraries listed in src/Cargo.lock, each under its own licence (MIT, Apache-2.0 or similar).
+
+The ArtCraft name, logo and trademarks are not licensed for use by this project and are not used as its own.
+voidflare is independent of the ArtCraft team and is not endorsed by it.
+
+See CREDITS.md for the full list.

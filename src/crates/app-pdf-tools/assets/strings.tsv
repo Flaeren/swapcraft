@@ -1,0 +1,33 @@
+key	en	it	es	fr	de
+app.mode.convert	Convert	Converti	Convertir	Convertir	Umwandeln
+app.mode.merge	Merge	Unisci	Unir	Fusionner	Zusammenführen
+app.mode.split	Split	Dividi	Dividir	Diviser	Teilen
+app.mode.extract	Extract pages	Estrai pagine	Extraer páginas	Extraire des pages	Seiten extrahieren
+app.mode.ocr	OCR	OCR	OCR	OCR	OCR
+app.mode.shrink	Shrink	Riduci	Reducir	Réduire	Verkleinern
+app.list_label	PDF files to work on (you can also drag them onto the program icon)	File PDF su cui lavorare (puoi anche trascinarli sull'icona del programma)	Archivos PDF con los que trabajar (también puedes arrastrarlos al icono del programa)	Fichiers PDF à traiter (vous pouvez aussi les glisser sur l'icône du programme)	PDF-Dateien zum Bearbeiten (Sie können sie auch auf das Programmsymbol ziehen)
+app.pick_files	Choose PDF files	Scegli i file PDF	Elige archivos PDF	Choisir des fichiers PDF	PDF-Dateien auswählen
+app.filetype	PDF files	File PDF	Archivos PDF	Fichiers PDF	PDF-Dateien
+app.pick_folder	Choose a folder with PDF files	Scegli una cartella con file PDF	Elige una carpeta con archivos PDF	Choisir un dossier contenant des PDF	Ordner mit PDF-Dateien auswählen
+app.nothing_text	Add at least one PDF file.	Aggiungi almeno un file PDF.	Añade al menos un archivo PDF.	Ajoutez au moins un fichier PDF.	Fügen Sie mindestens eine PDF-Datei hinzu.
+app.need_two	Add at least two PDF files to merge.	Aggiungi almeno due file PDF da unire.	Añade al menos dos archivos PDF que unir.	Ajoutez au moins deux fichiers PDF à fusionner.	Fügen Sie mindestens zwei PDF-Dateien zum Zusammenführen hinzu.
+app.need_pages	Enter the pages to keep, for example 1,3,5-8.	Scrivi le pagine da tenere, per esempio 1,3,5-8.	Escribe las páginas que conservar, por ejemplo 1,3,5-8.	Saisissez les pages à garder, par exemple 1,3,5-8.	Geben Sie die Seiten an, die bleiben sollen, z. B. 1,3,5-8.
+app.go.convert	Convert	Converti	Convertir	Convertir	Umwandeln
+app.go.merge	Merge into one PDF	Unisci in un PDF	Unir en un PDF	Fusionner en un PDF	Zu einer PDF zusammenführen
+app.go.split	Split	Dividi	Dividir	Diviser	Teilen
+app.go.extract	Extract pages	Estrai pagine	Extraer páginas	Extraire les pages	Seiten extrahieren
+app.go.ocr	Make searchable	Rendi ricercabile	Hacer con texto buscable	Rendre consultable	Durchsuchbar machen
+app.go.shrink	Shrink	Riduci	Reducir	Réduire	Verkleinern
+app.format	Convert to:	Converti in:	Convertir a:	Convertir en :	Umwandeln in:
+app.dpi	Resolution (dpi):	Risoluzione (dpi):	Resolución (dpi):	Résolution (dpi) :	Auflösung (dpi):
+app.convert_note	Word, PowerPoint, HTML and RTF keep text, headings, bold and italic, and simple tables. Charts, exact fonts and complex layouts are not kept. A scanned PDF has no text: run OCR first.	Word, PowerPoint, HTML e RTF mantengono testo, titoli, grassetto, corsivo e tabelle semplici. Grafici, caratteri esatti e impaginazioni complesse non si mantengono. Un PDF scansionato non ha testo: prima fai l'OCR.	Word, PowerPoint, HTML y RTF conservan texto, títulos, negrita, cursiva y tablas simples. No se conservan gráficos, tipos de letra exactos ni diseños complejos. Un PDF escaneado no tiene texto: haz antes el OCR.	Word, PowerPoint, HTML et RTF conservent le texte, les titres, le gras, l'italique et les tableaux simples. Les graphiques, les polices exactes et les mises en page complexes ne sont pas conservés. Un PDF numérisé n'a pas de texte : faites d'abord l'OCR.	Word, PowerPoint, HTML und RTF behalten Text, Überschriften, Fett, Kursiv und einfache Tabellen. Diagramme, exakte Schriften und komplexe Layouts gehen verloren. Ein gescanntes PDF hat keinen Text: zuerst OCR ausführen.
+app.merge_name	Name of the merged file:	Nome del file unito:	Nombre del archivo unido:	Nom du fichier fusionné :	Name der zusammengeführten Datei:
+app.merge_hint	Files are joined in the order of the list. Use Up and Down to change it.	I file vengono uniti nell'ordine dell'elenco. Usa Su e Giù per cambiarlo.	Los archivos se unen en el orden de la lista. Usa Subir y Bajar para cambiarlo.	Les fichiers sont fusionnés dans l'ordre de la liste. Utilisez Monter et Descendre pour le changer.	Die Dateien werden in der Reihenfolge der Liste verbunden. Mit Hoch und Runter ändern Sie sie.
+app.up	Up	Su	Subir	Monter	Hoch
+app.down	Down	Giù	Bajar	Descendre	Runter
+app.split_every	Start a new file every	Inizia un nuovo file ogni	Empezar un archivo nuevo cada	Commencer un nouveau fichier tous les	Neue Datei alle
+app.split_pages	pages	pagine	páginas	pages	Seiten
+app.extract_pages	Pages to keep (for example 1,3,5-8):	Pagine da tenere (per esempio 1,3,5-8):	Páginas que conservar (por ejemplo 1,3,5-8):	Pages à garder (par exemple 1,3,5-8) :	Zu behaltende Seiten (z. B. 1,3,5-8):
+app.ocr_note	Makes scanned pages searchable. PdfCraft reads English only: text in other languages is recognised poorly, accents are often wrong.	Rende ricercabili le pagine scansionate. PdfCraft legge solo l'inglese: il testo in altre lingue viene riconosciuto male, gli accenti spesso sono sbagliati.	Hace buscables las páginas escaneadas. PdfCraft solo lee inglés: el texto en otros idiomas se reconoce mal, los acentos suelen salir mal.	Rend consultables les pages numérisées. PdfCraft ne lit que l'anglais : le texte dans d'autres langues est mal reconnu, les accents sont souvent faux.	Macht gescannte Seiten durchsuchbar. PdfCraft liest nur Englisch: Text in anderen Sprachen wird schlecht erkannt, Akzente sind oft falsch.
+app.shrink_ppi	Image resolution (ppi):	Risoluzione immagini (ppi):	Resolución de imágenes (ppi):	Résolution des images (ppi) :	Bildauflösung (ppi):
+app.shrink_quality	Image quality (1-100):	Qualità immagini (1-100):	Calidad de imágenes (1-100):	Qualité des images (1-100) :	Bildqualität (1-100):
