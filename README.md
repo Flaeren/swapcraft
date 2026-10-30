@@ -52,7 +52,7 @@ voidflare does not convert anything by itself. Every conversion is done by a com
 
 ## Quick start
 
-1. Download the ZIP from the [Releases](../../releases) page (about 430 MB: each app carries its own engine).
+1. Download the ZIP from the [Releases](../../releases) page (about 210 MB, 430 MB once unzipped: each app carries its own engine).
 2. Unzip it to a short path, for example `C:\voidflare`.
 3. Run `voidflare.exe` and drop a file on it.
 
@@ -77,7 +77,8 @@ Available in English, Italiano, Español, Français and Deutsch. Image, audio an
 - **The hub** (`voidflare.exe`) has a drop panel. It looks at the file type, shows the formats that file can become, and runs the matching engine with default settings. The converted file lands next to the original.
 - **The apps** have the full options: batches and folders, merging, page ranges, OCR, drawing sheets or the whole drawing.
 - **The engines** are separate command-line programs that sit in each app's own folder. voidflare finds them next to the app first, then in a regular ArtCraft installation.
-- **Nothing is sent anywhere.** Conversions run locally and there is no telemetry. If a future version checks for updates, it will ask first.
+- **Nothing is sent anywhere.** Conversions run locally and there is no telemetry.
+- **Updates are opt-in.** The link in the hub's footer asks `github.com/Flaeren/voidflare` for the latest release only when you click it (one HTTPS request, no identifier). If there is a newer version, a second click downloads the ZIP into your Downloads folder and checks its SHA-256 against the release's `SHA256SUMS.txt`. voidflare never installs or replaces files by itself: unzip the new folder and run it.
 
 ## System requirements
 
@@ -105,6 +106,7 @@ src/
   vendor/         the patch for CADCraft
   licenses/       licence texts copied next to each bundled engine
   build-apps.ps1  builds everything into portable/
+  release.ps1     packs portable/ into the release ZIP and SHA256SUMS.txt
 site/             the website (voidflare.app)
 docs/             images for this page
 ```

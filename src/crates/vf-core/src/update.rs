@@ -240,6 +240,40 @@ mod tests {
         assert_eq!(checksum_for("short  x.zip", "x.zip"), None);
     }
 
+    /// End to end against a local web server: `python -m http.server 8765` in an empty folder, then
+    /// `VF_UPDATE_DIR=<that folder> cargo test --release -p vf-core served_zip -- --ignored`.
+    #[test]
+    #[ignore = "needs a local web server, see the comment"]
+    fn served_zip_is_verified() {
+        let dir = PathBuf::from(std::env::var("VF_UPDATE_DIR").expect("VF_UPDATE_DIR"));
+        let base = "http://127.0.0.1:8765";
+        let bytes: Vec<u8> = (0..3_000_000u32).map(|i| (i.wrapping_mul(2654435761) >> 24) as u8).collect();
+        fs::write(dir.join("fake.zip"), &bytes).unwrap();
+        let good = hex(Sha256::digest(&bytes).as_slice());
+        fs::write(dir.join("SHA256SUMS.txt"), format!("{good}  fake.zip\n")).unwrap();
+        fs::write(dir.join("SUMS-BAD.txt"), format!("{}  fake.zip\n", "0".repeat(64))).unwrap();
+        let release = |sums: &str| Release {
+            version: "9.9.9".into(),
+            page: String::new(),
+            notes: String::new(),
+            zip: Some(Asset { name: "fake.zip".into(), url: format!("{base}/fake.zip"), size: bytes.len() as u64 }),
+            sums: Some(Asset { name: "SHA256SUMS.txt".into(), url: format!("{base}/{sums}"), size: 0 }),
+        };
+        let out = dir.join("downloads");
+        let seen = std::cell::Cell::new(0u64);
+        let cancel = AtomicBool::new(false);
+
+        let saved = download_verified(&release("SHA256SUMS.txt"), &out, &|done, _| seen.set(done), &cancel).expect("a matching file is accepted");
+        assert_eq!(fs::read(&saved).unwrap(), bytes);
+        assert_eq!(seen.get(), bytes.len() as u64);
+        assert!(!out.join("fake.zip.part").exists());
+
+        fs::remove_file(&saved).unwrap();
+        let err = download_verified(&release("SUMS-BAD.txt"), &out, &|_, _| {}, &cancel).unwrap_err();
+        assert!(err.contains("does not match"), "{err}");
+        assert!(!out.join("fake.zip").exists() && !out.join("fake.zip.part").exists(), "nothing is left behind");
+    }
+
     #[test]
     fn sha256_matches_a_known_value() {
         assert_eq!(hex(Sha256::digest(b"abc").as_slice()), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");

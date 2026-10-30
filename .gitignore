@@ -1,6 +1,9 @@
 # The product folder is built from src\ and published as a release asset, never committed.
 /portable/
 
+# What release.ps1 writes (the ZIP and its checksums).
+/release/
+
 # The old Python converter, kept locally until the Rust one has proven itself.
 /legacy/
 
