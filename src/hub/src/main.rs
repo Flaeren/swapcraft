@@ -64,6 +64,10 @@ enum UpdMsg {
 struct Hub {
     upd: Upd,
     upd_rx: Option<mpsc::Receiver<UpdMsg>>,
+    /// Check for a newer release at start (on unless the user turned it off). A check started this way says
+    /// nothing when it fails: an offline PC is normal for these apps.
+    auto_on: bool,
+    quiet: bool,
     query: String,
     view: View,
     sort: Sort,
@@ -90,9 +94,19 @@ struct Hub {
 
 impl Hub {
     fn new(ctx: &egui::Context) -> Self {
+        let mut hub = Self::build(ctx);
+        if hub.auto_on {
+            hub.check_updates(ctx, true);
+        }
+        hub
+    }
+
+    fn build(ctx: &egui::Context) -> Self {
         Self {
             upd: Upd::Idle,
             upd_rx: None,
+            auto_on: update::auto_enabled(),
+            quiet: false,
             query: String::new(),
             view: View::Grid,
             sort: Sort::NameAsc,
@@ -202,9 +216,11 @@ impl Hub {
         };
     }
 
-    /// The user asked: look at the project's latest GitHub release (one HTTPS request, nothing sent about them).
-    fn check_updates(&mut self, ctx: &egui::Context) {
+    /// Look at the project's latest GitHub release: one HTTPS request, nothing sent about the user. Done when the
+    /// user clicks, and at start unless they turned that off (`quiet`: no error message if it fails).
+    fn check_updates(&mut self, ctx: &egui::Context, quiet: bool) {
         let (tx, rx) = mpsc::channel();
+        self.quiet = quiet;
         self.upd = Upd::Checking;
         self.upd_rx = Some(rx);
         let ctx = ctx.clone();
@@ -242,7 +258,8 @@ impl Hub {
                     finished = true;
                 }
                 UpdMsg::Checked(Err(e)) => {
-                    self.upd = Upd::Failed(e);
+                    self.upd = if self.quiet { Upd::Idle } else { Upd::Failed(e) };
+                    self.quiet = false;
                     finished = true;
                 }
                 UpdMsg::Progress(done, total) => self.upd = Upd::Downloading(done, total),
@@ -556,7 +573,7 @@ impl Hub {
         if resp.clicked() {
             let ctx = ui.ctx().clone();
             match std::mem::replace(&mut self.upd, Upd::Idle) {
-                Upd::Idle | Upd::UpToDate => self.check_updates(&ctx),
+                Upd::Idle | Upd::UpToDate => self.check_updates(&ctx, false),
                 Upd::Available(r) if r.zip.is_some() && r.sums.is_some() => self.download_update(&ctx, r),
                 Upd::Available(r) => {
                     ctx.open_url(egui::OpenUrl::new_tab(&r.page));
@@ -569,6 +586,23 @@ impl Hub {
                 Upd::Failed(_) => {}
                 other => self.upd = other,
             }
+        }
+
+        // The switch for the check at start, right after the update label.
+        let auto_label = if self.auto_on { "AUTO-CHECK: ON" } else { "AUTO-CHECK: OFF" };
+        let auto_x = x + galley.size().x + 24.0;
+        let auto_w = ui.painter().layout_no_wrap(auto_label.to_owned(), mono(11.0), t.faint).size().x;
+        let auto_rect = Rect::from_min_size(pos2(auto_x, rect.top()), vec2(auto_w, rect.height()));
+        let auto_resp = ui.interact(auto_rect, ui.scope_id().with("auto-check"), Sense::click());
+        let auto_color = if auto_resp.hovered() { t.ink_strong } else { t.faint };
+        ui.painter().text(pos2(auto_x, rect.center().y), Align2::LEFT_CENTER, auto_label, mono(11.0), auto_color);
+        if auto_resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        auto_resp.clone().on_hover_text("When on, voidflare asks github.com/Flaeren/voidflare once at start whether a newer version exists. It sends nothing about you and downloads nothing by itself. Click to switch.");
+        if auto_resp.clicked() {
+            self.auto_on = !self.auto_on;
+            update::set_auto(self.auto_on);
         }
 
         let p = ui.painter();

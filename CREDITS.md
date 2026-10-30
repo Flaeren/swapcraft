@@ -32,7 +32,7 @@ voidflare is written in Rust. The interface uses [egui](https://github.com/emilk
 
 ## Fonts and artwork
 
-Fonts are credited in each engine's `ATTRIBUTION.md` and in the licences of the Rust crates that carry them. The flame mark and the app icons were made for this project.
+Fonts are credited in each engine's `ATTRIBUTION.md` and in the licences of the Rust crates that carry them. The wordmark "voidflare" in the logo and on the website is set in **Michroma**, copyright 2011 The Michroma Project Authors ([source](https://github.com/googlefonts/Michroma-font)), under the [SIL Open Font License 1.1](https://scripts.sil.org/OFL); the logo uses it as outlines (`src/tools/make_logo.py`). The flame mark and the app icons were made for this project.
 
 ## Translations
 

@@ -23,6 +23,9 @@ __pycache__/
 /src/TODO.md
 /src/MORNING-REPORT.md
 
+# Downloaded by tools/make_logo.py (SIL OFL font, not redistributed here).
+/src/tools/*.ttf
+
 # Design explorations for the icons and the flame mark (the generator scripts stay).
 /src/tools/*.html
 

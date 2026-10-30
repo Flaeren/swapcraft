@@ -78,7 +78,7 @@ Available in English, Italiano, Español, Français and Deutsch. Image, audio an
 - **The apps** have the full options: batches and folders, merging, page ranges, OCR, drawing sheets or the whole drawing.
 - **The engines** are separate command-line programs that sit in each app's own folder. voidflare finds them next to the app first, then in a regular ArtCraft installation.
 - **Nothing is sent anywhere.** Conversions run locally and there is no telemetry.
-- **Updates are opt-in.** The link in the hub's footer asks `github.com/Flaeren/voidflare` for the latest release only when you click it (one HTTPS request, no identifier). If there is a newer version, a second click downloads the ZIP into your Downloads folder and checks its SHA-256 against the release's `SHA256SUMS.txt`. voidflare never installs or replaces files by itself: unzip the new folder and run it.
+- **Updates.** When the hub starts it asks `github.com/Flaeren/voidflare` once for the latest release (one HTTPS request, no identifier, nothing about you). The *AUTO-CHECK* switch in the footer turns this off; the *CHECK FOR UPDATES* link does it on demand. If there is a newer version, a click downloads the ZIP into your Downloads folder and checks its SHA-256 against the release's `SHA256SUMS.txt`. voidflare never downloads without that click and never installs or replaces files by itself: unzip the new folder and run it.
 
 ## System requirements
 

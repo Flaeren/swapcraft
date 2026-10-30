@@ -34,6 +34,28 @@ pub struct Release {
     pub sums: Option<Asset>,
 }
 
+fn settings_file() -> Option<PathBuf> {
+    std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("voidflare").join("updates.txt"))
+}
+
+/// Whether the hub looks for a newer release by itself when it starts. On unless the user turned it off
+/// (the file holds `off`) or `VOIDFLARE_NO_UPDATE_CHECK` is set.
+pub fn auto_enabled() -> bool {
+    if std::env::var_os("VOIDFLARE_NO_UPDATE_CHECK").is_some() {
+        return false;
+    }
+    settings_file().and_then(|p| fs::read_to_string(p).ok()).is_none_or(|s| s.trim() != "off")
+}
+
+pub fn set_auto(on: bool) {
+    if let Some(path) = settings_file() {
+        if let Some(dir) = path.parent() {
+            let _ = fs::create_dir_all(dir);
+        }
+        let _ = fs::write(path, if on { "on\n" } else { "off\n" });
+    }
+}
+
 fn numbers(version: &str) -> Vec<u64> {
     version
         .trim()
