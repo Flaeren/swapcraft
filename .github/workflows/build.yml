@@ -1,0 +1,115 @@
+name: build
+
+# Builds the portable package from a clean Windows machine: the engines come from their official releases at the
+# versions pinned in src/engines.json (hash-checked), CADCraft is built from source with our patch, then the hub
+# and the apps are built and packed. Nothing here depends on anything installed by hand.
+#
+#   push / pull request   build and test; the ZIP and SHA256SUMS.txt are kept as a build artifact for 14 days
+#   tag v*                the same, then the ZIP and SHA256SUMS.txt are published as a GitHub release
+#   manual                Actions tab, "Run workflow"
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths: ["src/**", ".github/workflows/build.yml", "CHANGELOG.md"]
+  pull_request:
+    paths: ["src/**", ".github/workflows/build.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+          cargo --version
+
+      - name: Cache Cargo downloads and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('src/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Engines (pinned, hash-checked) and CADCraft with our patch
+        working-directory: src
+        run: ./fetch-engines.ps1 -BuildCadcraft
+
+      - name: Tests
+        working-directory: src
+        env:
+          # the tests that need an engine use the ones just fetched
+          VOIDFLARE_WORDCRAFT: ${{ github.workspace }}/src/engines/wordcraft/wordcraft-cli.exe
+          VOIDFLARE_GRIDCRAFT: ${{ github.workspace }}/src/engines/gridcraft/gridcraft-cli.exe
+          VOIDFLARE_DECKCRAFT: ${{ github.workspace }}/src/engines/deckcraft/deckcraft-cli.exe
+          VOIDFLARE_PDFCRAFT: ${{ github.workspace }}/src/engines/pdfcraft/pdfcraft-cli.exe
+          VOIDFLARE_CADCRAFT: ${{ github.workspace }}/src/engines/cadcraft/cadcraft-cli.exe
+        run: cargo test --release --workspace
+
+      - name: Build the hub and the apps
+        working-directory: src
+        run: ./build-apps.ps1
+
+      - name: Pack the release files
+        working-directory: src
+        run: ./release.ps1
+
+      # Code signing goes here once the project is accepted by the SignPath Foundation (free for open source):
+      # the unsigned executables are submitted with signpath/github-action-submit-signing-request and the signed
+      # ones replace them before the packing step. Not set up yet.
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voidflare-windows
+          path: |
+            release/voidflare-*-windows.zip
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: voidflare-windows
+          path: release
+
+      - name: Release notes from the changelog
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" 'index($0, "## [" v "]") == 1 {f=1; next} /^## \[/ {f=0} f' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "No section for $version in CHANGELOG.md" >&2; exit 1; fi
+          cat notes.md
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/voidflare-*-windows.zip release/SHA256SUMS.txt \
+            --title "voidflare ${GITHUB_REF_NAME#v}" --notes-file notes.md
