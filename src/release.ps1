@@ -14,7 +14,9 @@ $version = (Select-String -Path (Join-Path $src "Cargo.toml") -Pattern '^version
 New-Item -ItemType Directory -Force $out | Out-Null
 $zip = Join-Path $out "voidflare-$version-windows.zip"
 if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
-Compress-Archive -Path (Join-Path $portable "*") -DestinationPath $zip -CompressionLevel Optimal
+# leftovers of a hub that was running while it was replaced (voidflare.old.exe) do not belong in a release
+$items = Get-ChildItem -LiteralPath $portable | Where-Object { $_.Name -notlike "*.old.exe" } | ForEach-Object { $_.FullName }
+Compress-Archive -Path $items -DestinationPath $zip -CompressionLevel Optimal
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLower()
 # no BOM, LF line ending: sha256sum -c and the hub both read this
 [System.IO.File]::WriteAllText((Join-Path $out "SHA256SUMS.txt"), "$hash  $(Split-Path -Leaf $zip)`n", (New-Object System.Text.UTF8Encoding($false)))
