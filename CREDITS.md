@@ -25,7 +25,7 @@ Every conversion is done by a command-line engine from the [ArtCraft](https://ge
 
 ### CADCraft and the local fix
 
-The DWG to PDF app uses a CADCraft build that contains a small fix for blocks inserted with a tilted extrusion direction (they were drawn as a ramp instead of flat). The change is published as `src/vendor/cadcraft-tilted-insert.patch`. We intend to drop it as soon as the upstream project fixes the same problem ([storytold/cadcraft#1158](https://github.com/storytold/cadcraft/issues/1158)). The patched build is not stored in this repository.
+The DWG to PDF app uses a CADCraft build that contains a small fix for blocks inserted with a tilted extrusion direction (they were drawn as a ramp instead of flat). The change is published as `src/vendor/cadcraft-tilted-insert.patch`. The same approach (map the insertion point to the world coordinates and keep the block flat) is proposed in the upstream issue [storytold/cadcraft#1158](https://github.com/storytold/cadcraft/issues/1158), which was reported by someone else; we checked our build against the test file from that issue. We intend to drop the patch as soon as the upstream project fixes the problem. The patched build is not stored in this repository.
 
 ## Libraries we build on
 
@@ -33,7 +33,7 @@ voidflare is written in Rust. The interface uses [egui](https://github.com/emilk
 
 ## Fonts and artwork
 
-Fonts are credited in each engine's `ATTRIBUTION.md` and in the licences of the Rust crates that carry them. The wordmark "voidflare" in the logo and on the website is set in **Michroma**, copyright 2011 The Michroma Project Authors ([source](https://github.com/googlefonts/Michroma-font)), under the [SIL Open Font License 1.1](https://scripts.sil.org/OFL); the logo uses it as outlines (`src/tools/make_logo.py`). The text of the website is set in **Instrument Sans** (copyright 2022 The Instrument Sans Project Authors, [source](https://github.com/Instrument/instrument-sans)) and **JetBrains Mono** (copyright 2020 The JetBrains Mono Project Authors, [source](https://github.com/JetBrains/JetBrainsMono)), both under the SIL Open Font License 1.1 and loaded from Google Fonts. The flame mark and the app icons were made for this project.
+Fonts are credited in each engine's `ATTRIBUTION.md` and in the licences of the Rust crates that carry them. The wordmark "voidflare" in the logo and on the website is set in **Michroma**, copyright 2011 The Michroma Project Authors ([source](https://github.com/googlefonts/Michroma-font)), under the [SIL Open Font License 1.1](https://scripts.sil.org/OFL); the logo uses it as outlines (`src/tools/make_logo.py`). The text of the website is set in **Instrument Sans** (copyright 2022 The Instrument Sans Project Authors, [source](https://github.com/Instrument/instrument-sans)) and **JetBrains Mono** (copyright 2020 The JetBrains Mono Project Authors, [source](https://github.com/JetBrains/JetBrainsMono)), both under the SIL Open Font License 1.1. The website serves its own copy of the three fonts (latin subset, `site/public/fonts/`, with their OFL texts) and requests nothing from Google. The flame mark and the app icons were made for this project.
 
 ## Translations
 

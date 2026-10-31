@@ -14,4 +14,4 @@ You can expect an acknowledgement within a reasonable time. This is a small volu
 
 voidflare opens files you give it, with engines that parse complex formats. The cases that count are a crafted file that makes a converter run code, write outside its output folder or read files it was not given. Problems in an engine itself (WordCraft, GridCraft, DeckCraft, PdfCraft, CADCraft) are best reported to that project as well; we will pass fixes on in the next release.
 
-The apps do not use the network. Anything that makes them contact the internet without asking is a bug.
+The converter apps do not use the network. The hub asks GitHub for the latest release when it starts, so it can tell you a newer version exists (switch it off with AUTO-CHECK in the hub or the `VOIDFLARE_NO_UPDATE_CHECK` environment variable); the request carries no file and no file names. Anything else that makes them contact the internet without asking is a bug.
