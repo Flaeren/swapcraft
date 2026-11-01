@@ -2,6 +2,12 @@
 
 All notable changes to voidflare are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- **The hub now really upgrades itself.** *UPDATE NOW* downloads the new hub, checks its SHA-256, replaces the running `voidflare.exe` and restarts it, instead of only saving a ZIP in Downloads. A bad or tampered file changes nothing. Only the hub is replaced; installed apps stay as they are and update from their cards. The old hub is parked as `voidflare.old.exe` and removed at the next start. (A 0.1.0 or 0.2.0 hub still only downloads: update those once by hand.)
+
 ## [0.2.0] - 2026-11-01
 
 ### Added

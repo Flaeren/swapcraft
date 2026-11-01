@@ -186,6 +186,73 @@ pub fn download_verified(release: &Release, dest_dir: &Path, progress: &dyn Fn(u
     fetch_verified(zip, &expected, dest_dir, progress, cancel)
 }
 
+// ---------------------------------------------------------------- installing the new hub
+
+/// Folder next to the hub where the update is downloaded and unpacked; it is removed afterwards.
+const STAGING: &str = ".voidflare-update";
+
+/// Where the running hub is parked while its replacement takes its name (`voidflare.exe` -> `voidflare.old.exe`).
+/// Windows lets a running program be renamed but not overwritten.
+pub fn old_name(exe: &Path) -> PathBuf {
+    let stem = exe.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "voidflare".to_owned());
+    exe.with_file_name(format!("{stem}.old.exe"))
+}
+
+/// Downloads the release ZIP, checks its SHA-256, and replaces the running hub with the `voidflare.exe` inside it.
+/// Only that one file is taken: the apps next to the hub are never touched (each updates from its own card), even
+/// when the ZIP is the full bundle. Returns the path of the new hub, which the caller starts. On any failure the
+/// hub that is running stays exactly as it was.
+pub fn install_hub(release: &Release, progress: &dyn Fn(u64, u64), cancel: &AtomicBool) -> Result<PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("Cannot tell where voidflare is installed: {e}"))?;
+    install_hub_at(&exe, release, progress, cancel)
+}
+
+/// `install_hub` for the hub program at `exe` (the running one, or a copy in a test).
+pub fn install_hub_at(exe: &Path, release: &Release, progress: &dyn Fn(u64, u64), cancel: &AtomicBool) -> Result<PathBuf, String> {
+    let dir = exe.parent().ok_or("Cannot tell which folder voidflare is in.")?.to_path_buf();
+    let staging = dir.join(STAGING);
+    let _ = fs::remove_dir_all(&staging);
+    let result = download_verified(release, &staging, progress, cancel).and_then(|zip| install_from_zip(&zip, exe, &staging));
+    let _ = fs::remove_dir_all(&staging);
+    result.map(|()| exe.to_path_buf())
+}
+
+/// Unpacks `zip` inside `work` and puts its `voidflare.exe` in place of `exe`.
+pub fn install_from_zip(zip: &Path, exe: &Path, work: &Path) -> Result<(), String> {
+    let unpacked = work.join("unpacked");
+    crate::packs::extract_zip(zip, &unpacked, &AtomicBool::new(false))?;
+    let new = unpacked.join("voidflare.exe");
+    let mut head = [0u8; 2];
+    let ok = fs::File::open(&new).and_then(|mut f| f.read_exact(&mut head)).is_ok() && &head == b"MZ";
+    if !ok {
+        return Err("The update has no usable voidflare.exe; nothing was changed.".to_owned());
+    }
+    replace_exe(exe, &new)
+}
+
+/// `exe` is renamed to its `.old.exe` name, `new` takes its place; if that fails the old one is put back.
+pub fn replace_exe(exe: &Path, new: &Path) -> Result<(), String> {
+    let old = old_name(exe);
+    let _ = fs::remove_file(&old);
+    fs::rename(exe, &old).map_err(|e| format!("Cannot replace {} (is the folder read-only?): {e}", exe.display()))?;
+    if let Err(e) = fs::rename(new, exe) {
+        let _ = fs::rename(&old, exe);
+        return Err(format!("Cannot put the new voidflare in place, the old one was kept: {e}"));
+    }
+    Ok(())
+}
+
+/// Removes what a finished update leaves behind: the parked old hub (it may still be closing, so the caller
+/// may try again a moment later) and a half-unpacked staging folder.
+pub fn cleanup_after_update() {
+    if let Ok(exe) = std::env::current_exe() {
+        let _ = fs::remove_file(old_name(&exe));
+        if let Some(dir) = exe.parent() {
+            let _ = fs::remove_dir_all(dir.join(STAGING));
+        }
+    }
+}
+
 /// The text of the release's `SHA256SUMS.txt`.
 pub fn sums_text(release: &Release) -> Result<String, String> {
     let sums = release.sums.as_ref().ok_or("This release has no checksum file, so it cannot be verified.")?;
@@ -371,6 +438,143 @@ mod tests {
         println!("saved: {} ({} bytes)", saved.display(), fs::metadata(&saved).unwrap().len());
         assert!(is_newer("9.9.9", &release.version) && !is_newer(&release.version, &release.version));
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn zip_with(path: &Path, files: &[(&str, &[u8])]) {
+        let mut w = zip::ZipWriter::new(fs::File::create(path).unwrap());
+        let opts = zip::write::SimpleFileOptions::default();
+        for (name, data) in files {
+            w.start_file(*name, opts).unwrap();
+            w.write_all(data).unwrap();
+        }
+        w.finish().unwrap();
+    }
+
+    #[test]
+    fn the_hub_is_replaced_and_the_apps_are_left_alone() {
+        let root = std::env::temp_dir().join(format!("vf-hub-swap-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("apps/word")).unwrap();
+        fs::write(root.join("apps/word/word.exe"), b"MZ-app-keeps-this").unwrap();
+        let exe = root.join("voidflare.exe");
+        fs::write(&exe, b"MZ-old-hub").unwrap();
+        let zip = root.join("update.zip");
+        // a full bundle: the hub plus an app that must NOT be taken
+        zip_with(&zip, &[("voidflare.exe", b"MZ-new-hub"), ("apps/word/word.exe", b"MZ-new-app"), ("README.txt", b"hi")]);
+
+        install_from_zip(&zip, &exe, &root.join(".work")).expect("the swap works");
+        assert_eq!(fs::read(&exe).unwrap(), b"MZ-new-hub");
+        assert_eq!(fs::read(root.join("voidflare.old.exe")).unwrap(), b"MZ-old-hub", "the old hub is parked, not lost");
+        assert_eq!(fs::read(root.join("apps/word/word.exe")).unwrap(), b"MZ-app-keeps-this", "installed apps are untouched");
+        assert!(!root.join("README.txt").exists(), "nothing but the hub is copied out");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// A tiny web server on a free local port: every path in `routes` answers with its bytes, anything else is 404.
+    fn serve(routes: Vec<(String, Vec<u8>)>) -> String {
+        use std::io::BufRead;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut line = String::new();
+                {
+                    let mut reader = std::io::BufReader::new(&stream);
+                    if reader.read_line(&mut line).is_err() {
+                        continue;
+                    }
+                    let mut header = String::new();
+                    while reader.read_line(&mut header).map(|n| n > 2).unwrap_or(false) {
+                        header.clear();
+                    }
+                }
+                let path = line.split_whitespace().nth(1).unwrap_or("/").to_owned();
+                let (status, body) = match routes.iter().find(|(p, _)| *p == path) {
+                    Some((_, b)) => ("200 OK", b.clone()),
+                    None => ("404 Not Found", Vec::new()),
+                };
+                let _ = write!(stream, "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+                let _ = stream.write_all(&body);
+            }
+        });
+        base
+    }
+
+    /// The whole chain the hub's UPDATE NOW runs, minus the window: download, checksum, unpack, swap.
+    #[test]
+    fn update_now_downloads_verifies_and_replaces_the_hub() {
+        let root = std::env::temp_dir().join(format!("vf-hub-e2e-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("apps/word")).unwrap();
+        fs::write(root.join("apps/word/word.exe"), b"MZ-installed-app").unwrap();
+        let exe = root.join("voidflare.exe");
+        fs::write(&exe, b"MZ-hub-0.2.0").unwrap();
+
+        let zip = root.join("made.zip");
+        zip_with(&zip, &[("voidflare.exe", b"MZ-hub-0.3.0")]);
+        let zip_bytes = fs::read(&zip).unwrap();
+        fs::remove_file(&zip).unwrap();
+        let name = "voidflare-hub-0.3.0-windows.zip";
+        let good = format!("{}  {name}\n", hex(Sha256::digest(&zip_bytes).as_slice()));
+        let bad = format!("{}  {name}\n", "0".repeat(64));
+        let base = serve(vec![
+            (format!("/{name}"), zip_bytes.clone()),
+            ("/good.txt".into(), good.into_bytes()),
+            ("/bad.txt".into(), bad.into_bytes()),
+        ]);
+        let release = |sums: &str| Release {
+            version: "0.3.0".into(),
+            page: String::new(),
+            notes: String::new(),
+            zip: None,
+            sums: Some(Asset { name: "SHA256SUMS.txt".into(), url: format!("{base}/{sums}"), size: 0 }),
+            assets: vec![Asset { name: name.into(), url: format!("{base}/{name}"), size: zip_bytes.len() as u64 }],
+        };
+        let cancel = AtomicBool::new(false);
+
+        // a checksum that does not match: nothing changes, nothing is left behind
+        let err = install_hub_at(&exe, &release("bad.txt"), &|_, _| {}, &cancel).unwrap_err();
+        assert!(err.contains("does not match"), "{err}");
+        assert_eq!(fs::read(&exe).unwrap(), b"MZ-hub-0.2.0");
+        assert!(!root.join(STAGING).exists() && !root.join("voidflare.old.exe").exists());
+
+        // the right one: the hub is replaced, the old one parked, the app and the staging folder untouched/gone
+        let seen = std::cell::Cell::new(0u64);
+        let back = install_hub_at(&exe, &release("good.txt"), &|d, _| seen.set(d), &cancel).expect("the update installs");
+        assert_eq!(back, exe);
+        assert_eq!(seen.get(), zip_bytes.len() as u64, "progress reached the end");
+        assert_eq!(fs::read(&exe).unwrap(), b"MZ-hub-0.3.0");
+        assert_eq!(fs::read(root.join("voidflare.old.exe")).unwrap(), b"MZ-hub-0.2.0");
+        assert_eq!(fs::read(root.join("apps/word/word.exe")).unwrap(), b"MZ-installed-app");
+        assert!(!root.join(STAGING).exists(), "the staging folder is removed");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_bad_update_changes_nothing() {
+        let root = std::env::temp_dir().join(format!("vf-hub-bad-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let exe = root.join("voidflare.exe");
+        fs::write(&exe, b"MZ-old-hub").unwrap();
+
+        let no_exe = root.join("no-exe.zip");
+        zip_with(&no_exe, &[("notes.txt", b"nothing useful")]);
+        assert!(install_from_zip(&no_exe, &exe, &root.join(".w1")).is_err());
+        let not_a_program = root.join("text.zip");
+        zip_with(&not_a_program, &[("voidflare.exe", b"this is text, not an exe")]);
+        assert!(install_from_zip(&not_a_program, &exe, &root.join(".w2")).unwrap_err().contains("usable"));
+        let hostile = root.join("hostile.zip");
+        zip_with(&hostile, &[("../evil.exe", b"MZ-evil")]);
+        assert!(install_from_zip(&hostile, &exe, &root.join(".w3")).is_err());
+
+        assert_eq!(fs::read(&exe).unwrap(), b"MZ-old-hub");
+        assert!(!root.join("voidflare.old.exe").exists() && !root.join("..").join("evil.exe").exists());
+        // a swap that cannot finish puts the old hub back
+        assert!(replace_exe(&exe, &root.join("missing.exe")).is_err());
+        assert_eq!(fs::read(&exe).unwrap(), b"MZ-old-hub");
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

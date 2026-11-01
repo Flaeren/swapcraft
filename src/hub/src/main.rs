@@ -53,7 +53,8 @@ enum Upd {
     UpToDate,
     Available(update::Release),
     Downloading(u64, u64),
-    Saved(PathBuf),
+    /// The new hub is in place; this one still runs until it is restarted.
+    Restart(PathBuf),
     Failed(String),
 }
 
@@ -145,6 +146,12 @@ struct Hub {
 
 impl Hub {
     fn new(ctx: &egui::Context) -> Self {
+        // A hub that was just replaced leaves its old self parked next to it; it may still be closing, so try twice.
+        std::thread::spawn(|| {
+            update::cleanup_after_update();
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            update::cleanup_after_update();
+        });
         let mut hub = Self::build(ctx);
         // Reading the pack list is part of the update check: only when that check is on, or when the user clicks.
         if hub.auto_on {
@@ -427,9 +434,8 @@ impl Hub {
         }
     }
 
-    /// The user asked: download the release ZIP into Downloads and verify its published checksum.
+    /// The user asked: download the new hub, verify its published checksum and swap it in place of this one.
     fn download_update(&mut self, ctx: &egui::Context, release: update::Release) {
-        let dest = PathBuf::from(std::env::var_os("USERPROFILE").unwrap_or_default()).join("Downloads");
         let (tx, rx) = mpsc::channel();
         self.upd = Upd::Downloading(0, release.update_zip().map_or(0, |z| z.size));
         self.upd_rx = Some(rx);
@@ -439,7 +445,7 @@ impl Hub {
                 let _ = tx.send(UpdMsg::Progress(done, total));
                 ctx.request_repaint();
             };
-            let result = update::download_verified(&release, &dest, &progress, &AtomicBool::new(false));
+            let result = update::install_hub(&release, &progress, &AtomicBool::new(false));
             let _ = tx.send(UpdMsg::Done(result));
             ctx.request_repaint();
         });
@@ -461,7 +467,11 @@ impl Hub {
                 }
                 UpdMsg::Progress(done, total) => self.upd = Upd::Downloading(done, total),
                 UpdMsg::Done(Ok(path)) => {
-                    self.upd = Upd::Saved(path);
+                    // Nothing is running that the restart would cut short: start the new hub right away.
+                    if self.job.is_none() && !self.running {
+                        restart_into(&path);
+                    }
+                    self.upd = Upd::Restart(path);
                     finished = true;
                 }
                 UpdMsg::Done(Err(e)) => {
@@ -746,11 +756,11 @@ impl Hub {
             Upd::Checking => ("CHECKING GITHUB…".into(), t.faint, ""),
             Upd::UpToDate => ("UP TO DATE · CHECK AGAIN".into(), t.good, ""),
             Upd::Available(r) => match r.update_zip() {
-                Some(z) if r.sums.is_some() => (format!("v{} AVAILABLE · DOWNLOAD {}", r.version, human_size(z.size)), t.accent_ink, "Downloads the ZIP from GitHub into your Downloads folder and checks its checksum. It does not install anything."),
+                Some(z) if r.sums.is_some() => (format!("v{} AVAILABLE · UPDATE NOW · {}", r.version, human_size(z.size)), t.accent_ink, "Downloads the new voidflare from GitHub, checks its checksum, replaces this program and restarts it. Your installed apps stay as they are: update them from their cards."),
                 _ => (format!("v{} AVAILABLE ↗", r.version), t.accent_ink, "Opens the release page in your browser."),
             },
-            Upd::Downloading(done, total) => (format!("DOWNLOADING {}%", if *total > 0 { done * 100 / total } else { 0 }), t.faint, ""),
-            Upd::Saved(_) => ("DOWNLOADED AND VERIFIED · SHOW FILE".into(), t.good, "Unzip it to a new folder, then run the new voidflare.exe."),
+            Upd::Downloading(done, total) => (format!("UPDATING {}%", if *total > 0 { done * 100 / total } else { 0 }), t.faint, ""),
+            Upd::Restart(_) => ("UPDATED · CLICK TO RESTART".into(), t.good, "The new voidflare is in place. Restarting closes this window."),
             Upd::Failed(msg) => (format!("{} · CLICK TO CLOSE", msg.chars().take(70).collect::<String>()), t.bad, ""),
         };
         let clickable = !matches!(self.upd, Upd::Checking | Upd::Downloading(..));
@@ -776,10 +786,7 @@ impl Hub {
                     ctx.open_url(egui::OpenUrl::new_tab(&r.page));
                     self.upd = Upd::Available(r);
                 }
-                Upd::Saved(path) => {
-                    let _ = Command::new("explorer").arg(format!("/select,{}", path.display())).spawn();
-                    self.upd = Upd::Saved(path);
-                }
+                Upd::Restart(path) => restart_into(&path),
                 Upd::Failed(_) => {}
                 other => self.upd = other,
             }
@@ -1205,6 +1212,17 @@ impl Hub {
 }
 
 /// Reads a release's pack list (checked against its checksums) and what each pack would do on this PC.
+/// Starts the hub at `exe` (the new one, same path as this one) and ends this process.
+fn restart_into(exe: &std::path::Path) {
+    let mut cmd = Command::new(exe);
+    if let Some(dir) = exe.parent() {
+        cmd.current_dir(dir);
+    }
+    if cmd.spawn().is_ok() {
+        std::process::exit(0);
+    }
+}
+
 fn load_packs(release: &update::Release) -> Result<Box<Loaded>, String> {
     let manifest = packs::fetch_manifest(release)?;
     let sums = update::sums_text(release)?;
