@@ -117,5 +117,11 @@ jobs:
         run: |
           # Every file the hub needs. Names all start with "voidflare-" and the full bundle sorts first, because a
           # 0.1.0 hub takes the first ZIP of a release.
+          # A release created by hand for this tag is left alone: replacing its files would change hashes people may
+          # already have checked.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists, not touching it."
+            exit 0
+          fi
           gh release create "$GITHUB_REF_NAME" release/* \
             --title "voidflare ${GITHUB_REF_NAME#v}" --notes-file notes.md
