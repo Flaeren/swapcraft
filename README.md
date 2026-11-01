@@ -9,7 +9,7 @@
 <p align="center">
   <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-6366f1.svg" alt="License: MIT OR Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1f2937.svg" alt="Platform: Windows 10 and 11">
-  <img src="https://img.shields.io/badge/status-early%20(v0.1.0)-b45309.svg" alt="Status: early">
+  <img src="https://img.shields.io/badge/status-early%20(v0.2.0)-b45309.svg" alt="Status: early">
   <img src="https://img.shields.io/badge/made%20with-Rust-1f2937.svg" alt="Made with Rust">
   <img src="https://img.shields.io/badge/works-100%25%20offline-0f766e.svg" alt="Works 100% offline">
   <a href="CREDITS.md"><img src="https://img.shields.io/badge/built%20on-the%20ArtCraft%20suite-6366f1.svg" alt="Built on the ArtCraft suite"></a>
@@ -31,7 +31,7 @@
 
 voidflare takes a file and offers the formats it can become. Your files never leave your PC, there is no account, and you need no Microsoft Office. It is a small hub plus five apps, and you install only the ones you use: each app is a separate download, and it either comes with its own conversion engine or, if your PC already has a version of ArtCraft that we have tested, uses that one instead of downloading a second copy.
 
-> **Status:** early (v0.1.0). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
+> **Status:** early (v0.2.0). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
 
 ## Built on ArtCraft: credits and licences
 
