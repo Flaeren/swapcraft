@@ -5,6 +5,7 @@ pub mod dwg;
 pub mod engine;
 pub mod i18n;
 pub mod job;
+pub mod packs;
 pub mod pdf;
 pub mod pdfmerge;
 pub mod update;

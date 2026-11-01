@@ -6,9 +6,10 @@ mod fx;
 mod icons;
 mod routes;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
@@ -19,13 +20,14 @@ use eframe::egui::{
 };
 use vf_core::i18n;
 use vf_core::job::{self, Event};
+use vf_core::packs::{self, EngineSource, Health, Status};
 use vf_core::update;
 use vf_ui::shell::{SHELL_CATALOG, drain, dropped_files, finish};
 use vf_ui::theme::{self, Tokens, rgb};
 use vf_ui::widgets::{self, Kind};
 
 const CARD_MIN_W: f32 = 320.0;
-const CARD_H: f32 = 248.0;
+const CARD_H: f32 = 268.0;
 const PAD: f32 = 20.0;
 const STRIP_H: f32 = 36.0;
 const ROW_H: f32 = 68.0;
@@ -61,7 +63,56 @@ enum UpdMsg {
     Done(Result<PathBuf, String>),
 }
 
+/// What the release's pack list says, read together with the update check.
+struct Loaded {
+    release: update::Release,
+    sums: String,
+    manifest: packs::Manifest,
+    /// What installing each pack would do, by pack id (read once, with the engines found on this PC).
+    plans: HashMap<String, packs::Plan>,
+    /// The version of each engine installed on this PC, by engine name.
+    system: HashMap<String, Option<String>>,
+}
+
+enum Packs {
+    /// Not looked at yet (the update check is off or has not run).
+    Unknown,
+    Loading,
+    Ready(Box<Loaded>),
+    Failed(String),
+}
+
+/// An install, update or removal in progress, one at a time.
+struct Job {
+    app: usize,
+    removing: bool,
+    rx: mpsc::Receiver<JobMsg>,
+    cancel: Arc<AtomicBool>,
+    stage: String,
+    done: u64,
+    total: u64,
+}
+
+enum JobMsg {
+    Progress(String, u64, u64),
+    Installed(Result<packs::Installed, String>),
+    Removed(Result<(), String>),
+}
+
 struct Hub {
+    /// `<hub folder>\apps`: where packs are installed and where `catalog::locate` looks first.
+    apps_dir: PathBuf,
+    packs: Packs,
+    packs_rx: Option<mpsc::Receiver<Result<Box<Loaded>, String>>>,
+    job: Option<Job>,
+    /// An INSTALL clicked before the pack list was loaded: runs as soon as it arrives.
+    pending_install: Option<usize>,
+    /// The card whose REMOVE was clicked once and now asks to be confirmed.
+    confirm_remove: Option<usize>,
+    /// What each app's `pack.json` says (None: not installed by this installer), same order as `APPS`.
+    installed: Vec<Option<packs::Installed>>,
+    status: Vec<Option<Status>>,
+    health: Vec<Health>,
     upd: Upd,
     upd_rx: Option<mpsc::Receiver<UpdMsg>>,
     /// Check for a newer release at start (on unless the user turned it off). A check started this way says
@@ -95,6 +146,7 @@ struct Hub {
 impl Hub {
     fn new(ctx: &egui::Context) -> Self {
         let mut hub = Self::build(ctx);
+        // Reading the pack list is part of the update check: only when that check is on, or when the user clicks.
         if hub.auto_on {
             hub.check_updates(ctx, true);
         }
@@ -102,7 +154,23 @@ impl Hub {
     }
 
     fn build(ctx: &egui::Context) -> Self {
+        let apps_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.join("apps"))).unwrap_or_else(|| PathBuf::from("apps"));
+        let mut hub = Self::fresh(ctx, apps_dir);
+        hub.refresh_packs();
+        hub
+    }
+
+    fn fresh(ctx: &egui::Context, apps_dir: PathBuf) -> Self {
         Self {
+            apps_dir,
+            packs: Packs::Unknown,
+            packs_rx: None,
+            job: None,
+            pending_install: None,
+            confirm_remove: None,
+            installed: vec![None; APPS.len()],
+            status: vec![None; APPS.len()],
+            health: vec![Health::NotInstalled; APPS.len()],
             upd: Upd::Idle,
             upd_rx: None,
             auto_on: update::auto_enabled(),
@@ -140,8 +208,8 @@ impl Hub {
         };
     }
 
-    /// Indices of the apps matching the search, available ones first, then by name.
-    fn visible(&self) -> (Vec<usize>, Vec<usize>) {
+    /// Indices of the apps matching the search, in three groups: installed, downloadable, and planned; by name.
+    fn visible(&self) -> [Vec<usize>; 3] {
         let q = self.query.trim().to_lowercase();
         let mut idx: Vec<usize> = (0..APPS.len())
             .filter(|&i| {
@@ -153,7 +221,12 @@ impl Hub {
             let o = APPS[a].name.to_lowercase().cmp(&APPS[b].name.to_lowercase());
             if self.sort == Sort::NameDesc { o.reverse() } else { o }
         });
-        idx.into_iter().partition(|&i| self.found[i].is_some())
+        let mut groups = [Vec::new(), Vec::new(), Vec::new()];
+        for i in idx {
+            let g = if self.found[i].is_some() { 0 } else if APPS[i].pack { 1 } else { 2 };
+            groups[g].push(i);
+        }
+        groups
     }
 }
 
@@ -162,6 +235,8 @@ impl eframe::App for Hub {
         let t = Tokens::get(ui.ctx());
         self.poll();
         self.poll_update();
+        self.poll_packs(ui.ctx());
+        self.poll_job();
         if self.running {
             ui.ctx().request_repaint_after(Duration::from_millis(60));
         }
@@ -176,15 +251,15 @@ impl eframe::App for Hub {
             self.header(ui, &t);
             self.drop_panel(ui, &t);
             self.toolbar(ui, &t);
-            let (ready, planned) = self.visible();
+            let [ready, available, planned] = self.visible();
             let body_h = (ui.available_height() - FOOTER_H).max(0.0);
             egui::ScrollArea::vertical().max_height(body_h).auto_shrink([false, false]).show(ui, |ui| {
-                if ready.is_empty() && planned.is_empty() {
+                if ready.is_empty() && available.is_empty() && planned.is_empty() {
                     ui.add_space(48.0);
                     ui.vertical_centered(|ui| ui.label(RichText::new("No apps match your search.").color(t.muted)));
                     return;
                 }
-                for (label, group) in [("Installed", &ready), ("Coming soon", &planned)] {
+                for (label, group) in [("Installed", &ready), ("Available to install", &available), ("Coming soon", &planned)] {
                     if group.is_empty() {
                         continue;
                     }
@@ -220,21 +295,143 @@ impl Hub {
     /// user clicks, and at start unless they turned that off (`quiet`: no error message if it fails).
     fn check_updates(&mut self, ctx: &egui::Context, quiet: bool) {
         let (tx, rx) = mpsc::channel();
+        let (ptx, prx) = mpsc::channel();
         self.quiet = quiet;
         self.upd = Upd::Checking;
         self.upd_rx = Some(rx);
+        self.packs = Packs::Loading;
+        self.packs_rx = Some(prx);
         let ctx = ctx.clone();
         std::thread::spawn(move || {
-            let _ = tx.send(UpdMsg::Checked(update::latest()));
+            // One request to GitHub answers both questions: is there a newer voidflare, and which packs does it carry.
+            let latest = update::latest();
+            let loaded = latest.as_ref().map_err(Clone::clone).and_then(load_packs);
+            let _ = tx.send(UpdMsg::Checked(latest));
+            let _ = ptx.send(loaded);
             ctx.request_repaint();
         });
+    }
+
+    /// Re-reads what is installed on disk and works out each card's status and engine health.
+    fn refresh_packs(&mut self) {
+        self.found = APPS.iter().map(catalog::locate).collect();
+        for (i, app) in APPS.iter().enumerate() {
+            self.installed[i] = packs::installed(&self.apps_dir, app.id);
+            self.status[i] = None;
+            self.health[i] = Health::NotInstalled;
+            let Packs::Ready(l) = &self.packs else { continue };
+            let Some(pack) = l.manifest.packs.iter().find(|p| p.id == app.id) else { continue };
+            if self.installed[i].is_some() {
+                self.status[i] = Some(packs::status(&self.apps_dir, pack, &l.sums));
+                let sys = pack.engine.as_ref().and_then(|e| l.system.get(&e.name)).cloned().flatten();
+                self.health[i] = packs::health(&self.apps_dir, pack, sys.as_deref());
+            }
+        }
+    }
+
+    fn poll_packs(&mut self, ctx: &egui::Context) {
+        let Some(rx) = &self.packs_rx else { return };
+        let Ok(result) = rx.try_recv() else { return };
+        self.packs_rx = None;
+        match result {
+            Ok(loaded) => {
+                self.packs = Packs::Ready(loaded);
+                self.refresh_packs();
+                if let Some(i) = self.pending_install.take() {
+                    self.start_install(ctx, i);
+                }
+            }
+            Err(e) => {
+                self.packs = Packs::Failed(e.clone());
+                if self.pending_install.take().is_some() {
+                    self.notice = Some(format!("Cannot install right now: {e}"));
+                }
+            }
+        }
+    }
+
+    /// INSTALL or UPDATE on a card. Needs the pack list: asks for it first if it has not been read yet.
+    fn request_install(&mut self, ctx: &egui::Context, i: usize) {
+        self.notice = None;
+        match &self.packs {
+            Packs::Ready(_) => self.start_install(ctx, i),
+            Packs::Loading => self.pending_install = Some(i),
+            Packs::Unknown | Packs::Failed(_) => {
+                self.pending_install = Some(i);
+                self.check_updates(ctx, true);
+            }
+        }
+    }
+
+    fn start_install(&mut self, ctx: &egui::Context, i: usize) {
+        let Packs::Ready(l) = &self.packs else { return };
+        if self.job.is_some() {
+            return;
+        }
+        let Some(pack) = l.manifest.packs.iter().find(|p| p.id == APPS[i].id).cloned() else {
+            self.notice = Some(format!("{} is not in this release.", APPS[i].name));
+            return;
+        };
+        let (release, sums, apps_dir) = (l.release.clone(), l.sums.clone(), self.apps_dir.clone());
+        let (tx, rx) = mpsc::channel();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let job = Job { app: i, removing: false, rx, cancel: cancel.clone(), stage: "app".into(), done: 0, total: 0 };
+        self.job = Some(job);
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            // The PC's engine is looked at now, not when the list was read: it may have changed since.
+            let system = pack.engine.as_ref().and_then(packs::system_engine_version);
+            let engine = pack.engine.as_ref().map(|spec| packs::choose_engine(spec, system.as_deref()));
+            let progress = |stage: &str, done: u64, total: u64| {
+                let _ = tx.send(JobMsg::Progress(stage.to_owned(), done, total));
+                ctx.request_repaint();
+            };
+            let result = packs::install(&apps_dir, &release, &sums, &pack, engine.as_ref(), &progress, &cancel);
+            let _ = tx.send(JobMsg::Installed(result));
+            ctx.request_repaint();
+        });
+    }
+
+    fn start_remove(&mut self, ctx: &egui::Context, i: usize) {
+        if self.job.is_some() {
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        self.job = Some(Job { app: i, removing: true, rx, cancel: Arc::new(AtomicBool::new(false)), stage: "remove".into(), done: 0, total: 0 });
+        let (apps_dir, id, ctx) = (self.apps_dir.clone(), APPS[i].id, ctx.clone());
+        std::thread::spawn(move || {
+            let _ = tx.send(JobMsg::Removed(packs::remove(&apps_dir, id)));
+            ctx.request_repaint();
+        });
+    }
+
+    fn poll_job(&mut self) {
+        let Some(job) = &mut self.job else { return };
+        let mut finished = None;
+        while let Ok(msg) = job.rx.try_recv() {
+            match msg {
+                JobMsg::Progress(stage, done, total) => (job.stage, job.done, job.total) = (stage, done, total),
+                JobMsg::Installed(r) => finished = Some((job.app, r.map(|_| ()), false)),
+                JobMsg::Removed(r) => finished = Some((job.app, r, true)),
+            }
+        }
+        if let Some((app, result, removed)) = finished {
+            self.job = None;
+            self.notice = match result {
+                Ok(()) => None,
+                Err(e) if e.contains("ancel") => None,
+                Err(e) => Some(format!("{}: {e}", APPS[app].name)),
+            };
+            let _ = removed;
+            self.refresh_packs();
+        }
     }
 
     /// The user asked: download the release ZIP into Downloads and verify its published checksum.
     fn download_update(&mut self, ctx: &egui::Context, release: update::Release) {
         let dest = PathBuf::from(std::env::var_os("USERPROFILE").unwrap_or_default()).join("Downloads");
         let (tx, rx) = mpsc::channel();
-        self.upd = Upd::Downloading(0, release.zip.as_ref().map_or(0, |z| z.size));
+        self.upd = Upd::Downloading(0, release.update_zip().map_or(0, |z| z.size));
         self.upd_rx = Some(rx);
         let ctx = ctx.clone();
         std::thread::spawn(move || {
@@ -548,7 +745,7 @@ impl Hub {
             Upd::Idle => ("CHECK FOR UPDATES".into(), t.faint, "Asks github.com/Flaeren/voidflare for the latest release. Nothing else is sent."),
             Upd::Checking => ("CHECKING GITHUB…".into(), t.faint, ""),
             Upd::UpToDate => ("UP TO DATE · CHECK AGAIN".into(), t.good, ""),
-            Upd::Available(r) => match &r.zip {
+            Upd::Available(r) => match r.update_zip() {
                 Some(z) if r.sums.is_some() => (format!("v{} AVAILABLE · DOWNLOAD {}", r.version, human_size(z.size)), t.accent_ink, "Downloads the ZIP from GitHub into your Downloads folder and checks its checksum. It does not install anything."),
                 _ => (format!("v{} AVAILABLE ↗", r.version), t.accent_ink, "Opens the release page in your browser."),
             },
@@ -574,7 +771,7 @@ impl Hub {
             let ctx = ui.ctx().clone();
             match std::mem::replace(&mut self.upd, Upd::Idle) {
                 Upd::Idle | Upd::UpToDate => self.check_updates(&ctx, false),
-                Upd::Available(r) if r.zip.is_some() && r.sums.is_some() => self.download_update(&ctx, r),
+                Upd::Available(r) if r.update_zip().is_some() && r.sums.is_some() => self.download_update(&ctx, r),
                 Upd::Available(r) => {
                     ctx.open_url(egui::OpenUrl::new_tab(&r.page));
                     self.upd = Upd::Available(r);
@@ -611,9 +808,15 @@ impl Hub {
                 p.text(pos2(rect.right() - PAD, rect.center().y), Align2::RIGHT_CENTER, msg, mono(11.0), t.bad);
             }
             None => {
-                // Right to left: the link to ArtCraft, then the version.
-                let link = footer_link(ui, t, rect, rect.right() - PAD, "BUILT ON THE ARTCRAFT SUITE ↗", "https://getartcraft.com");
-                ui.painter().text(pos2(link - 14.0, rect.center().y), Align2::RIGHT_CENTER, format!("v{} · OPEN SOURCE ·", env!("CARGO_PKG_VERSION")), mono(11.0), t.faint);
+                // Right to left: the link to ArtCraft, then the version. In a narrow window they give way to the update
+                // controls on the left instead of being drawn over them.
+                let room = rect.right() - PAD - (auto_x + auto_w) - 24.0;
+                if room > 210.0 {
+                    let link = footer_link(ui, t, rect, rect.right() - PAD, "BUILT ON THE ARTCRAFT SUITE ↗", "https://getartcraft.com");
+                    if room > 380.0 {
+                        ui.painter().text(pos2(link - 14.0, rect.center().y), Align2::RIGHT_CENTER, format!("v{} · OPEN SOURCE ·", env!("CARGO_PKG_VERSION")), mono(11.0), t.faint);
+                    }
+                }
             }
         };
     }
@@ -667,7 +870,7 @@ impl Hub {
             mono(11.0),
             if ready || hovered { t.muted } else { t.faint },
         );
-        let (status, status_color) = if ready { ("READY", t.good) } else if app.exe.is_some() { ("NOT FOUND", t.bad) } else { ("PLANNED", t.faint) };
+        let (status, status_color) = self.status_text(t, i);
         p.text(pos2(rect.right() - PAD, strip.center().y), Align2::RIGHT_CENTER, status, mono(11.0), status_color);
 
         // Icon, name and tagline.
@@ -684,21 +887,186 @@ impl Hub {
         let blurb = clipped(app.blurb, FontId::proportional(12.5), t.muted, rect.width() - 2.0 * PAD, 3);
         p.galley(pos2(rect.left() + PAD, tile.bottom() + 18.0), p.layout_job(blurb), t.muted);
 
-        // Action.
+        // Where the engine comes from, in small print above the buttons.
         let button = Rect::from_min_size(pos2(rect.left() + PAD, rect.bottom() - PAD - 32.0), vec2(112.0, 32.0));
-        if ready {
+        let ctx = ui.ctx().clone();
+        let working = self.job.as_ref().is_some_and(|j| j.app == i);
+        let busy_elsewhere = self.job.is_some() && !working;
+        let line = if working { self.job_line(i) } else { self.source_line(i) };
+        if let Some((text, warn)) = line {
+            let color = if warn { t.bad } else if working { t.accent_ink } else { t.faint };
+            p.text(pos2(rect.left() + PAD, button.top() - 16.0), Align2::LEFT_CENTER, text, mono(10.5), color);
+        }
+
+        // Action. The buttons are their own click targets above the card, so a click on them never launches the app.
+        let scope = ui.scope_id();
+        let id = |what: &str| scope.with((what, app.id));
+        let mut handled = false;
+        let (mut act_install, mut act_remove, mut act_cancel) = (false, false, false);
+        let small_link = |ui: &mut egui::Ui, p: &egui::Painter, rect: Rect, salt: &str, label: &str, base: Color32| -> bool {
+            let r = ui.interact(rect, id(salt), Sense::click());
+            let color = if r.hovered() { t.ink_strong } else { base };
+            if r.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                p.hline(rect.x_range(), rect.center().y + 8.0, egui::Stroke::new(1.0, color));
+            }
+            p.text(rect.center(), Align2::CENTER_CENTER, label, mono(11.0), color);
+            r.clicked()
+        };
+        if working {
+            let job = self.job.as_ref().expect("working implies a job");
+            let cancel_w = if job.removing { 0.0 } else { 70.0 };
+            let bar = Rect::from_min_size(pos2(rect.left() + PAD, button.center().y - 3.0), vec2(rect.width() - 2.0 * PAD - cancel_w, 6.0));
+            p.rect_filled(bar, CornerRadius::ZERO, t.sunken);
+            let frac = if job.total > 0 { (job.done as f32 / job.total as f32).clamp(0.0, 1.0) } else { 0.0 };
+            p.rect_filled(Rect::from_min_size(bar.min, vec2(bar.width() * frac, bar.height())), CornerRadius::ZERO, accent);
+            if !job.removing {
+                let cancel_rect = Rect::from_min_size(pos2(rect.right() - PAD - cancel_w + 8.0, button.top()), vec2(cancel_w - 8.0, button.height()));
+                act_cancel = small_link(ui, &p, cancel_rect, "cancel", "CANCEL", t.muted);
+            }
+            handled = true;
+        } else if ready {
+            let managed = self.installed[i].is_some();
             let over = ui.rect_contains_pointer(button);
             let fill = if over { t.invert_bg.lerp_to_gamma(accent, 0.35) } else { t.invert_bg };
             p.rect_filled(button, CornerRadius::ZERO, fill);
             p.text(button.center(), Align2::CENTER_CENTER, "OPEN", mono(12.0), t.invert_fg);
+            if managed {
+                if let Some(label) = self.fix_label(i).filter(|_| !busy_elsewhere) {
+                    let upd = Rect::from_min_size(pos2(button.right() + 8.0, button.top()), vec2(100.0, 32.0));
+                    let r = ui.interact(upd, id("update"), Sense::click());
+                    p.rect(upd, CornerRadius::ZERO, Color32::TRANSPARENT, egui::Stroke::new(1.0, if r.hovered() { t.accent_ink } else { t.line_strong }), StrokeKind::Inside);
+                    p.text(upd.center(), Align2::CENTER_CENTER, label, mono(11.0), t.accent_ink);
+                    if r.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    }
+                    if r.clicked() {
+                        act_install = true;
+                        handled = true;
+                    }
+                }
+                if self.confirm_remove == Some(i) {
+                    // Compact, so it also fits the narrowest card (320 px) next to OPEN.
+                    let yes = Rect::from_min_size(pos2(rect.right() - PAD - 86.0, button.top()), vec2(42.0, 32.0));
+                    let no = Rect::from_min_size(pos2(rect.right() - PAD - 42.0, button.top()), vec2(42.0, 32.0));
+                    p.text(pos2(yes.left() - 2.0, button.center().y), Align2::RIGHT_CENTER, "REMOVE?", mono(11.0), t.bad);
+                    if small_link(ui, &p, yes, "yes", "YES", t.bad) {
+                        act_remove = true;
+                    }
+                    if small_link(ui, &p, no, "no", "NO", t.muted) {
+                        self.confirm_remove = None;
+                    }
+                    handled = true;
+                } else if !busy_elsewhere {
+                    let rm = Rect::from_min_size(pos2(rect.right() - PAD - 56.0, button.top()), vec2(56.0, 32.0));
+                    if small_link(ui, &p, rm, "remove", "REMOVE", t.faint) {
+                        self.confirm_remove = Some(i);
+                        handled = true;
+                    }
+                }
+            }
+        } else if app.pack {
+            let size = match &self.packs {
+                Packs::Ready(l) => l.plans.get(app.id).map(|pl| format!("INSTALL · {}", mb(pl.download_bytes))),
+                _ => None,
+            };
+            let wide = Rect::from_min_size(button.min, vec2(168.0, 32.0));
+            let r = ui.interact(wide, id("install"), if busy_elsewhere { Sense::hover() } else { Sense::click() });
+            let fill = if busy_elsewhere { t.sunken } else if r.hovered() { t.invert_bg.lerp_to_gamma(accent, 0.35) } else { t.invert_bg };
+            p.rect_filled(wide, CornerRadius::ZERO, fill);
+            let label = size.unwrap_or_else(|| if matches!(self.packs, Packs::Loading) { "LOADING…".to_owned() } else { "INSTALL".to_owned() });
+            p.text(wide.center(), Align2::CENTER_CENTER, label, mono(12.0), if busy_elsewhere { t.faint } else { t.invert_fg });
+            if r.hovered() && !busy_elsewhere {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            let r = match &self.packs {
+                _ if busy_elsewhere => r.on_hover_text("Another install is running."),
+                Packs::Failed(e) => r.on_hover_text(format!("The list of downloads could not be read ({e}). Click to try again.")),
+                _ => r,
+            };
+            if !busy_elsewhere && r.clicked() {
+                act_install = true;
+            }
+            handled = true;
         } else {
             p.rect(button, CornerRadius::ZERO, Color32::TRANSPARENT, egui::Stroke::new(1.0, t.line), StrokeKind::Inside);
             p.text(button.center(), Align2::CENTER_CENTER, "COMING SOON", mono(11.0), t.faint);
         }
 
-        if ready && resp.clicked() {
+        if act_cancel && let Some(job) = &self.job {
+            job.cancel.store(true, Ordering::Relaxed);
+        }
+        if act_remove {
+            self.confirm_remove = None;
+            self.start_remove(&ctx, i);
+        } else if act_install {
+            self.request_install(&ctx, i);
+        } else if ready && !handled && resp.clicked() {
             self.launch(i);
         }
+    }
+
+    /// The repair or update the card offers next to OPEN, if any.
+    fn fix_label(&self, i: usize) -> Option<&'static str> {
+        match (&self.health[i], &self.status[i]) {
+            (Health::EngineMissing, _) => Some("REINSTALL"),
+            (Health::EngineUntested { .. }, _) => Some("BUNDLE ENGINE"),
+            (_, Some(Status::UpdateAvailable)) => Some("UPDATE"),
+            _ => None,
+        }
+    }
+
+    /// The word and colour in the card's top-right corner.
+    fn status_text(&self, t: &Tokens, i: usize) -> (&'static str, Color32) {
+        if let Some(job) = self.job.as_ref().filter(|j| j.app == i) {
+            return (if job.removing { "REMOVING" } else { "INSTALLING" }, t.accent_ink);
+        }
+        if self.found[i].is_some() {
+            return match (&self.health[i], &self.status[i]) {
+                (Health::EngineMissing, _) => ("ENGINE MISSING", t.bad),
+                (Health::EngineUntested { .. }, _) => ("ENGINE UNTESTED", t.accent_ink),
+                (_, Some(Status::UpdateAvailable)) => ("UPDATE", t.accent_ink),
+                _ => ("READY", t.good),
+            };
+        }
+        if APPS[i].pack { ("NOT INSTALLED", t.faint) } else { ("PLANNED", t.faint) }
+    }
+
+    /// What a running install is doing, for the card's small print.
+    fn job_line(&self, i: usize) -> Option<(String, bool)> {
+        let job = self.job.as_ref().filter(|j| j.app == i)?;
+        if job.removing {
+            return Some(("REMOVING…".into(), false));
+        }
+        let pct = if job.total > 0 { format!(" {}%", job.done * 100 / job.total) } else { String::new() };
+        let what = if job.stage == "engine" { format!("{} ENGINE", APPS[i].engine.to_uppercase()) } else { "APP".to_owned() };
+        Some((format!("DOWNLOADING {what}{pct}"), false))
+    }
+
+    /// Small print about the engine: where it comes from now, or where it would come from. The bool marks a warning.
+    fn source_line(&self, i: usize) -> Option<(String, bool)> {
+        let app = &APPS[i];
+        let engine = app.engine.to_uppercase();
+        if let Some(have) = &self.installed[i] {
+            return Some(match (&self.health[i], &have.engine) {
+                (Health::EngineMissing, _) => (format!("{engine} NOT FOUND · REINSTALL"), true),
+                (Health::EngineUntested { found }, _) => (format!("YOUR {engine} IS {found} · NOT TESTED"), true),
+                (_, Some((EngineSource::Bundled, v))) => (format!("BUNDLED {engine} {v}"), false),
+                (_, Some((EngineSource::System { .. }, v))) => (format!("USES YOUR {engine} {v}"), false),
+                _ => return None,
+            });
+        }
+        if self.found[i].is_some() {
+            return Some((format!("BUNDLED {engine}"), false)); // from the full download
+        }
+        let Packs::Ready(l) = &self.packs else { return None };
+        let pack = l.manifest.packs.iter().find(|p| p.id == app.id)?;
+        let plan = l.plans.get(&pack.id)?;
+        Some(match (&plan.engine, &pack.engine) {
+            (Some(EngineSource::System { version }), _) => (format!("WILL USE YOUR {engine} {version}"), false),
+            (Some(EngineSource::Bundled), Some(spec)) => (format!("INCLUDES {engine} {}", spec.version), false),
+            _ => return None,
+        })
     }
 
     fn list(&mut self, ui: &mut egui::Ui, t: &Tokens, group: &[usize]) {
@@ -727,25 +1095,131 @@ impl Hub {
             p.text(pos2(x, rect.center().y - 9.0), Align2::LEFT_CENTER, app.name, FontId::proportional(16.0), t.ink_strong);
             p.text(pos2(x, rect.center().y + 10.0), Align2::LEFT_CENTER, app.tagline, FontId::proportional(12.5), t.muted);
 
-            let (status, status_color) = if ready { ("READY", t.good) } else if app.exe.is_some() { ("NOT FOUND", t.bad) } else { ("PLANNED", t.faint) };
-            if rect.width() > 560.0 {
-                p.text(pos2(rect.right() - PAD - 260.0, rect.center().y), Align2::LEFT_CENTER, app.engine.to_uppercase(), mono(11.0), t.muted);
-                p.text(pos2(rect.right() - PAD - 150.0, rect.center().y), Align2::LEFT_CENTER, status, mono(11.0), status_color);
+            let (status, status_color) = self.status_text(t, i);
+            let working = self.job.as_ref().is_some_and(|j| j.app == i);
+            let busy_elsewhere = self.job.is_some() && !working;
+            let button = Rect::from_center_size(pos2(rect.right() - PAD - 50.0, rect.center().y), vec2(100.0, 28.0));
+            // INSTALL is wider than OPEN and the REMOVE / UPDATE links sit left of OPEN: the columns of text (status,
+            // engine) end where the actions begin, so they never run under them.
+            let links = ready && !working && self.installed[i].is_some() && !busy_elsewhere && rect.width() > 700.0;
+            let links_w = if !links {
+                0.0
+            } else if self.confirm_remove == Some(i) {
+                14.0 + 100.0 + 6.0 + 36.0 + 6.0
+            } else {
+                14.0 + 70.0 + 6.0 + self.fix_label(i).map_or(0.0, |_| 110.0 + 6.0)
+            };
+            let actions_left = if working {
+                rect.right() - PAD - 230.0
+            } else if !ready && app.pack {
+                button.left() - 60.0
+            } else {
+                button.left() - links_w
+            };
+            let status_x = actions_left - 120.0;
+            let engine_x = status_x - 100.0;
+            let text_end = rect.left() + 440.0;
+            if engine_x > text_end {
+                p.text(pos2(engine_x, rect.center().y), Align2::LEFT_CENTER, app.engine.to_uppercase(), mono(11.0), t.muted);
             }
-            let button = Rect::from_center_size(pos2(rect.right() - PAD - 40.0, rect.center().y), vec2(80.0, 28.0));
-            if ready {
+            if status_x > text_end {
+                p.text(pos2(status_x, rect.center().y), Align2::LEFT_CENTER, status, mono(11.0), status_color);
+            }
+            let ctx = ui.ctx().clone();
+            let (mut act_install, mut act_remove, mut handled) = (false, false, false);
+            if working {
+                let line = self.job_line(i).map(|(s, _)| s).unwrap_or_default();
+                p.text(pos2(button.right(), rect.center().y), Align2::RIGHT_CENTER, line, mono(10.5), t.accent_ink);
+                let r = ui.interact(button, ui.scope_id().with(("cancel-row", app.id)), Sense::click());
+                if !self.job.as_ref().is_some_and(|j| j.removing) && r.clicked() && let Some(job) = &self.job {
+                    job.cancel.store(true, Ordering::Relaxed);
+                }
+                handled = true;
+            } else if ready {
                 let over = ui.rect_contains_pointer(button);
                 p.rect_filled(button, CornerRadius::ZERO, if over { t.invert_bg.lerp_to_gamma(accent, 0.35) } else { t.invert_bg });
                 p.text(button.center(), Align2::CENTER_CENTER, "OPEN", mono(11.0), t.invert_fg);
+                if links {
+                    let fix = self.fix_label(i);
+                    let mut x = button.left() - 14.0;
+                    let mut link = |ui: &mut egui::Ui, salt: &str, label: &str, w: f32, color: Color32| -> bool {
+                        let r = Rect::from_min_size(pos2(x - w, rect.center().y - 14.0), vec2(w, 28.0));
+                        x -= w + 6.0;
+                        let resp = ui.interact(r, ui.scope_id().with((salt, app.id)), Sense::click());
+                        let c = if resp.hovered() { t.ink_strong } else { color };
+                        if resp.hovered() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        }
+                        p.text(r.center(), Align2::CENTER_CENTER, label, mono(11.0), c);
+                        resp.clicked()
+                    };
+                    if self.confirm_remove == Some(i) {
+                        if link(ui, "row-yes", "YES, REMOVE", 100.0, t.bad) {
+                            act_remove = true;
+                        }
+                        if link(ui, "row-no", "NO", 36.0, t.muted) {
+                            self.confirm_remove = None;
+                        }
+                    } else {
+                        if link(ui, "row-remove", "REMOVE", 70.0, t.faint) {
+                            self.confirm_remove = Some(i);
+                        }
+                        if let Some(label) = fix
+                            && link(ui, "row-update", label, 110.0, t.accent_ink)
+                        {
+                            act_install = true;
+                        }
+                    }
+                    handled = true;
+                }
+            } else if app.pack {
+                let label = match &self.packs {
+                    Packs::Ready(l) => l.plans.get(app.id).map(|pl| format!("INSTALL · {}", mb(pl.download_bytes))),
+                    _ => None,
+                }
+                .unwrap_or_else(|| "INSTALL".to_owned());
+                let wide = Rect::from_min_max(pos2(rect.right() - PAD - 160.0, button.top()), pos2(rect.right() - PAD, button.bottom()));
+                let r = ui.interact(wide, ui.scope_id().with(("install-row", app.id)), if busy_elsewhere { Sense::hover() } else { Sense::click() });
+                let fill = if busy_elsewhere { t.sunken } else if r.hovered() { t.invert_bg.lerp_to_gamma(accent, 0.35) } else { t.invert_bg };
+                p.rect_filled(wide, CornerRadius::ZERO, fill);
+                p.text(wide.center(), Align2::CENTER_CENTER, label, mono(11.0), if busy_elsewhere { t.faint } else { t.invert_fg });
+                if r.hovered() && !busy_elsewhere {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                act_install = !busy_elsewhere && r.clicked();
+                handled = true;
             } else {
                 p.rect(button, CornerRadius::ZERO, Color32::TRANSPARENT, egui::Stroke::new(1.0, t.line), StrokeKind::Inside);
                 p.text(button.center(), Align2::CENTER_CENTER, "SOON", mono(11.0), t.faint);
             }
-            if ready && resp.clicked() {
+            if act_remove {
+                self.confirm_remove = None;
+                self.start_remove(&ctx, i);
+            } else if act_install {
+                self.request_install(&ctx, i);
+            } else if ready && !handled && resp.clicked() {
                 self.launch(i);
             }
         }
     }
+}
+
+/// Reads a release's pack list (checked against its checksums) and what each pack would do on this PC.
+fn load_packs(release: &update::Release) -> Result<Box<Loaded>, String> {
+    let manifest = packs::fetch_manifest(release)?;
+    let sums = update::sums_text(release)?;
+    let mut system = HashMap::new();
+    let mut plans = HashMap::new();
+    for pack in &manifest.packs {
+        let version = pack.engine.as_ref().map(|spec| system.entry(spec.name.clone()).or_insert_with(|| packs::system_engine_version(spec)).clone()).flatten();
+        plans.insert(pack.id.clone(), packs::plan(release, pack, version.as_deref()));
+    }
+    Ok(Box::new(Loaded { release: release.clone(), sums, manifest, plans, system }))
+}
+
+/// "50 MB" for a download, in the card's small print.
+fn mb(bytes: u64) -> String {
+    format!("{} MB", (bytes as f64 / 1_048_576.0).round().max(1.0) as u64)
 }
 
 /// Text wrapped to `width` and cut with an ellipsis after `rows` lines.

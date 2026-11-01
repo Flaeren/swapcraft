@@ -32,6 +32,20 @@ pub struct Release {
     pub notes: String,
     pub zip: Option<Asset>,
     pub sums: Option<Asset>,
+    /// Every file the release carries (packs, engines, manifest), for the hub's pack installer.
+    pub assets: Vec<Asset>,
+}
+
+impl Release {
+    /// What the hub downloads to update itself: the small hub-only ZIP if the release has one, else the full bundle.
+    pub fn update_zip(&self) -> Option<&Asset> {
+        self.assets.iter().find(|a| a.name.starts_with("voidflare-hub-") && a.name.ends_with("-windows.zip")).or(self.zip.as_ref())
+    }
+
+    /// The release file with exactly this name.
+    pub fn find_asset(&self, name: &str) -> Option<&Asset> {
+        self.assets.iter().find(|a| a.name == name)
+    }
 }
 
 fn settings_file() -> Option<PathBuf> {
@@ -107,8 +121,15 @@ pub fn parse_release(json: &str) -> Result<Release, String> {
         version: tag.trim_start_matches(['v', 'V']).to_owned(),
         page: text("html_url"),
         notes: text("body"),
-        zip: assets.iter().find(|a| a.name.to_lowercase().ends_with(".zip")).cloned(),
+        // The full offline bundle keeps the name `voidflare-<version>-windows.zip` (the one 0.1.0 hubs look for);
+        // a hub that sees several ZIPs prefers it over the small hub-only and per-app files.
+        zip: assets
+            .iter()
+            .find(|a| a.name.to_lowercase().ends_with("-windows.zip") && a.name.starts_with("voidflare-") && !a.name.starts_with("voidflare-hub-"))
+            .or_else(|| assets.iter().find(|a| a.name.to_lowercase().ends_with(".zip")))
+            .cloned(),
         sums: assets.iter().find(|a| a.name == SUMS_NAME).cloned(),
+        assets,
     })
 }
 
@@ -127,7 +148,10 @@ fn http_error(e: ureq::Error) -> String {
 
 /// Asks GitHub for the latest published release.
 pub fn latest() -> Result<Release, String> {
-    let body = ureq::get(&format!("https://api.github.com/repos/{REPO}/releases/latest"))
+    // `VOIDFLARE_RELEASES_URL` points the check at another URL that answers like the GitHub API (a local test
+    // server). Only the user who starts the program can set it, so it adds no trust that they did not already have.
+    let url = std::env::var("VOIDFLARE_RELEASES_URL").unwrap_or_else(|_| format!("https://api.github.com/repos/{REPO}/releases/latest"));
+    let body = ureq::get(&url)
         .header("User-Agent", user_agent())
         .header("Accept", "application/vnd.github+json")
         .config()
@@ -156,18 +180,35 @@ fn hex(bytes: &[u8]) -> String {
 /// Downloads the release ZIP into `dest_dir`, checks it against the published SHA-256 and only then gives it its
 /// final name. A file that does not match is deleted. `progress` gets (bytes so far, total).
 pub fn download_verified(release: &Release, dest_dir: &Path, progress: &dyn Fn(u64, u64), cancel: &AtomicBool) -> Result<PathBuf, String> {
-    let zip = release.zip.as_ref().ok_or("This release has no ZIP to download.")?;
-    let sums = release.sums.as_ref().ok_or("This release has no checksum file, so it cannot be verified.")?;
+    let zip = release.update_zip().ok_or("This release has no ZIP to download.")?;
+    let sums_text = sums_text(release)?;
+    let expected = checksum_for(&sums_text, &zip.name).ok_or_else(|| format!("{SUMS_NAME} does not list {}.", zip.name))?;
+    fetch_verified(zip, &expected, dest_dir, progress, cancel)
+}
 
-    let sums_text = ureq::get(&sums.url)
+/// The text of the release's `SHA256SUMS.txt`.
+pub fn sums_text(release: &Release) -> Result<String, String> {
+    let sums = release.sums.as_ref().ok_or("This release has no checksum file, so it cannot be verified.")?;
+    fetch_text(&sums.url)
+}
+
+/// A small text file (the checksums, the pack manifest) by plain HTTPS GET.
+pub fn fetch_text(url: &str) -> Result<String, String> {
+    ureq::get(url)
         .header("User-Agent", user_agent())
+        .config()
+        .timeout_global(Some(Duration::from_secs(30)))
+        .build()
         .call()
         .map_err(http_error)?
         .body_mut()
         .read_to_string()
-        .map_err(http_error)?;
-    let expected = checksum_for(&sums_text, &zip.name).ok_or_else(|| format!("{SUMS_NAME} does not list {}.", zip.name))?;
+        .map_err(http_error)
+}
 
+/// Downloads one release file into `dest_dir`, checks it against `expected` (a lower-case SHA-256) and only then
+/// gives it its final name. A file that does not match, or a cancelled download, leaves nothing behind.
+pub fn fetch_verified(zip: &Asset, expected: &str, dest_dir: &Path, progress: &dyn Fn(u64, u64), cancel: &AtomicBool) -> Result<PathBuf, String> {
     // `Path::file_name` keeps only the last part, so a hostile name cannot point outside `dest_dir`.
     let safe_name = Path::new(&zip.name).file_name().ok_or("The release file has no usable name.")?;
     fs::create_dir_all(dest_dir).map_err(|e| format!("Cannot create {}: {e}", dest_dir.display()))?;
@@ -197,7 +238,7 @@ pub fn download_verified(release: &Release, dest_dir: &Path, progress: &dyn Fn(u
         }
         file.flush().map_err(|e| e.to_string())?;
         let actual = hex(hasher.finalize().as_slice());
-        if actual != expected {
+        if actual != expected.to_lowercase() {
             return Err("The downloaded file does not match its published checksum, so it was discarded.".to_owned());
         }
         Ok(())
@@ -253,6 +294,26 @@ mod tests {
     }
 
     #[test]
+    fn with_several_zips_the_full_bundle_is_the_update_file() {
+        // The small hub and the per-app ZIPs come first on purpose: a 0.1.0 hub must still pick the full bundle.
+        let json = r#"{"tag_name": "v0.2.0", "assets": [
+          {"name": "voidflare-app-word-to-pdf-0.2.0-windows-x64.zip", "browser_download_url": "https://e.test/a.zip", "size": 1},
+          {"name": "voidflare-engine-wordcraft-0.12.0-windows-x64.zip", "browser_download_url": "https://e.test/e.zip", "size": 1},
+          {"name": "voidflare-hub-0.2.0-windows.zip", "browser_download_url": "https://e.test/h.zip", "size": 1},
+          {"name": "voidflare-0.2.0-windows.zip", "browser_download_url": "https://e.test/f.zip", "size": 1},
+          {"name": "manifest.json", "browser_download_url": "https://e.test/m.json", "size": 1},
+          {"name": "SHA256SUMS.txt", "browser_download_url": "https://e.test/s.txt", "size": 1}]}"#;
+        let r = parse_release(json).unwrap();
+        assert_eq!(r.zip.as_ref().unwrap().name, "voidflare-0.2.0-windows.zip");
+        assert_eq!(r.assets.len(), 6);
+        assert_eq!(r.update_zip().unwrap().name, "voidflare-hub-0.2.0-windows.zip", "the hub updates itself from the small ZIP");
+        assert!(r.find_asset("manifest.json").is_some() && r.find_asset("nope.zip").is_none());
+        // No bundle at all: fall back to any ZIP, as before.
+        let only_app = r#"{"tag_name": "v0.2.0", "assets": [{"name": "a.zip", "browser_download_url": "https://e.test/a.zip", "size": 1}]}"#;
+        assert_eq!(parse_release(only_app).unwrap().zip.unwrap().name, "a.zip");
+    }
+
+    #[test]
     fn the_checksum_is_found_by_file_name() {
         let h = "a".repeat(64);
         let sums = format!("{h}  voidflare-0.2.0-windows.zip\n{} *other.zip\n", "b".repeat(64));
@@ -280,6 +341,7 @@ mod tests {
             notes: String::new(),
             zip: Some(Asset { name: "fake.zip".into(), url: format!("{base}/fake.zip"), size: bytes.len() as u64 }),
             sums: Some(Asset { name: "SHA256SUMS.txt".into(), url: format!("{base}/{sums}"), size: 0 }),
+            assets: Vec::new(),
         };
         let out = dir.join("downloads");
         let seen = std::cell::Cell::new(0u64);

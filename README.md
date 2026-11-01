@@ -29,7 +29,7 @@
   <a href="https://voidflare.app"><img src="docs/img/hub.png" alt="The voidflare hub with a PDF loaded and the formats it can become" width="720"></a>
 </p>
 
-voidflare takes a file and offers the formats it can become. Your files never leave your PC, nothing needs to be installed, and there is no account. It is a small hub plus five apps; each app carries its own conversion engine, so you need no Microsoft Office and no extra downloads.
+voidflare takes a file and offers the formats it can become. Your files never leave your PC, there is no account, and you need no Microsoft Office. It is a small hub plus five apps, and you install only the ones you use: each app is a separate download, and it either comes with its own conversion engine or, if your PC already has a version of ArtCraft that we have tested, uses that one instead of downloading a second copy.
 
 > **Status:** early (v0.1.0). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
 
@@ -52,9 +52,12 @@ voidflare does not convert anything by itself. Every conversion is done by a com
 
 ## Quick start
 
-1. Download the ZIP from the [Releases](../../releases) page (about 210 MB, 430 MB once unzipped: each app carries its own engine).
-2. Unzip it to a short path, for example `C:\voidflare`.
-3. Run `voidflare.exe` and drop a file on it.
+1. Download `voidflare-hub-<version>-windows.zip` from the [Releases](../../releases) page (about 7 MB).
+2. Unzip it to a short path, for example `C:\voidflare`, and run `voidflare.exe`.
+3. Press **Install** on the converters you need. Each card says what it will download before you click: the app (about 6 MB) plus its engine (5 to 50 MB), or only the app when your PC's ArtCraft engine is a version we have tested. Every download is checked against the release's `SHA256SUMS.txt` before it is installed.
+4. Drop a file on the hub.
+
+**No network where you work?** Download `voidflare-<version>-windows.zip` instead (about 210 MB): the hub and all five apps with their engines in one file, nothing else to fetch.
 
 The programs are not code-signed yet, so Windows SmartScreen may warn on first run: choose *More info*, then *Run anyway*. Or unblock the ZIP (right click, Properties, *Unblock*) before extracting.
 
@@ -76,15 +79,15 @@ Available in English, Italiano, Español, Français and Deutsch. Image, audio an
 
 - **The hub** (`voidflare.exe`) has a drop panel. It looks at the file type, shows the formats that file can become, and runs the matching engine with default settings. The converted file lands next to the original.
 - **The apps** have the full options: batches and folders, merging, page ranges, OCR, drawing sheets or the whole drawing.
-- **The engines** are separate command-line programs that sit in each app's own folder. voidflare finds them next to the app first, then in a regular ArtCraft installation.
+- **The engines** are separate command-line programs. An app uses the copy in its own folder first, then a regular ArtCraft installation. When you install an app, voidflare reuses the ArtCraft engine already on your PC only if that exact version is listed in [`src/engine-compat.json`](src/engine-compat.json), meaning we ran it against the real engine; any other version, including a newer one nobody has tried, gets our own tested copy. If ArtCraft later updates to a version we have not tested, the card says so and offers *Bundle engine*. DWG to PDF always brings its own CADCraft, because the official build still draws blocks with a tilted extrusion wrongly ([cadcraft#1158](https://github.com/storytold/cadcraft/issues/1158)).
 - **Nothing is sent anywhere.** Conversions run locally and there is no telemetry.
-- **Updates.** When the hub starts it asks `github.com/Flaeren/voidflare` once for the latest release (one HTTPS request, no identifier, nothing about you). The *AUTO-CHECK* switch in the footer turns this off; the *CHECK FOR UPDATES* link does it on demand. If there is a newer version, a click downloads the ZIP into your Downloads folder and checks its SHA-256 against the release's `SHA256SUMS.txt`. voidflare never downloads without that click and never installs or replaces files by itself: unzip the new folder and run it.
+- **Updates.** When the hub starts it asks `github.com/Flaeren/voidflare` once for the latest release (one HTTPS request, no identifier, nothing about you). The *AUTO-CHECK* switch in the footer turns this off; the *CHECK FOR UPDATES* link does it on demand. The same request reads the release's list of apps. If there is a newer hub, a click downloads its small ZIP into your Downloads folder and checks its SHA-256 against the release's `SHA256SUMS.txt`; the hub never replaces itself: unzip it and run it. Apps are different: *Install*, *Update* and *Remove* on a card install into `apps\` next to the hub, after the same checksum check. voidflare never downloads anything without a click.
 
 ## System requirements
 
 - Windows 10 or 11, 64-bit.
-- About 430 MB of disk space for the whole folder.
-- No Visual C++ runtime, no Microsoft Office, no internet connection.
+- Disk space: about 20 MB for the hub, plus what you install (an app with its own engine is 30 to 110 MB; all five with their engines are about 430 MB).
+- No Visual C++ runtime and no Microsoft Office. An internet connection is needed only to install or update an app from the hub; the full ZIP needs none.
 
 ## Build from source
 
@@ -93,7 +96,8 @@ You need Windows, the Rust toolchain and an internet connection for the first bu
 ```powershell
 cd src
 powershell -File fetch-engines.ps1 -BuildCadcraft   # engines, pinned and hash-checked (-BuildCadcraft needs git)
-powershell -File build-apps.ps1                     # writes ..\portableoidflare.exe and ..\portableppspowershell -File release.ps1                        # packs portable\ into the ZIP and SHA256SUMS.txt
+powershell -File build-apps.ps1                     # writes ..\portable\voidflare.exe and ..\portable\apps\<app>\
+powershell -File release.ps1                        # packs portable\ into ..\release\: full bundle, hub, one ZIP per app and engine, manifest.json, SHA256SUMS.txt
 cargo test --release -p vf-core                     # tests that need an engine skip themselves when it is missing
 ```
 
@@ -107,9 +111,10 @@ src/
   vendor/         the patch for CADCraft
   licenses/       licence texts copied next to each bundled engine
   engines.json    the engines bundled, pinned by version and SHA-256
+  engine-compat.json  the ArtCraft engine versions we have tested, which an app may reuse from the PC
   fetch-engines.ps1  downloads and verifies them (and builds CADCraft with our patch)
   build-apps.ps1  builds everything into portable/
-  release.ps1     packs portable/ into the release ZIP and SHA256SUMS.txt
+  release.ps1     packs portable/ into the release files (full bundle, hub, apps, engines, manifest.json, SHA256SUMS.txt)
 site/             the website (voidflare.app)
 docs/             images for this page
 ```

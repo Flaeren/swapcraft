@@ -1,0 +1,7 @@
+{
+  "_comment": "ArtCraft engine versions voidflare has tested its apps against with the real engine (cargo test --release -p vf-core --test engine_compat -- --nocapture). A pack reuses the engine installed on the PC only if its exact version is listed here; anything else gets our bundled copy. 'Tested' means one small real conversion per engine (see tests/engine_compat.rs), not every document type: real office files still need a trial before a version is trusted for them. CADCraft is deliberately absent: the official build still draws tilted blocks wrongly (storytold/cadcraft#1158). Add a version only after it PASSES in the matrix, and keep the pinned one from engines.json.",
+  "wordcraft": ["0.12.0", "0.13.2"],
+  "gridcraft": ["0.13.0", "0.14.2"],
+  "deckcraft": ["0.12.0", "0.13.1"],
+  "pdfcraft": ["0.15.0", "0.16.1"]
+}

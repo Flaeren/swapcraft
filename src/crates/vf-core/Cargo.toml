@@ -14,3 +14,4 @@ sys-locale = "0.3.2"
 # Update check against the GitHub Releases of the project: plain HTTPS GET, no telemetry.
 ureq = { version = "3.5.0", default-features = false, features = ["rustls"] }
 sha2 = "0.11.1"
+zip = { version = "9.2.1", default-features = false, features = ["deflate"] }

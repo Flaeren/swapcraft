@@ -4,8 +4,9 @@ name: build
 # versions pinned in src/engines.json (hash-checked), CADCraft is built from source with our patch, then the hub
 # and the apps are built and packed. Nothing here depends on anything installed by hand.
 #
-#   push / pull request   build and test; the ZIP and SHA256SUMS.txt are kept as a build artifact for 14 days
-#   tag v*                the same, then the ZIP and SHA256SUMS.txt are published as a GitHub release
+#   push / pull request   build and test; the release files (full bundle, hub, one ZIP per app and per engine,
+#                         manifest.json, SHA256SUMS.txt) are kept as a build artifact for 14 days
+#   tag v*                the same, then all of those files are published as a GitHub release
 #   manual                Actions tab, "Run workflow"
 on:
   push:
@@ -73,6 +74,11 @@ jobs:
         working-directory: src
         run: ./release.ps1
 
+      # Installs every pack from the files just written and runs its bundled engine, as the hub will.
+      - name: Check the release files
+        working-directory: src
+        run: cargo test --release -p vf-core --test release_assets -- --nocapture
+
       # Code signing goes here once the project is accepted by the SignPath Foundation (free for open source):
       # the unsigned executables are submitted with signpath/github-action-submit-signing-request and the signed
       # ones replace them before the packing step. Not set up yet.
@@ -80,9 +86,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: voidflare-windows
-          path: |
-            release/voidflare-*-windows.zip
-            release/SHA256SUMS.txt
+          path: release/*
           if-no-files-found: error
           retention-days: 14
 
@@ -111,5 +115,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" release/voidflare-*-windows.zip release/SHA256SUMS.txt \
+          # Every file the hub needs. Names all start with "voidflare-" and the full bundle sorts first, because a
+          # 0.1.0 hub takes the first ZIP of a release.
+          gh release create "$GITHUB_REF_NAME" release/* \
             --title "voidflare ${GITHUB_REF_NAME#v}" --notes-file notes.md

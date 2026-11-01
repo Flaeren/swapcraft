@@ -13,6 +13,8 @@ pub struct App {
     pub color: [u8; 3],
     /// Path of the exe inside a portable build: `<folder>/<exe>`. None while only planned.
     pub exe: Option<&'static str>,
+    /// Whether a downloadable pack exists for it (the converters that are built, not the planned ones).
+    pub pack: bool,
 }
 
 pub const APPS: &[App] = &[
@@ -24,6 +26,7 @@ pub const APPS: &[App] = &[
         engine: "CADCraft",
         color: [0x3f, 0xd6, 0xb8],
         exe: Some("DWG2PDF-portable/DWG2PDF.exe"),
+        pack: true,
     },
     App {
         id: "word-to-pdf",
@@ -33,6 +36,7 @@ pub const APPS: &[App] = &[
         engine: "WordCraft",
         color: [0x2d, 0x81, 0xff],
         exe: Some("WORD2PDF-portable/WORD2PDF.exe"),
+        pack: true,
     },
     App {
         id: "excel-to-pdf",
@@ -42,6 +46,7 @@ pub const APPS: &[App] = &[
         engine: "GridCraft",
         color: [0x4a, 0xd2, 0x7a],
         exe: None,
+        pack: true,
     },
     App {
         id: "slides-to-pdf",
@@ -51,6 +56,7 @@ pub const APPS: &[App] = &[
         engine: "DeckCraft",
         color: [0xff, 0xc1, 0x4d],
         exe: None,
+        pack: true,
     },
     App {
         id: "pdf-tools",
@@ -60,6 +66,7 @@ pub const APPS: &[App] = &[
         engine: "PdfCraft",
         color: [0xff, 0x62, 0x59],
         exe: None,
+        pack: true,
     },
     App {
         id: "image-converter",
@@ -69,6 +76,7 @@ pub const APPS: &[App] = &[
         engine: "PhotoCraft",
         color: [0xb0, 0x8c, 0xff],
         exe: None,
+        pack: false,
     },
     App {
         id: "audio-converter",
@@ -78,6 +86,7 @@ pub const APPS: &[App] = &[
         engine: "SoundCraft",
         color: [0xff, 0x7a, 0xc8],
         exe: None,
+        pack: false,
     },
     App {
         id: "video-converter",
@@ -87,6 +96,7 @@ pub const APPS: &[App] = &[
         engine: "FilmCraft",
         color: [0x4d, 0xc8, 0xff],
         exe: None,
+        pack: false,
     },
 ];
 

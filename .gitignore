@@ -42,3 +42,6 @@ __pycache__/
 .idea/
 Thumbs.db
 desktop.ini
+
+# fablize goal ledger (local working state)
+/.fablize/
