@@ -8,6 +8,7 @@
 
 <p align="center">
   <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-6366f1.svg" alt="License: MIT OR Apache-2.0"></a>
+  <a href="https://github.com/Flaeren/voidflare/releases"><img src="https://img.shields.io/github/downloads/Flaeren/voidflare/total?label=downloads&color=6366f1" alt="Total downloads, all releases"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1f2937.svg" alt="Platform: Windows 10 and 11">
   <img src="https://img.shields.io/badge/status-early%20(v0.2.0)-b45309.svg" alt="Status: early">
   <img src="https://img.shields.io/badge/made%20with-Rust-1f2937.svg" alt="Made with Rust">
