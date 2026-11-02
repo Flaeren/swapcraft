@@ -4,9 +4,17 @@ All notable changes to voidflare are listed here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- **UPDATE ALL** in the hub's toolbar (shown when two or more installed apps have an update): updates them one after the other; a failed or cancelled update stops the rest.
+
+### Fixed
+
+- **The Start menu shortcut could be reported as added when it was not there.** The hub now asks Windows for the real Start menu folder (it can be redirected on office PCs) instead of assuming one, shows where the shortcut was put, looks again two seconds later and says so if it has been removed (by security software or a policy), and has a *Show it* button that opens the folder with the shortcut selected.
+
 ### Changed
 
-- voidflare now has a tagline: *Craft your conversion, always offline.* It is on the website and at the top of the README.
+- voidflare now has a tagline: *Craft your conversion, always offline.* It is on the website, at the top of the README and in the hub's header.
 
 ## [0.3.1] - 2026-11-02
 

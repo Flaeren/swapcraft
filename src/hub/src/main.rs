@@ -111,6 +111,8 @@ struct Hub {
     pending_install: Option<usize>,
     /// The card whose REMOVE was clicked once and now asks to be confirmed.
     confirm_remove: Option<usize>,
+    /// UPDATE ALL: the apps still waiting for their turn (the one running is in `job`).
+    queue: Vec<usize>,
     /// What each app's `pack.json` says (None: not installed by this installer), same order as `APPS`.
     installed: Vec<Option<packs::Installed>>,
     status: Vec<Option<Status>>,
@@ -178,6 +180,7 @@ impl Hub {
             job: None,
             pending_install: None,
             confirm_remove: None,
+            queue: Vec::new(),
             installed: vec![None; APPS.len()],
             status: vec![None; APPS.len()],
             health: vec![Health::NotInstalled; APPS.len()],
@@ -247,7 +250,8 @@ impl eframe::App for Hub {
         self.poll();
         self.poll_update();
         self.poll_packs(ui.ctx());
-        self.poll_job();
+        let ctx = ui.ctx().clone();
+        self.poll_job(&ctx);
         if self.running {
             ui.ctx().request_repaint_after(Duration::from_millis(60));
         }
@@ -418,7 +422,29 @@ impl Hub {
         });
     }
 
-    fn poll_job(&mut self) {
+    /// The installed apps that have a newer pack (or a tested engine that moved), same order as `APPS`.
+    fn updatable(&self) -> Vec<usize> {
+        (0..APPS.len()).filter(|&i| matches!(self.status[i], Some(Status::UpdateAvailable))).collect()
+    }
+
+    /// UPDATE ALL: updates every app that can be updated, one after the other.
+    fn update_all(&mut self, ctx: &egui::Context) {
+        if self.job.is_some() {
+            return;
+        }
+        self.notice = None;
+        self.queue = self.updatable();
+        self.next_queued(ctx);
+    }
+
+    fn next_queued(&mut self, ctx: &egui::Context) {
+        if !self.queue.is_empty() {
+            let i = self.queue.remove(0);
+            self.start_install(ctx, i);
+        }
+    }
+
+    fn poll_job(&mut self, ctx: &egui::Context) {
         let Some(job) = &mut self.job else { return };
         let mut finished = None;
         while let Ok(msg) = job.rx.try_recv() {
@@ -430,6 +456,7 @@ impl Hub {
         }
         if let Some((app, result, removed)) = finished {
             self.job = None;
+            let result_was_cancel = matches!(&result, Err(e) if e.contains("ancel"));
             self.notice = match result {
                 Ok(()) => None,
                 Err(e) if e.contains("ancel") => None,
@@ -437,6 +464,12 @@ impl Hub {
             };
             let _ = removed;
             self.refresh_packs();
+            // a failed or cancelled update stops the rest of UPDATE ALL; a good one hands over to the next app
+            if self.notice.is_some() || result_was_cancel {
+                self.queue.clear();
+            } else {
+                self.next_queued(ctx);
+            }
         }
     }
 
@@ -729,7 +762,7 @@ impl Hub {
         p.text(
             pos2(gear.left() - 16.0, c.y),
             Align2::RIGHT_CENTER,
-            "OFFLINE CONVERTERS · YOUR FILES STAY ON THIS PC",
+            "CRAFT YOUR CONVERSION, ALWAYS OFFLINE",
             mono(11.0),
             t.faint,
         );
@@ -741,6 +774,10 @@ impl Hub {
         let mut bar = ui.new_child(UiBuilder::new().max_rect(rect.shrink2(vec2(PAD, 0.0))).layout(Layout::left_to_right(Align::Center)));
         bar.spacing_mut().item_spacing.x = 12.0;
         bar.add(egui::TextEdit::singleline(&mut self.query).hint_text("Search apps").desired_width(260.0).margin(vec2(10.0, 7.0)));
+        // UPDATE ALL shows only when two or more installed apps have an update (with one, its card has UPDATE)
+        let n_update = self.updatable().len();
+        let queued = !self.queue.is_empty() || self.job.as_ref().is_some_and(|j| !j.removing && self.status[j.app] == Some(Status::UpdateAvailable));
+        let mut go_update_all = false;
         bar.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
             ui.selectable_value(&mut self.view, View::List, RichText::new("LIST").font(mono(11.0)));
@@ -751,7 +788,19 @@ impl Hub {
                 ui.selectable_value(&mut self.sort, Sort::NameAsc, "Name A–Z");
                 ui.selectable_value(&mut self.sort, Sort::NameDesc, "Name Z–A");
             });
+            if n_update >= 2 && !queued && self.job.is_none() {
+                ui.add_space(8.0);
+                let label = format!("UPDATE ALL ({n_update})");
+                let b = egui::Button::new(RichText::new(label).font(mono(11.0)).color(t.invert_fg)).fill(t.invert_bg);
+                if ui.add(b).on_hover_text("Updates every installed app that has a newer version, one after the other. Cancel on a card stops the rest.").clicked() {
+                    go_update_all = true;
+                }
+            }
         });
+        if go_update_all {
+            let ctx = ui.ctx().clone();
+            self.update_all(&ctx);
+        }
         ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, t.hairline());
     }
 

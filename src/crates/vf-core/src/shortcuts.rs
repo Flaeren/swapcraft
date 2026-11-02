@@ -13,8 +13,14 @@ use std::path::{Path, PathBuf};
 /// The shortcut's file name, which is also the name shown in the Start menu.
 const LINK_NAME: &str = "voidflare.lnk";
 
-/// `%APPDATA%\Microsoft\Windows\Start Menu\Programs`, where per-user Start menu entries live.
+/// The user's Start menu "Programs" folder, where per-user Start menu entries live. Windows is asked for it (the
+/// folder can be redirected, as on many office PCs); `%APPDATA%\Microsoft\Windows\Start Menu\Programs` is only the
+/// fallback if that fails.
 pub fn start_menu_dir() -> Option<PathBuf> {
+    #[cfg(windows)]
+    if let Some(p) = com::known_programs_folder() {
+        return Some(p);
+    }
     std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("Microsoft").join("Windows").join("Start Menu").join("Programs"))
 }
 
@@ -28,9 +34,20 @@ mod com {
     use std::path::PathBuf;
     use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
     use windows::Win32::Storage::FileSystem::WIN32_FIND_DATAW;
-    use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistFile, STGM_READ};
-    use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
+    use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, IPersistFile, STGM_READ};
+    use windows::Win32::UI::Shell::{FOLDERID_Programs, IShellLinkW, KF_FLAG_DEFAULT, SHGetKnownFolderPath, ShellLink};
     use windows::core::{HSTRING, Interface};
+
+    /// The Programs folder of the Start menu as Windows itself reports it.
+    pub fn known_programs_folder() -> Option<PathBuf> {
+        // SAFETY: the returned string is owned by COM memory; it is copied and freed right here.
+        unsafe {
+            let p = SHGetKnownFolderPath(&FOLDERID_Programs, KF_FLAG_DEFAULT, None).ok()?;
+            let s = p.to_string().ok();
+            CoTaskMemFree(Some(p.0 as *const core::ffi::c_void));
+            s.filter(|s| !s.is_empty()).map(PathBuf::from)
+        }
+    }
 
     /// Runs `f` on a fresh thread with COM initialised on it.
     fn on_com_thread<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
@@ -194,6 +211,13 @@ mod tests {
         assert_eq!(state_in(&dir, &exe), State::Missing);
         remove_in(&dir).unwrap(); // already gone: still fine
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn windows_reports_a_real_programs_folder() {
+        let dir = com::known_programs_folder().expect("SHGetKnownFolderPath(Programs)");
+        assert!(dir.is_dir(), "{} is not a folder", dir.display());
+        assert_eq!(start_menu_dir().unwrap(), dir);
     }
 
     #[test]

@@ -43,12 +43,14 @@ pub struct Settings {
     shortcut: State,
     /// What the last action said, and whether it failed.
     msg: Option<(String, bool)>,
+    /// When to look again at a shortcut that was just added.
+    recheck_at: Option<std::time::Instant>,
 }
 
 impl Settings {
     pub fn new() -> Self {
         let welcome = data_dir().is_some_and(|d| !welcome_done_in(&d));
-        Self { open: false, welcome, lang: i18n::remembered().unwrap_or(Lang::En), shortcut: State::Missing, msg: None }
+        Self { open: false, welcome, lang: i18n::remembered().unwrap_or(Lang::En), shortcut: State::Missing, msg: None, recheck_at: None }
     }
 
     pub fn show_welcome(&self) -> bool {
@@ -63,10 +65,24 @@ impl Settings {
 
     fn add_shortcut(&mut self) {
         self.msg = Some(match shortcuts::create() {
-            Ok(()) => ("Added to the Start menu.".to_owned(), false),
+            Ok(()) => {
+                // security software or a policy can remove a new shortcut a moment later: look again in two seconds
+                self.recheck_at = Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
+                let place = shortcuts::start_menu_dir().map(|d| d.display().to_string()).unwrap_or_default();
+                (format!("Added to the Start menu ({place})."), false)
+            }
             Err(e) => (format!("Could not add it: {e}"), true),
         });
         self.shortcut = shortcuts::state();
+    }
+
+    /// The second look after adding: if the shortcut is gone, say so instead of leaving "Added" on screen.
+    fn recheck(&mut self) {
+        self.recheck_at = None;
+        self.shortcut = shortcuts::state();
+        if self.shortcut == State::Missing {
+            self.msg = Some(("It was created, but it is gone again. Your security software or a policy on this PC removes new Start menu shortcuts. You can pin voidflare.exe to the taskbar by hand instead.".to_owned(), true));
+        }
     }
 
     fn remove_shortcut(&mut self) {
@@ -79,6 +95,17 @@ impl Settings {
 
     /// Draws whichever of the two windows is open. `auto_on` is the hub's update-check switch.
     pub fn ui(&mut self, ctx: &egui::Context, t: &Tokens, auto_on: &mut bool) {
+        if let Some(at) = self.recheck_at {
+            if std::time::Instant::now() >= at {
+                self.recheck();
+                // the dialog is gone by now: a shortcut that vanished is shown in the settings window
+                if self.msg.as_ref().is_some_and(|(_, bad)| *bad) {
+                    self.open = true;
+                }
+            } else {
+                ctx.request_repaint_after(std::time::Duration::from_millis(500));
+            }
+        }
         if self.welcome {
             self.welcome_ui(ctx, t);
         } else if self.open {
@@ -157,6 +184,11 @@ impl Settings {
                 State::Ok => {
                     if ui.button(RichText::new("REMOVE FROM START MENU").font(mono(11.0))).clicked() {
                         self.remove_shortcut();
+                    }
+                    if ui.button(RichText::new("SHOW IT").font(mono(11.0))).on_hover_text("Opens the folder with the shortcut selected").clicked()
+                        && let Some(dir) = shortcuts::start_menu_dir()
+                    {
+                        let _ = std::process::Command::new("explorer.exe").arg(format!("/select,{}", shortcuts::link_path(&dir).display())).spawn();
                     }
                 }
                 State::Missing => {
