@@ -2,6 +2,8 @@ key	en	it	es	fr	de
 ui.language	Language:	Lingua:	Idioma:	Langue :	Sprache:
 ui.files_title	Files	File	Archivos	Fichiers	Dateien
 ui.options	Options	Opzioni	Opciones	Options	Optionen
+ui.convert_to	Convert to	Converti in	Convertir a	Convertir en	Umwandeln in
+ui.quality	Quality (JPG and WebP)	Qualità (JPG e WebP)	Calidad (JPG y WebP)	Qualité (JPG et WebP)	Qualität (JPG und WebP)
 ui.opt_recursive	Also search subfolders when I add a folder	Cerca anche nelle sottocartelle quando aggiungo una cartella	Buscar también en las subcarpetas al añadir una carpeta	Chercher aussi dans les sous-dossiers quand j'ajoute un dossier	Beim Hinzufügen eines Ordners auch Unterordner durchsuchen
 ui.remove	Remove selected	Rimuovi selezionati	Quitar seleccionados	Retirer la sélection	Auswahl entfernen
 ui.add_files	Add files…	Aggiungi file…	Añadir archivos…	Ajouter des fichiers…	Dateien hinzufügen…
@@ -25,6 +27,7 @@ ui.line_error	    ERROR: {msg}	    ERRORE: {msg}	    ERROR: {msg}	    ERREUR : {
 ui.finished	Done: {ok} converted, {bad} with errors.	Finito: {ok} convertiti, {bad} con errori.	Terminado: {ok} convertidos, {bad} con errores.	Terminé : {ok} convertis, {bad} avec erreurs.	Fertig: {ok} konvertiert, {bad} mit Fehlern.
 ui.engine_missing_title	Engine missing	Motore mancante	Falta el motor	Moteur introuvable	Engine fehlt
 job.timeout	timeout after {m} minutes	timeout oltre {m} minuti	tiempo agotado tras {m} minutos	délai dépassé après {m} minutes	Zeitüberschreitung nach {m} Minuten
+film.no_sound	This video has no sound to take.	Questo video non ha audio da estrarre.	Este vídeo no tiene sonido que extraer.	Cette vidéo n'a pas de son à extraire.	Dieses Video hat keinen Ton zum Extrahieren.
 job.password_hint	 (protected document: enter the password in the password field)	 (documento protetto: inserisci la password nel campo apposito)	 (documento protegido: introduce la contraseña en el campo correspondiente)	 (document protégé : saisissez le mot de passe dans le champ prévu)	 (geschütztes Dokument: Kennwort im entsprechenden Feld eingeben)
 ui.engine_missing	{cli} not found.\nInstall {engine}, or put its folder next to this program.	{cli} non trovato.\nInstalla {engine}, oppure metti la sua cartella accanto a questo programma.	No se encuentra {cli}.\nInstala {engine} o pon su carpeta junto a este programa.	{cli} est introuvable.\nInstallez {engine} ou placez son dossier à côté de ce programme.	{cli} wurde nicht gefunden.\nInstalliere {engine} oder lege den Ordner daneben.
 ui.line_note	    Note: {msg}	    Nota: {msg}	    Nota: {msg}	    Remarque : {msg}	    Hinweis: {msg}

@@ -8,7 +8,10 @@
       "tag": "v0.12.0",
       "asset": "wordcraft-0.12.0-windows-x64-portable.zip",
       "sha256": "60d2da7dce7ee219300e50968297df63730f9407f8b5daf01da9109f0a64e67e",
-      "license": "MIT OR Apache-2.0"
+      "license": "MIT OR Apache-2.0",
+      "also": [
+        "ebook-converter"
+      ]
     },
     {
       "name": "gridcraft",
@@ -35,6 +38,33 @@
       "tag": "v0.15.0",
       "asset": "pdfcraft-0.15.0-windows-x64-portable.zip",
       "sha256": "92df7bef0b4c1eb7a59d0410716903e69fe4d2c4ea0074c6b53780096c3e20f9",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "name": "photocraft",
+      "app": "image-converter",
+      "repo": "storytold/photocraft",
+      "tag": "v0.19.0",
+      "asset": "photocraft-0.19.0-windows-x64-portable.zip",
+      "sha256": "b6ead3cbab9d5aee27d23cfe7903be1e820ca1e1b3f002b9970e996d9c3a38e1",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "name": "soundcraft",
+      "app": "audio-converter",
+      "repo": "storytold/soundcraft",
+      "tag": "v0.16.0",
+      "asset": "soundcraft-0.16.0-windows-x64-portable.zip",
+      "sha256": "8c57d47f5cfee6551f539bb7417697967ed53e94a020a0c0957264a70e0f7b73",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "name": "filmcraft",
+      "app": "video-converter",
+      "repo": "storytold/filmcraft",
+      "tag": "v0.16.0",
+      "asset": "filmcraft-0.16.0-windows-x64-portable.zip",
+      "sha256": "d924d8d8aa30996807eec99bfc221415f7aa63098cdfe7a1610ec91590f46dc8",
       "license": "MIT OR Apache-2.0"
     }
   ],

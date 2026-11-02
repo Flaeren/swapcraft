@@ -1,7 +1,7 @@
 [package]
 name = "voidflare-hub"
 description = "voidflare hub: lists the voidflare converters and starts them"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true

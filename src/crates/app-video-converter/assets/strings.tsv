@@ -1,0 +1,9 @@
+key	en	it	es	fr	de
+app.list_label	Videos to convert (you can also drag them onto the program icon). A long video takes a while.	Video da convertire (puoi anche trascinarli sull'icona del programma). Un video lungo richiede tempo.	Vídeos que convertir (también puedes arrastrarlos al icono del programa). Un vídeo largo tarda un poco.	Vidéos à convertir (vous pouvez aussi les glisser sur l'icône du programme). Une longue vidéo prend du temps.	Zu konvertierende Videos (Sie können sie auch auf das Programmsymbol ziehen). Ein langes Video braucht seine Zeit.
+app.opt_half	Half the size (50% of the width and height)	Metà dimensioni (50% di larghezza e altezza)	La mitad del tamaño (50 % de ancho y alto)	Moitié de la taille (50 % de la largeur et de la hauteur)	Halbe Größe (50 % von Breite und Höhe)
+app.opt_mute	Remove the sound	Rimuovi l'audio	Quitar el sonido	Supprimer le son	Ton entfernen
+app.convert	Convert	Converti	Convertir	Convertir	Umwandeln
+app.pick_files	Choose videos	Scegli i video	Elige vídeos	Choisir des vidéos	Videos auswählen
+app.filetype	Videos	Video	Vídeos	Vidéos	Videos
+app.pick_folder	Choose a folder with videos	Scegli una cartella con video	Elige una carpeta con vídeos	Choisir un dossier contenant des vidéos	Ordner mit Videos auswählen
+app.nothing_text	Add at least one video.	Aggiungi almeno un video.	Añade al menos un vídeo.	Ajoutez au moins une vidéo.	Fügen Sie mindestens ein Video hinzu.

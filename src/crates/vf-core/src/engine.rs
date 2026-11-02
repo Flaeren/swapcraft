@@ -17,12 +17,15 @@ pub const WORDCRAFT: Engine = Engine { folder: "WordCraft", cli: "wordcraft-cli.
 pub const GRIDCRAFT: Engine = Engine { folder: "GridCraft", cli: "gridcraft-cli.exe", env: "VOIDFLARE_GRIDCRAFT" };
 pub const DECKCRAFT: Engine = Engine { folder: "DeckCraft", cli: "deckcraft-cli.exe", env: "VOIDFLARE_DECKCRAFT" };
 pub const PDFCRAFT: Engine = Engine { folder: "PdfCraft", cli: "pdfcraft-cli.exe", env: "VOIDFLARE_PDFCRAFT" };
+pub const PHOTOCRAFT: Engine = Engine { folder: "PhotoCraft", cli: "photocraft-cli.exe", env: "VOIDFLARE_PHOTOCRAFT" };
+pub const SOUNDCRAFT: Engine = Engine { folder: "SoundCraft", cli: "soundcraft-cli.exe", env: "VOIDFLARE_SOUNDCRAFT" };
+pub const FILMCRAFT: Engine = Engine { folder: "FilmCraft", cli: "filmcraft-cli.exe", env: "VOIDFLARE_FILMCRAFT" };
 /// CADCraft installs under `%LOCALAPPDATA%ProgramsArtCraft`, not Program Files (`find` looks in both).
 pub const CADCRAFT: Engine = Engine { folder: "CADCraft", cli: "cadcraft-cli.exe", env: "VOIDFLARE_CADCRAFT" };
 
 /// The engine a manifest names (`wordcraft`, `gridcraft`, ...), if voidflare drives it.
 pub fn by_name(name: &str) -> Option<&'static Engine> {
-    [&WORDCRAFT, &GRIDCRAFT, &DECKCRAFT, &PDFCRAFT, &CADCRAFT].into_iter().find(|e| e.folder.eq_ignore_ascii_case(name))
+    [&WORDCRAFT, &GRIDCRAFT, &DECKCRAFT, &PDFCRAFT, &CADCRAFT, &PHOTOCRAFT, &SOUNDCRAFT, &FILMCRAFT].into_iter().find(|e| e.folder.eq_ignore_ascii_case(name))
 }
 
 impl Engine {

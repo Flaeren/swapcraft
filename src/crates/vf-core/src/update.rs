@@ -227,7 +227,22 @@ pub fn install_from_zip(zip: &Path, exe: &Path, work: &Path) -> Result<(), Strin
     if !ok {
         return Err("The update has no usable voidflare.exe; nothing was changed.".to_owned());
     }
-    replace_exe(exe, &new)
+    replace_exe(exe, &new)?;
+    // The command-line program (and MCP server) travels with the hub: replace it too when the update has one.
+    // Best effort: an MCP client may be holding it, and a stale command line never stops the hub.
+    let new_cli = unpacked.join(CLI_NAME);
+    if is_exe(&new_cli) {
+        let _ = replace_exe(&exe.with_file_name(CLI_NAME), &new_cli);
+    }
+    Ok(())
+}
+
+/// The command-line program that sits beside the hub.
+pub const CLI_NAME: &str = "voidflare-cli.exe";
+
+fn is_exe(p: &Path) -> bool {
+    let mut head = [0u8; 2];
+    fs::File::open(p).and_then(|mut f| f.read_exact(&mut head)).is_ok() && &head == b"MZ"
 }
 
 /// `exe` is renamed to its `.old.exe` name, `new` takes its place; if that fails the old one is put back.
@@ -247,6 +262,7 @@ pub fn replace_exe(exe: &Path, new: &Path) -> Result<(), String> {
 pub fn cleanup_after_update() {
     if let Ok(exe) = std::env::current_exe() {
         let _ = fs::remove_file(old_name(&exe));
+        let _ = fs::remove_file(old_name(&exe.with_file_name(CLI_NAME)));
         if let Some(dir) = exe.parent() {
             let _ = fs::remove_dir_all(dir.join(STAGING));
         }
@@ -460,13 +476,16 @@ mod tests {
         fs::write(&exe, b"MZ-old-hub").unwrap();
         let zip = root.join("update.zip");
         // a full bundle: the hub plus an app that must NOT be taken
-        zip_with(&zip, &[("voidflare.exe", b"MZ-new-hub"), ("apps/word/word.exe", b"MZ-new-app"), ("README.txt", b"hi")]);
+        zip_with(&zip, &[("voidflare.exe", b"MZ-new-hub"), ("voidflare-cli.exe", b"MZ-new-cli"), ("apps/word/word.exe", b"MZ-new-app"), ("README.txt", b"hi")]);
+        fs::write(root.join("voidflare-cli.exe"), b"MZ-old-cli").unwrap();
 
         install_from_zip(&zip, &exe, &root.join(".work")).expect("the swap works");
         assert_eq!(fs::read(&exe).unwrap(), b"MZ-new-hub");
         assert_eq!(fs::read(root.join("voidflare.old.exe")).unwrap(), b"MZ-old-hub", "the old hub is parked, not lost");
         assert_eq!(fs::read(root.join("apps/word/word.exe")).unwrap(), b"MZ-app-keeps-this", "installed apps are untouched");
-        assert!(!root.join("README.txt").exists(), "nothing but the hub is copied out");
+        assert!(!root.join("README.txt").exists(), "nothing but the hub (and its command line) is copied out");
+        assert_eq!(fs::read(root.join("voidflare-cli.exe")).unwrap(), b"MZ-new-cli", "the command line travels with the hub");
+        assert_eq!(fs::read(root.join("voidflare-cli.old.exe")).unwrap(), b"MZ-old-cli");
         let _ = fs::remove_dir_all(&root);
     }
 

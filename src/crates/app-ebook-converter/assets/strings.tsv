@@ -1,0 +1,7 @@
+key	en	it	es	fr	de
+app.list_label	Books to convert: EPUB, Kindle (AZW3, MOBI) without DRM, text, HTML, Markdown, Word. You can also drag them onto the program icon. Books with DRM are refused.	Libri da convertire: EPUB, Kindle (AZW3, MOBI) senza DRM, testo, HTML, Markdown, Word. Puoi anche trascinarli sull'icona del programma. I libri con DRM vengono rifiutati.	Libros que convertir: EPUB, Kindle (AZW3, MOBI) sin DRM, texto, HTML, Markdown, Word. También puedes arrastrarlos al icono del programa. Los libros con DRM se rechazan.	Livres à convertir : EPUB, Kindle (AZW3, MOBI) sans DRM, texte, HTML, Markdown, Word. Vous pouvez aussi les glisser sur l'icône du programme. Les livres avec DRM sont refusés.	Zu konvertierende Bücher: EPUB, Kindle (AZW3, MOBI) ohne DRM, Text, HTML, Markdown, Word. Sie können sie auch auf das Programmsymbol ziehen. Bücher mit DRM werden abgelehnt.
+app.convert	Convert	Converti	Convertir	Convertir	Umwandeln
+app.pick_files	Choose books	Scegli i libri	Elige libros	Choisir des livres	Bücher auswählen
+app.filetype	Books and documents	Libri e documenti	Libros y documentos	Livres et documents	Bücher und Dokumente
+app.pick_folder	Choose a folder with books	Scegli una cartella con libri	Elige una carpeta con libros	Choisir un dossier contenant des livres	Ordner mit Büchern auswählen
+app.nothing_text	Add at least one book.	Aggiungi almeno un libro.	Añade al menos un libro.	Ajoutez au moins un livre.	Fügen Sie mindestens ein Buch hinzu.

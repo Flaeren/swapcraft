@@ -1,0 +1,20 @@
+[package]
+name = "app-audio-converter"
+description = "Audio Converter: most audio files to WAV, FLAC or AIFF, offline on the SoundCraft engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "audio-converter"
+path = "src/main.rs"
+
+[dependencies]
+vf-ui.workspace = true
+vf-core.workspace = true
+eframe.workspace = true
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1.34"

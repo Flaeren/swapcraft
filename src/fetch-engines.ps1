@@ -41,10 +41,12 @@ foreach ($e in $cfg.engines) {
     # The apps need everything except the window.
     $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
     try {
+        # most ZIPs hold one folder; PhotoCraft's (0.19.0) has its files at the top level
+        $flat = @($archive.Entries | Where-Object { $_.Name -ne "" -and $_.FullName -notlike "*/*" }).Count -gt 0
         foreach ($entry in $archive.Entries) {
             # not the window, and not the portable-mode marker or the window's README: the apps were tried without them
             if ($entry.Name -eq "" -or $entry.Name -in @("$($e.name).exe", "portable.txt", "README.md")) { continue }
-            $relative = ($entry.FullName -split "/", 2)[1]
+            $relative = if ($flat) { $entry.FullName } else { ($entry.FullName -split "/", 2)[1] }
             if (-not $relative) { continue }
             $target = Join-Path $dest ($relative -replace "/", "\")
             $full = [System.IO.Path]::GetFullPath($target)

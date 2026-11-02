@@ -343,8 +343,30 @@ def blackhole(art, color):
     return [(512, 512, 470)]
 
 
+def galaxy(art, color):
+    """A spiral galaxy seen face-on: two logarithmic arms of hairlines around a bright core (a book of pages)."""
+    d = ImageDraw.Draw(art, "RGBA")
+    cx, cy = 512, 512
+    for arm in range(2):
+        base = arm * math.pi
+        for strand in range(9):
+            pts, wid = [], []
+            spread = (strand - 4) * 0.055
+            for k in range(0, 241):
+                t = k / 240.0
+                th = base + spread * (0.4 + t) + 4.6 * t
+                rr = 52 + 300 * t ** 0.92
+                pts.append((cx + rr * math.cos(th), cy + rr * 0.86 * math.sin(th)))
+                wid.append(max(0.4, (5.2 - 4.4 * t) * (1 - abs(strand - 4) / 6.0)))
+            ribbon(d, pts, wid, (*CREAM, int(235 - 14 * abs(strand - 4))))
+    glow_blob(d, cx, cy, [(120, 14), (84, 26), (54, 60), (30, 150), (14, 255)])
+    star4(d, cx, cy, 70, alpha=190, width=3)
+    return [(512, 512, 345)]
+
+
 # app id -> (painter, the app's colour, a seed for the star field)
 ICONS = {
+    "ebook-converter": (galaxy, (232, 176, 90)),
     "dwg-to-pdf": (constellation, (63, 214, 184)),
     "word-to-pdf": (comet, (45, 129, 255)),
     "excel-to-pdf": (saturn, (74, 210, 122)),

@@ -4,9 +4,24 @@ All notable changes to voidflare are listed here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-02
+
+### Added
+
+- **A command line and an MCP server for AI assistants.** `voidflare-cli.exe` sits beside the hub: `voidflare-cli formats` lists what converts to what, `voidflare-cli convert <file> --to <format>` converts one file (`--json` for scripts), `voidflare-cli engines` says which engines were found. `voidflare-cli mcp` is a Model Context Protocol server on stdin/stdout, so an assistant such as Claude can convert files, merge, split, extract, shrink and OCR PDFs, and read file information, with the same engines and the same results as the apps. It may only touch the folder it was started in plus each `--allow <folder>` you name (`--allow-all` lifts that, and has to be asked for by name); paths are resolved first, so `..` and links cannot lead out. It updates together with the hub.
+- **Image Converter** (PhotoCraft): PNG, JPG, WebP, TIFF, BMP, GIF, ICO, TGA, PSD and more in; PNG, JPG (with a quality slider), WebP, TIFF, BMP, GIF, ICO, TGA and PSD out; one image or a folder.
+- **Audio Converter** (SoundCraft): MP3, OGG, M4A, AAC, FLAC, WAV, AIFF and more in; WAV, FLAC or AIFF out, at 16-bit, 24-bit or 32-bit float, with 44.1 kHz resampling and volume normalising. SoundCraft cannot write MP3 or OGG.
+- **Video Converter** (FilmCraft): MP4, MOV, MKV, WebM, AVI, MPEG, MXF and more in; MP4 (H.264, good quality or small file), ProRes MOV, animated GIF, or just the sound as WAV, AAC (M4A) or FLAC; *half size* and *remove the sound* options. A clip without sound says so instead of writing a silent file. H.265 is not offered: FilmCraft writes it only through an NVIDIA hardware encoder.
+- **E-book Converter**, written in Rust: EPUB and Kindle books (AZW3, AZW, MOBI, PRC) to EPUB, text, HTML (one page, pictures inside), PDF or Word; text, HTML, Markdown and Word files to EPUB. Books **with DRM are refused with a clear message**; nothing here removes copy protection. WordCraft is used only for PDF and Word. Checked on a real book published in both formats: the text read from the AZW3 and from the EPUB differs by one word in 33,441.
+- The hub's drop panel offers the new conversions for the new file types.
+
 ### Changed
 
-- **The hub now really upgrades itself.** *UPDATE NOW* downloads the new hub, checks its SHA-256, replaces the running `voidflare.exe` and restarts it, instead of only saving a ZIP in Downloads. A bad or tampered file changes nothing. Only the hub is replaced; installed apps stay as they are and update from their cards. The old hub is parked as `voidflare.old.exe` and removed at the next start. (A 0.1.0 or 0.2.0 hub still only downloads: update those once by hand.)
+- **The hub now really upgrades itself.** *UPDATE NOW* downloads the new hub, checks its SHA-256, replaces the running `voidflare.exe` (and `voidflare-cli.exe` beside it) and restarts it, instead of only saving a ZIP in Downloads. A bad or tampered file changes nothing. Only the hub and its command line are replaced; installed apps stay as they are and update from their cards. The old hub is parked as `voidflare.old.exe` and removed at the next start. (A 0.1.0 or 0.2.0 hub still only downloads: update those once by hand.)
+
+### Fixed
+
+- The hub reported itself as version 0.1.0 (its own `Cargo.toml` still said so). It now takes its version from the one place every program takes it from, and `release.ps1` refuses to build a release if any program says another version or the changelog has no section for it.
 
 ## [0.2.0] - 2026-11-01
 

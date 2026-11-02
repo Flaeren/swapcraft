@@ -1,0 +1,20 @@
+[package]
+name = "app-video-converter"
+description = "Video Converter: video to MP4, ProRes or GIF, or just the sound, offline on the FilmCraft engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "video-converter"
+path = "src/main.rs"
+
+[dependencies]
+vf-ui.workspace = true
+vf-core.workspace = true
+eframe.workspace = true
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1.34"

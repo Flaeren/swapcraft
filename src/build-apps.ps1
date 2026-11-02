@@ -19,7 +19,14 @@ try {
     if (Test-Path $hub) { try { Remove-Item -LiteralPath $hub -Force -ErrorAction Stop } catch { Move-Item -LiteralPath $hub -Destination $old -Force } }
     Copy-Item (Join-Path $src "target\release\voidflare-hub.exe") $hub -Force
     Write-Host "voidflare.exe"
-    $engines = @{ "word-to-pdf" = "WordCraft"; "excel-to-pdf" = "GridCraft"; "slides-to-pdf" = "DeckCraft"; "pdf-tools" = "PdfCraft"; "dwg-to-pdf" = "CADCraft" }
+    # the command line and MCP server (no window) sits beside the hub and updates with it
+    $cli = Join-Path $out "voidflare-cli.exe"
+    $oldCli = Join-Path $out "voidflare-cli.old.exe"
+    if (Test-Path $oldCli) { Remove-Item -LiteralPath $oldCli -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $cli) { try { Remove-Item -LiteralPath $cli -Force -ErrorAction Stop } catch { Move-Item -LiteralPath $cli -Destination $oldCli -Force } }
+    Copy-Item (Join-Path $src "target\release\voidflare-cli.exe") $cli -Force
+    Write-Host "voidflare-cli.exe"
+    $engines = @{ "word-to-pdf" = "WordCraft"; "excel-to-pdf" = "GridCraft"; "slides-to-pdf" = "DeckCraft"; "pdf-tools" = "PdfCraft"; "dwg-to-pdf" = "CADCraft"; "image-converter" = "PhotoCraft"; "audio-converter" = "SoundCraft"; "video-converter" = "FilmCraft"; "ebook-converter" = "WordCraft" }
     $ids = Get-ChildItem (Join-Path $src "crates") -Directory -Filter "app-*" | ForEach-Object { $_.Name.Substring(4) }
     foreach ($id in $ids) {
         $dest = Join-Path $out "apps\$id"

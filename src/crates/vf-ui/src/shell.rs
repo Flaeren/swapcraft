@@ -27,6 +27,25 @@ pub struct OptionDef {
     pub default: bool,
 }
 
+/// Converts one file with the settings in the `Spec`, into a folder.
+pub type Runner = fn(&Spec, &std::path::Path, &std::path::Path) -> Result<PathBuf, String>;
+
+/// One output format an app offers when it converts to several. `args` go to the engine for this format only
+/// (a bit depth, a compression...).
+pub struct FormatDef {
+    pub ext: &'static str,
+    /// Shown in the list: a format name, so not translated.
+    pub label: &'static str,
+    pub args: &'static [&'static str],
+}
+
+/// A 1-100 quality slider, shown only while one of `exts` is the chosen format.
+pub struct QualityDef {
+    pub arg: &'static str,
+    pub default: u32,
+    pub exts: &'static [&'static str],
+}
+
 pub struct Config {
     /// Window title and header text. A product name, so it is not translated.
     pub title: &'static str,
@@ -35,7 +54,13 @@ pub struct Config {
     pub engine_name: &'static str,
     /// Lower-case extensions of the files the app takes.
     pub exts: &'static [&'static str],
+    /// The one output type, when `formats` is empty.
     pub out_ext: &'static str,
+    /// Output formats to choose from. Empty: the app always writes `out_ext`.
+    pub formats: &'static [FormatDef],
+    pub quality: Option<QualityDef>,
+    /// How one file is converted, when the engine has no plain `convert <in> <out>` (FilmCraft: see `vf_core::film`).
+    pub runner: Option<Runner>,
     pub options: &'static [OptionDef],
     /// If set, a password field is shown and its value is passed in this environment variable.
     pub password_env: Option<&'static str>,
@@ -53,6 +78,9 @@ struct ConverterApp {
     files: Vec<PathBuf>,
     selected: BTreeSet<usize>,
     options: Vec<bool>,
+    /// Index into `cfg.formats`.
+    format: usize,
+    quality: u32,
     password: String,
     recursive: bool,
     beside: bool,
@@ -80,6 +108,8 @@ impl ConverterApp {
             files: Vec::new(),
             selected: BTreeSet::new(),
             options: cfg.options.iter().map(|o| o.default).collect(),
+            format: 0,
+            quality: cfg.quality.as_ref().map_or(0, |q| q.default),
             password: String::new(),
             recursive: true,
             beside: true,
@@ -116,7 +146,16 @@ impl ConverterApp {
             self.notice = Some((t("ui.dest_title"), t("ui.dest_text")));
             return;
         }
-        let extra_args = self.cfg.options.iter().zip(&self.options).filter(|(_, on)| **on).map(|(d, _)| d.arg.to_owned()).collect();
+        let mut extra_args: Vec<String> = self.cfg.options.iter().zip(&self.options).filter(|(_, on)| **on).map(|(d, _)| d.arg.to_owned()).collect();
+        let out_ext = self.cfg.formats.get(self.format).map_or(self.cfg.out_ext, |f| f.ext);
+        if let Some(f) = self.cfg.formats.get(self.format) {
+            extra_args.extend(f.args.iter().map(|a| (*a).to_owned()));
+        }
+        if let Some(q) = &self.cfg.quality
+            && q.exts.contains(&out_ext)
+        {
+            extra_args.extend([q.arg.to_owned(), self.quality.to_string()]);
+        }
         let mut env = Vec::new();
         if let Some(var) = self.cfg.password_env
             && !self.password.is_empty()
@@ -124,7 +163,7 @@ impl ConverterApp {
             // Through the environment: a password on the command line is readable by other processes.
             env.push((var.to_owned(), self.password.clone()));
         }
-        let spec = Spec { cli, out_ext: self.cfg.out_ext.to_owned(), extra_args, env };
+        let spec = Spec { cli, out_ext: out_ext.to_owned(), extra_args, env };
         let dest = if self.beside { Destination::Beside } else { Destination::Folder(PathBuf::from(self.out_dir.trim())) };
         let (tx, rx) = mpsc::channel();
         self.cancel.store(false, Ordering::Relaxed);
@@ -132,7 +171,21 @@ impl ConverterApp {
         self.running = true;
         self.progress = (0, self.files.len());
         self.log.clear();
-        job::spawn_batch(spec, self.files.clone(), dest, tx, self.cancel.clone());
+        match self.cfg.runner {
+            None => job::spawn_batch(spec, self.files.clone(), dest, tx, self.cancel.clone()),
+            Some(run) => {
+                let items = self
+                    .files
+                    .iter()
+                    .map(|src| {
+                        let label = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                        let (spec, out_dir, source) = (spec.clone(), job::out_dir_for(&dest, src), src.clone());
+                        job::Item { label, source: src.clone(), run: Box::new(move |_| run(&spec, &source, &out_dir)) }
+                    })
+                    .collect();
+                job::spawn_tasks(items, tx, self.cancel.clone());
+            }
+        }
     }
 
     fn poll(&mut self) {
@@ -260,6 +313,23 @@ impl ConverterApp {
             });
         });
 
+        if !self.cfg.formats.is_empty() {
+            section(ui, tk, &t("ui.convert_to"));
+            egui::ComboBox::from_id_salt("out-format")
+                .selected_text(self.cfg.formats[self.format].label)
+                .width(260.0)
+                .show_ui(ui, |ui| {
+                    for (i, f) in self.cfg.formats.iter().enumerate() {
+                        ui.selectable_value(&mut self.format, i, f.label);
+                    }
+                });
+            if let Some(q) = &self.cfg.quality
+                && q.exts.contains(&self.cfg.formats[self.format].ext)
+            {
+                ui.add_space(6.0);
+                ui.add(egui::Slider::new(&mut self.quality, 1..=100).text(t("ui.quality")));
+            }
+        }
         section(ui, tk, &t("ui.options"));
         for (def, on) in self.cfg.options.iter().zip(self.options.iter_mut()) {
             ui.checkbox(on, t(def.label_key));

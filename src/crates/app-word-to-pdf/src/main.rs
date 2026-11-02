@@ -10,6 +10,9 @@ static CONFIG: Config = Config {
     engine_name: "WordCraft",
     exts: &["docx", "doc", "rtf", "odt"],
     out_ext: "pdf",
+    formats: &[],
+    quality: None,
+    runner: None,
     options: &[
         // Off by default: a PDF should show the document as it was saved.
         OptionDef { label_key: "app.opt_fields", arg: "--update-fields", default: false },

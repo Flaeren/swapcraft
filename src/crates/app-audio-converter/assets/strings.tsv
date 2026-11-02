@@ -1,0 +1,8 @@
+key	en	it	es	fr	de
+app.list_label	Audio files to convert (you can also drag them onto the program icon). Output is WAV, FLAC or AIFF.	File audio da convertire (puoi anche trascinarli sull'icona del programma). Il risultato è WAV, FLAC o AIFF.	Archivos de audio que convertir (también puedes arrastrarlos al icono del programa). El resultado es WAV, FLAC o AIFF.	Fichiers audio à convertir (vous pouvez aussi les glisser sur l'icône du programme). Le résultat est en WAV, FLAC ou AIFF.	Zu konvertierende Audiodateien (Sie können sie auch auf das Programmsymbol ziehen). Das Ergebnis ist WAV, FLAC oder AIFF.
+app.opt_normalize	Normalise the volume (peak to -0.1 dBFS)	Normalizza il volume (picco a -0,1 dBFS)	Normalizar el volumen (pico a -0,1 dBFS)	Normaliser le volume (crête à -0,1 dBFS)	Lautstärke normalisieren (Spitze auf -0,1 dBFS)
+app.convert	Convert	Converti	Convertir	Convertir	Umwandeln
+app.pick_files	Choose audio files	Scegli i file audio	Elige archivos de audio	Choisir des fichiers audio	Audiodateien auswählen
+app.filetype	Audio files	File audio	Archivos de audio	Fichiers audio	Audiodateien
+app.pick_folder	Choose a folder with audio files	Scegli una cartella con file audio	Elige una carpeta con archivos de audio	Choisir un dossier contenant des fichiers audio	Ordner mit Audiodateien auswählen
+app.nothing_text	Add at least one audio file.	Aggiungi almeno un file audio.	Añade al menos un archivo de audio.	Ajoutez au moins un fichier audio.	Fügen Sie mindestens eine Audiodatei hinzu.

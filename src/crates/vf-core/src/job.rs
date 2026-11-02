@@ -142,6 +142,11 @@ pub fn deliver(file: &Path, out_dir: &Path, name: &str) -> Result<PathBuf, Strin
 /// Runs `cmd` with `tmp` as its folder, no console window and a time limit; stdout and stderr go to
 /// files in `tmp` so a chatty engine can never fill a pipe. A failure returns the engine's last line.
 pub fn run_command(cmd: &mut Command, tmp: &Path) -> Result<(), String> {
+    run_command_for(cmd, tmp, TIMEOUT)
+}
+
+/// [`run_command`] with a time limit of the caller's choosing (a long video takes far more than ten minutes).
+pub fn run_command_for(cmd: &mut Command, tmp: &Path, limit: Duration) -> Result<(), String> {
     let (out_log, err_log) = (tmp.join("stdout.txt"), tmp.join("stderr.txt"));
     cmd.current_dir(tmp);
     cmd.stdin(Stdio::null())
@@ -157,10 +162,10 @@ pub fn run_command(cmd: &mut Command, tmp: &Path) -> Result<(), String> {
     let status = loop {
         match child.try_wait().map_err(|e| e.to_string())? {
             Some(s) => break s,
-            None if started.elapsed() > TIMEOUT => {
+            None if started.elapsed() > limit => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return Err(crate::tf("job.timeout", &[("m", &(TIMEOUT.as_secs() / 60).to_string())]));
+                return Err(crate::tf("job.timeout", &[("m", &(limit.as_secs() / 60).to_string())]));
             }
             None => std::thread::sleep(Duration::from_millis(20)),
         }

@@ -12,7 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use vf_core::engine::{self, DECKCRAFT, Engine, GRIDCRAFT, PDFCRAFT, WORDCRAFT};
+use vf_core::engine::{self, DECKCRAFT, Engine, FILMCRAFT, GRIDCRAFT, PDFCRAFT, PHOTOCRAFT, SOUNDCRAFT, WORDCRAFT};
 use vf_core::job::{self, Spec};
 use vf_core::pdf;
 
@@ -94,6 +94,87 @@ fn smoke_deck(cli: &Path, dir: &Path) -> Result<(), String> {
     }
 }
 
+/// A 16x8 24-bit BMP written by hand (no image library in the test).
+fn tiny_bmp() -> Vec<u8> {
+    let (w, h) = (16u32, 8u32);
+    let size = 54 + w * 3 * h;
+    let mut b = Vec::new();
+    b.extend_from_slice(b"BM");
+    b.extend_from_slice(&size.to_le_bytes());
+    b.extend_from_slice(&[0, 0, 0, 0]);
+    b.extend_from_slice(&54u32.to_le_bytes());
+    b.extend_from_slice(&40u32.to_le_bytes());
+    b.extend_from_slice(&w.to_le_bytes());
+    b.extend_from_slice(&h.to_le_bytes());
+    b.extend_from_slice(&1u16.to_le_bytes());
+    b.extend_from_slice(&24u16.to_le_bytes());
+    b.extend_from_slice(&[0; 24]);
+    for y in 0..h {
+        for x in 0..w {
+            b.extend_from_slice(&[(x * 16) as u8, (y * 30) as u8, 200]);
+        }
+    }
+    b
+}
+
+fn smoke_photo(cli: &Path, dir: &Path) -> Result<(), String> {
+    let src = dir.join("Foto di citt\u{e0}.bmp");
+    fs::write(&src, tiny_bmp()).map_err(|e| e.to_string())?;
+    for ext in ["png", "jpg", "webp", "tif", "gif", "ico"] {
+        let spec = Spec { cli: cli.to_path_buf(), out_ext: ext.into(), extra_args: vec![], env: vec![] };
+        let out = job::convert_one(&spec, &src, dir).map_err(|e| format!("bmp -> {ext}: {e}"))?;
+        if fs::metadata(&out).map(|m| m.len()).unwrap_or(0) == 0 {
+            return Err(format!("bmp -> {ext} wrote an empty file"));
+        }
+    }
+    Ok(())
+}
+
+fn smoke_sound(cli: &Path, dir: &Path) -> Result<(), String> {
+    // A quarter second of square wave as a 16-bit mono WAV, written by hand.
+    let rate = 8000u32;
+    let data_len = rate / 4 * 2;
+    let mut wav = Vec::new();
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&(36 + data_len).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16u32.to_le_bytes());
+    wav.extend_from_slice(&[1, 0, 1, 0]);
+    wav.extend_from_slice(&rate.to_le_bytes());
+    wav.extend_from_slice(&(rate * 2).to_le_bytes());
+    wav.extend_from_slice(&[2, 0, 16, 0]);
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&data_len.to_le_bytes());
+    wav.extend((0..data_len).map(|i| if i % 64 < 32 { 0x40 } else { 0xc0 }));
+    let src = dir.join("Suono di citt\u{e0}.wav");
+    fs::write(&src, wav).map_err(|e| e.to_string())?;
+    for ext in ["flac", "aiff"] {
+        let spec = Spec { cli: cli.to_path_buf(), out_ext: ext.into(), extra_args: vec!["--bit-depth".into(), "16".into()], env: vec![] };
+        let out = job::convert_one(&spec, &src, dir).map_err(|e| format!("wav -> {ext}: {e}"))?;
+        if fs::metadata(&out).map(|m| m.len()).unwrap_or(0) < 100 {
+            return Err(format!("wav -> {ext} wrote a tiny file"));
+        }
+    }
+    Ok(())
+}
+
+fn smoke_film(cli: &Path, dir: &Path) -> Result<(), String> {
+    // A tiny clip made by the engine's own demo project, then the path the Video app takes: import, sequence, export.
+    let src = dir.join("Gita di citt\u{e0}.mp4");
+    let made = Command::new(cli).args(["--demo", "export"]).arg(&src).args(["--format", "h264", "--scale", "0.1"]).output().map_err(|e| e.to_string())?;
+    if !made.status.success() || !src.is_file() {
+        return Err("could not make the demo clip".to_owned());
+    }
+    for (ext, args) in [("mp4", vec!["format=h264", "bitrateMode=crf", "crf=28"]), ("mov", vec!["format=prores"]), ("wav", vec!["format=wav"])] {
+        let spec = Spec { cli: cli.to_path_buf(), out_ext: ext.into(), extra_args: args.into_iter().map(String::from).collect(), env: vec![] };
+        let out = vf_core::film::convert(&spec, &src, dir).map_err(|e| format!("mp4 -> {ext}: {e}"))?;
+        if fs::metadata(&out).map(|m| m.len()).unwrap_or(0) < 1000 {
+            return Err(format!("mp4 -> {ext} wrote a tiny file"));
+        }
+    }
+    Ok(())
+}
+
 fn smoke_pdf(cli: &Path, dir: &Path, wordcraft: &Path) -> Result<(), String> {
     use pdf::{Export, Pass, SplitBy};
     let source = rtf_pdf(wordcraft, dir)?;
@@ -143,7 +224,7 @@ fn engine_matrix() {
     let word_for_fixture = candidates(&WORDCRAFT).into_iter().next().map(|c| c.path);
     let mut regressions = Vec::new();
     println!("\n{:<10} {:<10} {:<8} {:<8} result", "engine", "source", "version", "listed");
-    for e in [&WORDCRAFT, &GRIDCRAFT, &DECKCRAFT, &PDFCRAFT] {
+    for e in [&WORDCRAFT, &GRIDCRAFT, &DECKCRAFT, &PDFCRAFT, &PHOTOCRAFT, &SOUNDCRAFT, &FILMCRAFT] {
         let name = e.folder.to_lowercase();
         let tested = listed.get(&name).cloned().unwrap_or_default();
         let found = candidates(e);
@@ -156,6 +237,9 @@ fn engine_matrix() {
                 "wordcraft" => smoke_word(&c.path, &dir),
                 "gridcraft" => smoke_grid(&c.path, &dir),
                 "deckcraft" => smoke_deck(&c.path, &dir),
+                "photocraft" => smoke_photo(&c.path, &dir),
+                "soundcraft" => smoke_sound(&c.path, &dir),
+                "filmcraft" => smoke_film(&c.path, &dir),
                 _ => match &word_for_fixture {
                     Some(w) => smoke_pdf(&c.path, &dir, w),
                     None => Err("skipped: no WordCraft to make the test PDF".to_owned()),

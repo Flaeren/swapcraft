@@ -96,8 +96,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "app-audio-converter"
+version = "0.3.0"
+dependencies = [
+ "eframe",
+ "vf-core",
+ "vf-ui",
+ "winresource",
+]
+
+[[package]]
 name = "app-dwg-to-pdf"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "eframe",
  "rfd",
@@ -107,8 +117,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "app-ebook-converter"
+version = "0.3.0"
+dependencies = [
+ "eframe",
+ "vf-core",
+ "vf-ui",
+ "winresource",
+]
+
+[[package]]
 name = "app-excel-to-pdf"
-version = "0.2.0"
+version = "0.3.0"
+dependencies = [
+ "eframe",
+ "vf-core",
+ "vf-ui",
+ "winresource",
+]
+
+[[package]]
+name = "app-image-converter"
+version = "0.3.0"
 dependencies = [
  "eframe",
  "vf-core",
@@ -118,7 +148,7 @@ dependencies = [
 
 [[package]]
 name = "app-pdf-tools"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "eframe",
  "rfd",
@@ -129,7 +159,17 @@ dependencies = [
 
 [[package]]
 name = "app-slides-to-pdf"
-version = "0.2.0"
+version = "0.3.0"
+dependencies = [
+ "eframe",
+ "vf-core",
+ "vf-ui",
+ "winresource",
+]
+
+[[package]]
+name = "app-video-converter"
+version = "0.3.0"
 dependencies = [
  "eframe",
  "vf-core",
@@ -139,7 +179,7 @@ dependencies = [
 
 [[package]]
 name = "app-word-to-pdf"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "eframe",
  "vf-core",
@@ -2721,8 +2761,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
+name = "vf-cli"
+version = "0.3.0"
+dependencies = [
+ "serde_json",
+ "vf-core",
+ "winresource",
+]
+
+[[package]]
 name = "vf-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "lopdf",
  "serde_json",
@@ -2734,7 +2783,7 @@ dependencies = [
 
 [[package]]
 name = "vf-ui"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "eframe",
  "egui",
@@ -2744,7 +2793,7 @@ dependencies = [
 
 [[package]]
 name = "voidflare-hub"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "eframe",
  "egui",

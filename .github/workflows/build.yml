@@ -70,6 +70,13 @@ jobs:
         working-directory: src
         run: ./build-apps.ps1
 
+      # A v* tag must match the version in src/Cargo.toml (release.ps1 then checks every exe carries it).
+      - name: Tag matches the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          $v = (Select-String -Path src/Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          if ("v$v" -ne $env:GITHUB_REF_NAME) { throw "Tag $env:GITHUB_REF_NAME but src/Cargo.toml says $v" }
+
       - name: Pack the release files
         working-directory: src
         run: ./release.ps1

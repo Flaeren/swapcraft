@@ -4,7 +4,6 @@
 mod catalog;
 mod fx;
 mod icons;
-mod routes;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -21,6 +20,7 @@ use eframe::egui::{
 use vf_core::i18n;
 use vf_core::job::{self, Event};
 use vf_core::packs::{self, EngineSource, Health, Status};
+use vf_core::routes;
 use vf_core::update;
 use vf_ui::shell::{SHELL_CATALOG, drain, dropped_files, finish};
 use vf_ui::theme::{self, Tokens, rgb};
