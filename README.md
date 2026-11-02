@@ -88,7 +88,7 @@ Available in English, Italiano, Español, Français and Deutsch.
 
 ## How it works
 
-- **The hub** (`voidflare.exe`) has a drop panel. It looks at the file type, shows the formats that file can become, and runs the matching engine with default settings. The converted file lands next to the original.
+- **The hub** (`voidflare.exe`) has a drop panel. It looks at the file type, shows the formats that file can become, and runs the matching engine with default settings. The converted file lands next to the original. The gear in its top right corner opens the settings: language of the apps (English unless you choose otherwise), the update check, and a Start menu shortcut (the first run offers it once).
 - **The apps** have the full options: batches and folders, merging, page ranges, OCR, drawing sheets or the whole drawing.
 - **The engines** are separate command-line programs. An app uses the copy in its own folder first, then a regular ArtCraft installation. When you install an app, voidflare reuses the ArtCraft engine already on your PC only if that exact version is listed in [`src/engine-compat.json`](src/engine-compat.json), meaning we ran it against the real engine; any other version, including a newer one nobody has tried, gets our own tested copy. If ArtCraft later updates to a version we have not tested, the card says so and offers *Bundle engine*. DWG to PDF always brings its own CADCraft, because the official build still draws blocks with a tilted extrusion wrongly ([cadcraft#1158](https://github.com/storytold/cadcraft/issues/1158)).
 - **Nothing is sent anywhere.** Conversions run locally and there is no telemetry.

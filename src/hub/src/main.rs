@@ -4,6 +4,7 @@
 mod catalog;
 mod fx;
 mod icons;
+mod settings;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -142,6 +143,8 @@ struct Hub {
     drop_rect: Option<Rect>,
     flame: icons::Flame,
     icons: icons::AppIcons,
+    /// The settings window and the first-run welcome dialog.
+    settings: settings::Settings,
 }
 
 impl Hub {
@@ -200,6 +203,7 @@ impl Hub {
             drop_rect: None,
             flame: icons::Flame::new(ctx),
             icons: icons::AppIcons::new(ctx, &APPS.iter().map(|a| a.id).collect::<Vec<_>>()),
+            settings: settings::Settings::new(),
         }
     }
 
@@ -279,6 +283,8 @@ impl eframe::App for Hub {
             });
             self.footer(ui, &t);
         });
+        let ctx = ui.ctx().clone();
+        self.settings.ui(&ctx, &t, &mut self.auto_on);
     }
 }
 
@@ -711,12 +717,17 @@ fn section_label(ui: &mut egui::Ui, t: &Tokens, label: &str, n: usize) {
 impl Hub {
     fn header(&mut self, ui: &mut egui::Ui, t: &Tokens) {
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), BAR_H + 8.0), Sense::hover());
-        let p = ui.painter();
         let c = pos2(rect.left() + PAD, rect.center().y);
+        // the gear sits in the top right corner; the tagline gives way to it
+        let gear = Rect::from_center_size(pos2(rect.right() - PAD - 14.0, c.y), vec2(32.0, 32.0));
+        if !self.settings.show_welcome() && settings::gear_button(ui, t, gear) {
+            self.settings.open();
+        }
+        let p = ui.painter();
         let w = self.flame.paint(p, c.x, c.y, 30.0, t.dark);
         p.text(pos2(c.x + w + 12.0, c.y), Align2::LEFT_CENTER, "voidflare", FontId::proportional(22.0), t.ink_strong);
         p.text(
-            pos2(rect.right() - PAD, c.y),
+            pos2(gear.left() - 16.0, c.y),
             Align2::RIGHT_CENTER,
             "OFFLINE CONVERTERS · YOUR FILES STAY ON THIS PC",
             mono(11.0),

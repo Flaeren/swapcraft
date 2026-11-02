@@ -68,18 +68,26 @@ fn remembered_path() -> Option<PathBuf> {
     std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("voidflare").join("language.txt"))
 }
 
-/// Loads catalogs and picks the language: `VOIDFLARE_LANG`, then the remembered choice, then Windows.
+/// The language to use: the `VOIDFLARE_LANG` override, else what the user chose (the settings of the hub), else
+/// English. The language of Windows is deliberately not consulted: English is the base, anything else is a choice.
+pub fn choose(env: Option<&str>, remembered: Option<&str>) -> Lang {
+    env.and_then(Lang::from_code).or_else(|| remembered.and_then(Lang::from_code)).unwrap_or(Lang::En)
+}
+
+/// The language the user chose and saved, if any.
+pub fn remembered() -> Option<Lang> {
+    remembered_path().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|c| Lang::from_code(&c))
+}
+
+/// Loads catalogs and picks the language (see [`choose`]).
 pub fn init(catalogs: &[&str]) {
     let mut s = state().write().unwrap();
     for text in catalogs {
         add_catalog(&mut s.rows, text);
     }
-    let chosen = std::env::var("VOIDFLARE_LANG")
-        .ok()
-        .and_then(|c| Lang::from_code(&c))
-        .or_else(|| remembered_path().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|c| Lang::from_code(&c)))
-        .or_else(|| sys_locale::get_locale().and_then(|c| Lang::from_code(&c)));
-    s.lang = chosen.unwrap_or(Lang::En);
+    let env = std::env::var("VOIDFLARE_LANG").ok();
+    let saved = remembered_path().and_then(|p| std::fs::read_to_string(p).ok());
+    s.lang = choose(env.as_deref(), saved.as_deref());
 }
 
 fn add_catalog(rows: &mut HashMap<String, [String; 5]>, text: &str) {
@@ -157,6 +165,15 @@ mod tests {
         assert_eq!(Lang::from_code("it-IT"), Some(Lang::It));
         assert_eq!(Lang::from_code("de_AT"), Some(Lang::De));
         assert_eq!(Lang::from_code("pt-BR"), None);
+    }
+
+    #[test]
+    fn english_unless_chosen() {
+        assert_eq!(choose(None, None), Lang::En);
+        assert_eq!(choose(None, Some("it")), Lang::It);
+        assert_eq!(choose(Some("de"), Some("it")), Lang::De);
+        // an unknown or unsupported code is ignored, never an error
+        assert_eq!(choose(Some("xx"), Some("pt-BR")), Lang::En);
     }
 
     #[test]

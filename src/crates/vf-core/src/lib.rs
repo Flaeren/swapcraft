@@ -14,6 +14,7 @@ pub mod packs;
 pub mod pdf;
 pub mod pdfmerge;
 pub mod routes;
+pub mod shortcuts;
 pub mod update;
 
 pub use i18n::{t, tf};

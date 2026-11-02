@@ -4,6 +4,15 @@ All notable changes to voidflare are listed here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- **A welcome dialog on the first run** asks whether to add voidflare to the Start menu (it is asked once, and never again whatever you answer). Windows does not let a program pin itself to the taskbar, so the dialog says how to do that last step by hand: right-click the icon in the taskbar and choose *Pin to taskbar*.
+- **A settings window**, behind the gear in the top right corner of the hub: the language of the converter apps, the update check, the Start menu shortcut (add, remove, or repoint it if the folder was moved) and a link to the folder where the few settings are kept. Installed apps are still removed from their own card (*Remove*).
+
+### Changed
+
+- **English is the default language.** The apps no longer follow the language of Windows: they speak English until you choose another one in the settings, and then every app uses that choice. (PCs that relied on the Windows language switch back to English once; pick it again in the settings.)
+
 ## [0.3.0] - 2026-11-02
 
 ### Added
