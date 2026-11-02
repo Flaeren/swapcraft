@@ -4,7 +4,9 @@
   </a>
 </p>
 
-<h3 align="center">Offline file converters for Windows. Drop a file, pick a format, done.</h3>
+<h3 align="center">Craft your conversion, always offline.</h3>
+
+<p align="center">Offline file converters for Windows. Drop a file, pick a format, done.</p>
 
 <p align="center">
   <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-6366f1.svg" alt="License: MIT OR Apache-2.0"></a>

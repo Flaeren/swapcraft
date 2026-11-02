@@ -4,6 +4,10 @@ All notable changes to voidflare are listed here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Changed
+
+- voidflare now has a tagline: *Craft your conversion, always offline.* It is on the website and at the top of the README.
+
 ## [0.3.1] - 2026-11-02
 
 ### Added
