@@ -4,6 +4,10 @@ All notable changes to voidflare are listed here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- **Drag and drop now shows itself.** While files are dragged over an app, a veil with a border and "Drop the files here to add them" says where to let go; files that cannot be added (a type the app does not read, or already in the list) are now reported instead of silently ignored. Applies to every converter app, PDF Tools and DWG to PDF included.
+
 ### Changed
 
 - The messages about the Start menu shortcut now say what it does: voidflare is added to the *list of all apps*, and pinning it to the Start menu (or the taskbar) is a step Windows leaves to you, with the exact clicks written in the welcome dialog, after adding, and in the settings.

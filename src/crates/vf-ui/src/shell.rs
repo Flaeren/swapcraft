@@ -259,6 +259,25 @@ pub fn dropped_files(ctx: &egui::Context) -> Vec<PathBuf> {
     ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect())
 }
 
+/// While files are dragged over the window, veils it and says where to let go, so the drop is not a leap of faith.
+pub fn drop_overlay(ctx: &egui::Context, tk: &Tokens) {
+    if ctx.input(|i| i.raw.hovered_files.is_empty()) {
+        return;
+    }
+    let rect = ctx.content_rect();
+    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("drop-veil")));
+    painter.rect_filled(rect, 0.0, tk.bg.gamma_multiply(0.86));
+    painter.rect_stroke(rect.shrink(10.0), 0.0, egui::Stroke::new(2.0, tk.accent), egui::StrokeKind::Inside);
+    painter.text(rect.center(), Align2::CENTER_CENTER, t("ui.drop_here"), mono(14.0), tk.ink_strong);
+}
+
+/// After files were dropped: if the list did not grow, say so instead of leaving the window as it was.
+pub fn drop_feedback(dropped: &[PathBuf], before: usize, after: usize, notice: &mut Option<(String, String)>) {
+    if !dropped.is_empty() && after == before {
+        *notice = Some((t("ui.drop_none_title"), t("ui.drop_none_text")));
+    }
+}
+
 impl eframe::App for ConverterApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
@@ -269,7 +288,9 @@ impl eframe::App for ConverterApp {
         }
         let dropped = dropped_files(&ctx);
         if !dropped.is_empty() {
+            let before = self.files.len();
             self.add(&dropped);
+            drop_feedback(&dropped, before, self.files.len(), &mut self.notice);
         }
         egui::CentralPanel::default().frame(egui::Frame::new().fill(tk.bg)).show(ui, |ui| {
             widgets::header(ui, &tk, &self.icon, self.cfg.title);
@@ -277,6 +298,7 @@ impl eframe::App for ConverterApp {
                 egui::Frame::new().inner_margin(egui::Margin::symmetric(PAD as i8, 0)).show(ui, |ui| self.body(ui, &tk));
             });
         });
+        drop_overlay(&ctx, &tk);
         notice_window(&ctx, &mut self.notice);
     }
 }

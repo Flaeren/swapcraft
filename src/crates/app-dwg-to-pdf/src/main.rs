@@ -226,7 +226,9 @@ impl eframe::App for DwgApp {
         }
         let dropped = shell::dropped_files(&ctx);
         if !dropped.is_empty() {
+            let before = self.files.len();
             self.add(&dropped);
+            shell::drop_feedback(&dropped, before, self.files.len(), &mut self.notice);
         }
         egui::CentralPanel::default().frame(egui::Frame::new().fill(tk.bg)).show(ui, |ui| {
             widgets::header(ui, &tk, &self.icon, "DWG to PDF");
@@ -234,6 +236,7 @@ impl eframe::App for DwgApp {
                 egui::Frame::new().inner_margin(egui::Margin::symmetric(PAD as i8, 0)).show(ui, |ui| self.body(ui, &tk));
             });
         });
+        shell::drop_overlay(&ctx, &tk);
         shell::notice_window(&ctx, &mut self.notice);
     }
 }
