@@ -148,7 +148,7 @@ docs/             images for this page
 
 ## Contributing
 
-Bug reports, translation fixes and format requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: see [SECURITY.md](SECURITY.md).
+Bug reports, translation fixes and format requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: see [SECURITY.md](SECURITY.md). If voidflare is useful to you, a star on GitHub helps other people find it.
 
 ## Licence
 
