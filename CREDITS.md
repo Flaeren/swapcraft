@@ -22,7 +22,7 @@ Every conversion is done by a command-line engine from the [ArtCraft](https://ge
 | Video Converter | FilmCraft |
 | E-book Converter | WordCraft (PDF and Word); reading EPUB and Kindle books and writing EPUB is voidflare's own Rust code |
 
-- Versions in voidflare 0.3.1: WordCraft 0.12.0, GridCraft 0.13.0, DeckCraft 0.12.0, PdfCraft 0.15.0, CADCraft 0.14.0, PhotoCraft 0.19.0, SoundCraft 0.16.0, FilmCraft 0.16.0. They are pinned, with their SHA-256, in [`src/engines.json`](src/engines.json).
+- Versions in voidflare 0.3.2: WordCraft 0.12.0, GridCraft 0.13.0, DeckCraft 0.12.0, PdfCraft 0.15.0, CADCraft 0.14.0, PhotoCraft 0.19.0, SoundCraft 0.16.0, FilmCraft 0.16.0. They are pinned, with their SHA-256, in [`src/engines.json`](src/engines.json).
 - The engines are distributed under the terms **MIT License or Apache License 2.0, at your option**, as stated in the `NOTICE` file shipped with each engine.
 - When an app brings its own engine (always for DWG to PDF, and for the others unless your PC already has a tested ArtCraft one, in which case nothing of it is copied and its own licence files stay in its installation), the pack carries it unmodified (apart from CADCraft) in the app's own folder, together with its `LICENSE-MIT`, `LICENSE-APACHE`, `NOTICE` and `ATTRIBUTION` files. Those files list the further components, fonts and models each engine bundles, with their own licences. **Keep them next to the engine if you redistribute it.**
 - The ArtCraft name, logo and trademarks are **not** covered by those licences and are not used by voidflare as its own. voidflare is an independent project and is not affiliated with or endorsed by the ArtCraft team. Where we mention ArtCraft we do it in plain text and link to their site.

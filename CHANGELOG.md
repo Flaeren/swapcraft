@@ -4,6 +4,8 @@ All notable changes to voidflare are listed here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-02
+
 ### Added
 
 - **UPDATE ALL** in the hub's toolbar (shown when two or more installed apps have an update): updates them one after the other; a failed or cancelled update stops the rest.
