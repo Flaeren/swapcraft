@@ -4,6 +4,8 @@ All notable changes to voidflare are listed here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-02
+
 ### Added
 
 - **A welcome dialog on the first run** asks whether to add voidflare to the Start menu (it is asked once, and never again whatever you answer). Windows does not let a program pin itself to the taskbar, so the dialog says how to do that last step by hand: right-click the icon in the taskbar and choose *Pin to taskbar*.
