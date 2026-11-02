@@ -69,7 +69,7 @@ impl Settings {
                 // security software or a policy can remove a new shortcut a moment later: look again in two seconds
                 self.recheck_at = Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
                 let place = shortcuts::start_menu_dir().map(|d| d.display().to_string()).unwrap_or_default();
-                (format!("Added to the Start menu ({place})."), false)
+                (format!("Added to the app list of your Start menu ({place}). To pin it there: open Start > All apps, right-click voidflare and choose Pin to Start."), false)
             }
             Err(e) => (format!("Could not add it: {e}"), true),
         });
@@ -120,7 +120,7 @@ impl Settings {
             ui.add_space(4.0);
             ui.label(RichText::new("Welcome to voidflare").size(18.0).color(t.ink_strong));
             ui.add_space(8.0);
-            ui.label(RichText::new("Want voidflare in your Start menu? You can then pin it to the taskbar from there: right-click its icon and choose Pin to taskbar.").color(t.muted));
+            ui.label(RichText::new("Want voidflare in your Start menu? It is added to the list of all apps. To pin it to the Start menu, right-click it there and choose Pin to Start; for the taskbar, choose Pin to taskbar.").color(t.muted));
             ui.add_space(6.0);
             ui.label(RichText::new("Windows does not let a program pin itself, so that last step is yours. You can change your mind any time in the settings (the gear).").size(12.0).color(t.faint));
             ui.add_space(14.0);
@@ -208,7 +208,7 @@ impl Settings {
             if let Some((msg, bad)) = &self.msg {
                 ui.label(RichText::new(msg).size(12.0).color(if *bad { t.bad } else { t.good }));
             }
-            ui.label(RichText::new("Taskbar: Windows does not let a program pin itself. Open voidflare from the Start menu, right-click its icon in the taskbar and choose Pin to taskbar.").size(12.0).color(t.faint));
+            ui.label(RichText::new("Pinning: Windows does not let a program pin itself. Open Start > All apps, right-click voidflare and choose Pin to Start; or open it, right-click its icon in the taskbar and choose Pin to taskbar.").size(12.0).color(t.faint));
 
             section(ui, t, "YOUR DATA");
             if let Some(dir) = data_dir() {

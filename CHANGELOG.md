@@ -4,6 +4,10 @@ All notable changes to voidflare are listed here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Changed
+
+- The messages about the Start menu shortcut now say what it does: voidflare is added to the *list of all apps*, and pinning it to the Start menu (or the taskbar) is a step Windows leaves to you, with the exact clicks written in the welcome dialog, after adding, and in the settings.
+
 ## [0.3.2] - 2026-11-02
 
 ### Added
