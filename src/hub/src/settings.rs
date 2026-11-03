@@ -70,9 +70,9 @@ impl Settings {
                 // security software or a policy can remove a new shortcut a moment later: look again in two seconds
                 self.recheck_at = Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
                 let place = shortcuts::start_menu_dir().map(|d| d.display().to_string()).unwrap_or_default();
-                (format!("Added to the app list of your Start menu ({place}). To pin it there: open Start > All apps, right-click voidflare and choose Pin to Start."), false)
+                (i18n::tf("hub.sc_added", &[("place", &place)]), false)
             }
-            Err(e) => (format!("Could not add it: {e}"), true),
+            Err(e) => (i18n::tf("hub.sc_add_failed", &[("err", &e.to_string())]), true),
         });
         self.shortcut = shortcuts::state();
     }
@@ -82,13 +82,13 @@ impl Settings {
         self.recheck_at = None;
         self.shortcut = shortcuts::state();
         if self.shortcut == State::Missing {
-            self.msg = Some(("It was created, but it is gone again. Your security software or a policy on this PC removes new Start menu shortcuts. You can pin voidflare.exe to the taskbar by hand instead.".to_owned(), true));
+            self.msg = Some((i18n::t("hub.sc_vanished"), true));
         }
     }
 
     fn remove_shortcut(&mut self) {
         self.msg = Some(match shortcuts::remove() {
-            Ok(()) => ("Removed from the Start menu.".to_owned(), false),
+            Ok(()) => (i18n::t("hub.sc_removed"), false),
             Err(e) => (e, true),
         });
         self.shortcut = shortcuts::state();
@@ -119,17 +119,17 @@ impl Settings {
         Modal::new(Id::unique("welcome")).show(ctx, |ui| {
             ui.set_width(380.0);
             ui.add_space(4.0);
-            ui.label(RichText::new("Welcome to voidflare").size(18.0).color(t.ink_strong));
+            ui.label(RichText::new(i18n::t("hub.welcome_title")).size(18.0).color(t.ink_strong));
             ui.add_space(8.0);
-            ui.label(RichText::new("Want voidflare in your Start menu? It is added to the list of all apps. To pin it to the Start menu, right-click it there and choose Pin to Start; for the taskbar, choose Pin to taskbar.").color(t.muted));
+            ui.label(RichText::new(i18n::t("hub.welcome_text")).color(t.muted));
             ui.add_space(6.0);
-            ui.label(RichText::new("Windows does not let a program pin itself, so that last step is yours. You can change your mind any time in the settings (the gear).").size(12.0).color(t.faint));
+            ui.label(RichText::new(i18n::t("hub.welcome_note")).size(12.0).color(t.faint));
             ui.add_space(14.0);
             ui.horizontal(|ui| {
-                if primary(ui, t, "ADD TO START MENU").clicked() {
+                if primary(ui, t, &i18n::t("hub.btn_add_start")).clicked() {
                     answer = Some(true);
                 }
-                if ui.add(egui::Button::new(RichText::new("NOT NOW").font(mono(11.0)))).clicked() {
+                if ui.add(egui::Button::new(RichText::new(i18n::t("hub.btn_not_now")).font(mono(11.0)))).clicked() {
                     answer = Some(false);
                 }
             });
@@ -153,9 +153,9 @@ impl Settings {
         let resp = Modal::new(Id::unique("settings")).show(ctx, |ui| {
             ui.set_width(420.0);
             ui.add_space(4.0);
-            ui.label(RichText::new("Settings").size(18.0).color(t.ink_strong));
+            ui.label(RichText::new(i18n::t("hub.set_title")).size(18.0).color(t.ink_strong));
 
-            section(ui, t, "LANGUAGE");
+            section(ui, t, &i18n::t("hub.sec_language"));
             ui.horizontal(|ui| {
                 egui::ComboBox::from_id_salt("language").selected_text(self.lang.name()).show_ui(ui, |ui| {
                     for l in Lang::ALL {
@@ -165,54 +165,61 @@ impl Settings {
                     }
                 });
             });
-            ui.label(RichText::new("English is the default. The choice applies to the converter apps the next time they start; this window stays in English for now.").size(12.0).color(t.faint));
+            ui.label(RichText::new(i18n::t("hub.language_note")).size(12.0).color(t.faint));
 
-            section(ui, t, "APPEARANCE");
-            egui::ComboBox::from_id_salt("appearance").selected_text(self.appearance.name()).show_ui(ui, |ui| {
+            section(ui, t, &i18n::t("hub.sec_appearance"));
+            let appearance_name = |a: Appearance| {
+                i18n::t(match a {
+                    Appearance::System => "hub.appearance_system",
+                    Appearance::Dark => "hub.appearance_dark",
+                    Appearance::Light => "hub.appearance_light",
+                })
+            };
+            egui::ComboBox::from_id_salt("appearance").selected_text(appearance_name(self.appearance)).show_ui(ui, |ui| {
                 for a in Appearance::ALL {
-                    if ui.selectable_value(&mut self.appearance, a, a.name()).clicked() {
+                    if ui.selectable_value(&mut self.appearance, a, appearance_name(a)).clicked() {
                         a.save();
                         ctx.set_theme(a.preference());
                     }
                 }
             });
-            ui.label(RichText::new("The hub changes at once; the converter apps use the same choice the next time they start.").size(12.0).color(t.faint));
+            ui.label(RichText::new(i18n::t("hub.appearance_note")).size(12.0).color(t.faint));
 
-            section(ui, t, "UPDATES");
-            if ui.checkbox(auto_on, "Check for a newer version when voidflare starts").changed() {
+            section(ui, t, &i18n::t("hub.sec_updates"));
+            if ui.checkbox(auto_on, i18n::t("hub.check_at_start")).changed() {
                 update::set_auto(*auto_on);
             }
-            ui.label(RichText::new("Sends nothing about you and downloads nothing by itself.").size(12.0).color(t.faint));
+            ui.label(RichText::new(i18n::t("hub.updates_note")).size(12.0).color(t.faint));
 
-            section(ui, t, "SHORTCUTS");
+            section(ui, t, &i18n::t("hub.sec_shortcuts"));
             let (status, color) = match &self.shortcut {
-                State::Ok => ("In the Start menu.".to_owned(), t.good),
-                State::Missing => ("Not in the Start menu.".to_owned(), t.muted),
-                State::Stale(p) if p.as_os_str().is_empty() => ("The Start menu entry is unreadable.".to_owned(), t.bad),
-                State::Stale(p) => (format!("The Start menu entry points to {}, not here.", p.display()), t.bad),
+                State::Ok => (i18n::t("hub.sc_ok"), t.good),
+                State::Missing => (i18n::t("hub.sc_missing"), t.muted),
+                State::Stale(p) if p.as_os_str().is_empty() => (i18n::t("hub.sc_unreadable"), t.bad),
+                State::Stale(p) => (i18n::tf("hub.sc_stale", &[("path", &p.display().to_string())]), t.bad),
             };
             ui.label(RichText::new(status).color(color));
             ui.horizontal(|ui| match self.shortcut.clone() {
                 State::Ok => {
-                    if ui.button(RichText::new("REMOVE FROM START MENU").font(mono(11.0))).clicked() {
+                    if ui.button(RichText::new(i18n::t("hub.btn_remove_start")).font(mono(11.0))).clicked() {
                         self.remove_shortcut();
                     }
-                    if ui.button(RichText::new("SHOW IT").font(mono(11.0))).on_hover_text("Opens the folder with the shortcut selected").clicked()
+                    if ui.button(RichText::new(i18n::t("hub.btn_show")).font(mono(11.0))).on_hover_text(i18n::t("hub.btn_show_hint")).clicked()
                         && let Some(dir) = shortcuts::start_menu_dir()
                     {
                         let _ = std::process::Command::new("explorer.exe").arg(format!("/select,{}", shortcuts::link_path(&dir).display())).spawn();
                     }
                 }
                 State::Missing => {
-                    if primary(ui, t, "ADD TO START MENU").clicked() {
+                    if primary(ui, t, &i18n::t("hub.btn_add_start")).clicked() {
                         self.add_shortcut();
                     }
                 }
                 State::Stale(_) => {
-                    if primary(ui, t, "POINT IT HERE").clicked() {
+                    if primary(ui, t, &i18n::t("hub.btn_point")).clicked() {
                         self.add_shortcut();
                     }
-                    if ui.button(RichText::new("REMOVE").font(mono(11.0))).clicked() {
+                    if ui.button(RichText::new(i18n::t("hub.remove")).font(mono(11.0))).clicked() {
                         self.remove_shortcut();
                     }
                 }
@@ -220,23 +227,23 @@ impl Settings {
             if let Some((msg, bad)) = &self.msg {
                 ui.label(RichText::new(msg).size(12.0).color(if *bad { t.bad } else { t.good }));
             }
-            ui.label(RichText::new("Pinning: Windows does not let a program pin itself. Open Start > All apps, right-click voidflare and choose Pin to Start; or open it, right-click its icon in the taskbar and choose Pin to taskbar.").size(12.0).color(t.faint));
+            ui.label(RichText::new(i18n::t("hub.pin_note")).size(12.0).color(t.faint));
 
-            section(ui, t, "YOUR DATA");
+            section(ui, t, &i18n::t("hub.sec_data"));
             if let Some(dir) = data_dir() {
                 ui.label(RichText::new(dir.display().to_string()).font(mono(11.0)).color(t.muted));
-                if ui.button(RichText::new("OPEN THAT FOLDER").font(mono(11.0))).clicked() {
+                if ui.button(RichText::new(i18n::t("hub.btn_open_data")).font(mono(11.0))).clicked() {
                     let _ = std::fs::create_dir_all(&dir);
                     let _ = std::process::Command::new("explorer.exe").arg(&dir).spawn();
                 }
             }
-            ui.label(RichText::new("Only your language and update choices live there. Apps are removed from their card in the hub (REMOVE).").size(12.0).color(t.faint));
+            ui.label(RichText::new(i18n::tf("hub.data_note", &[("remove", &i18n::t("hub.remove"))])).size(12.0).color(t.faint));
 
             ui.add_space(12.0);
             ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("voidflare v{}", env!("CARGO_PKG_VERSION"))).font(mono(11.0)).color(t.faint));
+                ui.label(RichText::new(i18n::tf("hub.version_label", &[("v", env!("CARGO_PKG_VERSION"))])).font(mono(11.0)).color(t.faint));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button(RichText::new("CLOSE").font(mono(11.0))).clicked() {
+                    if ui.button(RichText::new(i18n::t("hub.close")).font(mono(11.0))).clicked() {
                         ui.close();
                     }
                 });
@@ -278,7 +285,7 @@ pub fn gear_button(ui: &mut egui::Ui, t: &Tokens, rect: Rect) -> bool {
         ui.painter().rect_filled(rect, 6.0, t.sunken);
     }
     paint_gear(ui.painter(), rect.center(), 9.0, color);
-    resp.on_hover_text("Settings").clicked()
+    resp.on_hover_text(i18n::t("hub.set_title")).clicked()
 }
 
 #[cfg(test)]

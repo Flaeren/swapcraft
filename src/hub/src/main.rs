@@ -19,6 +19,19 @@ use eframe::egui::{
     text::LayoutJob, pos2, vec2,
 };
 use vf_core::i18n;
+
+/// The hub's own texts: five languages, English first (the others fall back to it).
+const HUB_CATALOG: &str = include_str!("../assets/hub.tsv");
+
+/// The text for `key` in the chosen language.
+fn tr(key: &str) -> String {
+    i18n::t(key)
+}
+
+/// [`tr`] with each `{name}` replaced.
+fn trf(key: &str, args: &[(&str, &str)]) -> String {
+    i18n::tf(key, args)
+}
 use vf_core::job::{self, Event};
 use vf_core::packs::{self, EngineSource, Health, Status};
 use vf_core::routes;
@@ -218,7 +231,7 @@ impl Hub {
         }
         self.notice = match cmd.spawn() {
             Ok(_) => None,
-            Err(e) => Some(format!("Could not start {}: {e}", APPS[i].name)),
+            Err(e) => Some(trf("hub.err_start", &[("name", APPS[i].name), ("err", &e.to_string())])),
         };
     }
 
@@ -228,7 +241,7 @@ impl Hub {
         let mut idx: Vec<usize> = (0..APPS.len())
             .filter(|&i| {
                 let a = &APPS[i];
-                q.is_empty() || [a.name, a.tagline, a.engine].iter().any(|s| s.to_lowercase().contains(&q))
+                q.is_empty() || [a.name.to_owned(), a.tagline(), a.engine.to_owned()].iter().any(|s| s.to_lowercase().contains(&q))
             })
             .collect();
         idx.sort_by(|&a, &b| {
@@ -271,14 +284,14 @@ impl eframe::App for Hub {
             egui::ScrollArea::vertical().max_height(body_h).auto_shrink([false, false]).show(ui, |ui| {
                 if ready.is_empty() && available.is_empty() && planned.is_empty() {
                     ui.add_space(48.0);
-                    ui.vertical_centered(|ui| ui.label(RichText::new("No apps match your search.").color(t.muted)));
+                    ui.vertical_centered(|ui| ui.label(RichText::new(tr("hub.no_match")).color(t.muted)));
                     return;
                 }
-                for (label, group) in [("Installed", &ready), ("Available to install", &available), ("Coming soon", &planned)] {
+                for (label, group) in [(tr("hub.group_installed"), &ready), (tr("hub.group_available"), &available), (tr("hub.group_soon"), &planned)] {
                     if group.is_empty() {
                         continue;
                     }
-                    section_label(ui, &t, label, group.len());
+                    section_label(ui, &t, &label, group.len());
                     match self.view {
                         View::Grid => self.grid(ui, &t, group),
                         View::List => self.list(ui, &t, group),
@@ -302,7 +315,7 @@ impl Hub {
         self.bytes = self.files.iter().filter_map(|f| std::fs::metadata(f).ok()).map(|m| m.len()).sum();
         self.notice = if self.files.is_empty() {
             let ext = paths.first().map(|p| routes::ext_of(p)).unwrap_or_default();
-            Some(if ext.is_empty() { "Nothing here can be converted yet.".to_owned() } else { format!("No converter for .{ext} files yet.") })
+            Some(if ext.is_empty() { tr("hub.nothing_convertible") } else { trf("hub.no_converter", &[("ext", &ext)]) })
         } else {
             None
         };
@@ -361,7 +374,7 @@ impl Hub {
             Err(e) => {
                 self.packs = Packs::Failed(e.clone());
                 if self.pending_install.take().is_some() {
-                    self.notice = Some(format!("Cannot install right now: {e}"));
+                    self.notice = Some(trf("hub.cannot_install", &[("err", &e)]));
                 }
             }
         }
@@ -386,7 +399,7 @@ impl Hub {
             return;
         }
         let Some(pack) = l.manifest.packs.iter().find(|p| p.id == APPS[i].id).cloned() else {
-            self.notice = Some(format!("{} is not in this release.", APPS[i].name));
+            self.notice = Some(trf("hub.not_in_release", &[("app", APPS[i].name)]));
             return;
         };
         let (release, sums, apps_dir) = (l.release.clone(), l.sums.clone(), self.apps_dir.clone());
@@ -544,7 +557,7 @@ impl Hub {
         self.log.clear();
         self.last_dir = None;
         if !other.is_empty() {
-            self.log.push((format!("{} file(s) of another type skipped.", other.len()), Kind::Plain));
+            self.log.push((trf("hub.skipped", &[("n", &other.len().to_string())]), Kind::Plain));
         }
         let (tx, rx) = mpsc::channel();
         self.cancel = Arc::new(AtomicBool::new(false));
@@ -581,7 +594,7 @@ impl Hub {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
         if zone.clicked()
-            && let Some(picked) = rfd::FileDialog::new().set_title("Choose files to convert").add_filter("Supported files", &routes::known_exts()).pick_files()
+            && let Some(picked) = rfd::FileDialog::new().set_title(tr("hub.pick_title")).add_filter(tr("hub.pick_filter"), &routes::known_exts()).pick_files()
         {
             self.set_files(&picked);
         }
@@ -589,8 +602,8 @@ impl Hub {
         if !has_files {
             let p = ui.painter();
             let c = rect.center();
-            p.text(pos2(c.x, c.y - 26.0), Align2::CENTER_CENTER, "DROP A FILE HERE", mono(20.0), t.ink_strong);
-            p.text(pos2(c.x, c.y + 6.0), Align2::CENTER_CENTER, "or click to choose, then pick what to convert it to", FontId::proportional(14.0), t.muted);
+            p.text(pos2(c.x, c.y - 26.0), Align2::CENTER_CENTER, tr("hub.drop_title"), mono(20.0), t.ink_strong);
+            p.text(pos2(c.x, c.y + 6.0), Align2::CENTER_CENTER, tr("hub.drop_sub"), FontId::proportional(14.0), t.muted);
             p.text(pos2(c.x, c.y + 44.0), Align2::CENTER_CENTER, "DOCX · XLSX · PPTX · PDF · DWG · CSV · RTF · ODT", mono(11.0), t.faint);
             if let Some(msg) = &self.notice {
                 p.text(pos2(c.x, rect.bottom() - 18.0), Align2::CENTER_CENTER, msg, mono(11.5), t.bad);
@@ -614,15 +627,15 @@ impl Hub {
         let n = self.files.len();
         let ext = routes::ext_of(&self.files[0]);
         ui.horizontal(|ui| {
-            ui.label(RichText::new("READY TO CONVERT").font(mono(11.0)).color(t.faint));
+            ui.label(RichText::new(tr("hub.ready")).font(mono(11.0)).color(t.faint));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if widgets::button(ui, "Clear").clicked() && !self.running {
+                if widgets::button(ui, &tr("hub.clear")).clicked() && !self.running {
                     self.files.clear();
                     self.log.clear();
                     self.last_dir = None;
                 }
                 if let Some(dir) = self.last_dir.clone()
-                    && widgets::button(ui, "Open folder").clicked()
+                    && widgets::button(ui, &tr("hub.open_folder")).clicked()
                 {
                     let _ = Command::new("explorer").arg(dir).spawn();
                 }
@@ -642,11 +655,11 @@ impl Hub {
                     let dir = self.files[0].parent().map(|p| p.display().to_string()).unwrap_or_default();
                     ui.label(RichText::new(format!("{} · {}", human_size(self.bytes), dir.trim_start_matches(r"\\?\"))).font(mono(11.0)).color(t.faint));
                 } else {
-                    ui.label(RichText::new(format!("{n} {} files", ext.to_uppercase())).size(18.0).strong().color(t.ink_strong));
+                    ui.label(RichText::new(trf("hub.n_files", &[("n", &n.to_string()), ("ext", &ext.to_uppercase())])).size(18.0).strong().color(t.ink_strong));
                     let shown: Vec<String> = self.files.iter().take(3).map(name).collect();
-                    let more = if n > 3 { format!("  + {} more", n - 3) } else { String::new() };
+                    let more = if n > 3 { format!("  {}", trf("hub.more", &[("n", &(n - 3).to_string())])) } else { String::new() };
                     ui.label(RichText::new(format!("{}{more}", shown.join("  ·  "))).size(13.0).color(t.muted));
-                    ui.label(RichText::new(format!("{} in total", human_size(self.bytes))).font(mono(11.0)).color(t.faint));
+                    ui.label(RichText::new(trf("hub.total", &[("size", &human_size(self.bytes))])).font(mono(11.0)).color(t.faint));
                 }
             });
         });
@@ -654,7 +667,7 @@ impl Hub {
         let (line, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
         ui.painter().hline(line.x_range(), line.center().y, t.hairline());
         ui.add_space(10.0);
-        ui.label(RichText::new("CONVERT TO  →").font(mono(11.0)).color(t.faint));
+        ui.label(RichText::new(tr("hub.convert_to")).font(mono(11.0)).color(t.faint));
         ui.add_space(6.0);
         let mut chosen = None;
         ui.horizontal_wrapped(|ui| {
@@ -662,7 +675,7 @@ impl Hub {
             for i in routes::targets(&ext) {
                 let route = &routes::ROUTES[i];
                 let more = APPS.iter().find(|a| a.id == route.app).map_or(route.app, |a| a.name);
-                let button = widgets::primary(ui, t, route.label, !self.running).on_hover_text(format!("Default settings. More options in {more}."));
+                let button = widgets::primary(ui, t, route.label, !self.running).on_hover_text(trf("hub.default_hint", &[("app", more)]));
                 if button.clicked() {
                     chosen = Some(i);
                 }
@@ -773,26 +786,27 @@ impl Hub {
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), BAR_H), Sense::hover());
         let mut bar = ui.new_child(UiBuilder::new().max_rect(rect.shrink2(vec2(PAD, 0.0))).layout(Layout::left_to_right(Align::Center)));
         bar.spacing_mut().item_spacing.x = 12.0;
-        bar.add(egui::TextEdit::singleline(&mut self.query).hint_text("Search apps").desired_width(260.0).margin(vec2(10.0, 7.0)));
+        bar.add(egui::TextEdit::singleline(&mut self.query).hint_text(tr("hub.search")).desired_width(260.0).margin(vec2(10.0, 7.0)));
         // UPDATE ALL shows only when two or more installed apps have an update (with one, its card has UPDATE)
         let n_update = self.updatable().len();
         let queued = !self.queue.is_empty() || self.job.as_ref().is_some_and(|j| !j.removing && self.status[j.app] == Some(Status::UpdateAvailable));
         let mut go_update_all = false;
         bar.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
-            ui.selectable_value(&mut self.view, View::List, RichText::new("LIST").font(mono(11.0)));
-            ui.selectable_value(&mut self.view, View::Grid, RichText::new("GRID").font(mono(11.0)));
+            ui.selectable_value(&mut self.view, View::List, RichText::new(tr("hub.list")).font(mono(11.0)));
+            ui.selectable_value(&mut self.view, View::Grid, RichText::new(tr("hub.grid")).font(mono(11.0)));
             ui.add_space(8.0);
-            let label = if self.sort == Sort::NameAsc { "NAME A–Z" } else { "NAME Z–A" };
+            let (asc, desc) = (tr("hub.sort_az"), tr("hub.sort_za"));
+            let label = if self.sort == Sort::NameAsc { asc.to_uppercase() } else { desc.to_uppercase() };
             egui::ComboBox::from_id_salt("sort").selected_text(RichText::new(label).font(mono(11.0))).show_ui(ui, |ui| {
-                ui.selectable_value(&mut self.sort, Sort::NameAsc, "Name A–Z");
-                ui.selectable_value(&mut self.sort, Sort::NameDesc, "Name Z–A");
+                ui.selectable_value(&mut self.sort, Sort::NameAsc, asc);
+                ui.selectable_value(&mut self.sort, Sort::NameDesc, desc);
             });
             if n_update >= 2 && !queued && self.job.is_none() {
                 ui.add_space(8.0);
-                let label = format!("UPDATE ALL ({n_update})");
+                let label = trf("hub.update_all", &[("n", &n_update.to_string())]);
                 let b = egui::Button::new(RichText::new(label).font(mono(11.0)).color(t.invert_fg)).fill(t.invert_bg);
-                if ui.add(b).on_hover_text("Updates every installed app that has a newer version, one after the other. Cancel on a card stops the rest.").clicked() {
+                if ui.add(b).on_hover_text(tr("hub.update_all_hint")).clicked() {
                     go_update_all = true;
                 }
             }
@@ -811,17 +825,17 @@ impl Hub {
         p.text(pos2(rect.left() + PAD, rect.center().y), Align2::LEFT_CENTER, "VOIDFLARE.APP", mono(11.0), t.faint);
 
         // Updates: only on a click, and the label says what the click will do.
-        let (label, color, hint): (String, Color32, &str) = match &self.upd {
-            Upd::Idle => ("CHECK FOR UPDATES".into(), t.faint, "Asks github.com/Flaeren/voidflare for the latest release. Nothing else is sent."),
-            Upd::Checking => ("CHECKING GITHUB…".into(), t.faint, ""),
-            Upd::UpToDate => ("UP TO DATE · CHECK AGAIN".into(), t.good, ""),
+        let (label, color, hint): (String, Color32, String) = match &self.upd {
+            Upd::Idle => (tr("hub.upd_check"), t.faint, tr("hub.upd_check_hint")),
+            Upd::Checking => (tr("hub.upd_checking"), t.faint, String::new()),
+            Upd::UpToDate => (tr("hub.upd_uptodate"), t.good, String::new()),
             Upd::Available(r) => match r.update_zip() {
-                Some(z) if r.sums.is_some() => (format!("v{} AVAILABLE · UPDATE NOW · {}", r.version, human_size(z.size)), t.accent_ink, "Downloads the new voidflare from GitHub, checks its checksum, replaces this program and restarts it. Your installed apps stay as they are: update them from their cards."),
-                _ => (format!("v{} AVAILABLE ↗", r.version), t.accent_ink, "Opens the release page in your browser."),
+                Some(z) if r.sums.is_some() => (trf("hub.upd_now", &[("v", &r.version), ("size", &human_size(z.size))]), t.accent_ink, tr("hub.upd_now_hint")),
+                _ => (trf("hub.upd_link", &[("v", &r.version)]), t.accent_ink, tr("hub.upd_link_hint")),
             },
-            Upd::Downloading(done, total) => (format!("UPDATING {}%", if *total > 0 { done * 100 / total } else { 0 }), t.faint, ""),
-            Upd::Restart(_) => ("UPDATED · CLICK TO RESTART".into(), t.good, "The new voidflare is in place. Restarting closes this window."),
-            Upd::Failed(msg) => (format!("{} · CLICK TO CLOSE", msg.chars().take(70).collect::<String>()), t.bad, ""),
+            Upd::Downloading(done, total) => (trf("hub.upd_progress", &[("pct", &(if *total > 0 { done * 100 / total } else { 0 }).to_string())]), t.faint, String::new()),
+            Upd::Restart(_) => (tr("hub.upd_restart"), t.good, tr("hub.upd_restart_hint")),
+            Upd::Failed(msg) => (trf("hub.upd_failed", &[("msg", &msg.chars().take(70).collect::<String>())]), t.bad, String::new()),
         };
         let clickable = !matches!(self.upd, Upd::Checking | Upd::Downloading(..));
         let x = rect.left() + PAD + 130.0;
@@ -853,17 +867,17 @@ impl Hub {
         }
 
         // The switch for the check at start, right after the update label.
-        let auto_label = if self.auto_on { "AUTO-CHECK: ON" } else { "AUTO-CHECK: OFF" };
+        let auto_label = if self.auto_on { tr("hub.auto_on") } else { tr("hub.auto_off") };
         let auto_x = x + galley.size().x + 24.0;
-        let auto_w = ui.painter().layout_no_wrap(auto_label.to_owned(), mono(11.0), t.faint).size().x;
+        let auto_w = ui.painter().layout_no_wrap(auto_label.clone(), mono(11.0), t.faint).size().x;
         let auto_rect = Rect::from_min_size(pos2(auto_x, rect.top()), vec2(auto_w, rect.height()));
         let auto_resp = ui.interact(auto_rect, ui.scope_id().with("auto-check"), Sense::click());
         let auto_color = if auto_resp.hovered() { t.ink_strong } else { t.faint };
-        ui.painter().text(pos2(auto_x, rect.center().y), Align2::LEFT_CENTER, auto_label, mono(11.0), auto_color);
+        ui.painter().text(pos2(auto_x, rect.center().y), Align2::LEFT_CENTER, &auto_label, mono(11.0), auto_color);
         if auto_resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
-        auto_resp.clone().on_hover_text("When on, voidflare asks github.com/Flaeren/voidflare once at start whether a newer version exists. It sends nothing about you and downloads nothing by itself. Click to switch.");
+        auto_resp.clone().on_hover_text(tr("hub.auto_hint"));
         if auto_resp.clicked() {
             self.auto_on = !self.auto_on;
             update::set_auto(self.auto_on);
@@ -878,10 +892,14 @@ impl Hub {
                 // Right to left: the link to ArtCraft, then the version. In a narrow window they give way to the update
                 // controls on the left instead of being drawn over them.
                 let room = rect.right() - PAD - (auto_x + auto_w) - 24.0;
-                if room > 210.0 {
-                    let link = footer_link(ui, t, rect, rect.right() - PAD, "BUILT ON THE ARTCRAFT SUITE ↗", "https://getartcraft.com");
-                    if room > 380.0 {
-                        ui.painter().text(pos2(link - 14.0, rect.center().y), Align2::RIGHT_CENTER, format!("v{} · OPEN SOURCE ·", env!("CARGO_PKG_VERSION")), mono(11.0), t.faint);
+                // widths are measured, because the text is longer in some languages
+                let (built, version) = (tr("hub.built_on"), trf("hub.version_line", &[("v", env!("CARGO_PKG_VERSION"))]));
+                let built_w = ui.painter().layout_no_wrap(built.clone(), mono(11.0), t.faint).size().x;
+                let version_w = ui.painter().layout_no_wrap(version.clone(), mono(11.0), t.faint).size().x;
+                if room > built_w + 10.0 {
+                    let link = footer_link(ui, t, rect, rect.right() - PAD, &built, "https://getartcraft.com");
+                    if room > built_w + version_w + 30.0 {
+                        ui.painter().text(pos2(link - 14.0, rect.center().y), Align2::RIGHT_CENTER, version, mono(11.0), t.faint);
                     }
                 }
             }
@@ -933,7 +951,7 @@ impl Hub {
         p.text(
             pos2(rect.left() + PAD, strip.center().y),
             Align2::LEFT_CENTER,
-            format!("ENGINE · {}", app.engine.to_uppercase()),
+            trf("hub.engine", &[("name", &app.engine.to_uppercase())]),
             mono(11.0),
             if ready || hovered { t.muted } else { t.faint },
         );
@@ -947,11 +965,11 @@ impl Hub {
         let text_x = tile.right() + 14.0;
         let text_w = rect.right() - PAD - text_x;
         p.text(pos2(text_x, tile.center().y - 11.0), Align2::LEFT_CENTER, app.name, FontId::proportional(20.0), t.ink_strong);
-        let tagline = clipped(app.tagline, FontId::proportional(13.0), t.muted, text_w, 1);
+        let tagline = clipped(&app.tagline(), FontId::proportional(13.0), t.muted, text_w, 1);
         p.galley(pos2(text_x, tile.center().y + 6.0), p.layout_job(tagline), t.muted);
 
         // Description.
-        let blurb = clipped(app.blurb, FontId::proportional(12.5), t.muted, rect.width() - 2.0 * PAD, 3);
+        let blurb = clipped(&app.blurb(), FontId::proportional(12.5), t.muted, rect.width() - 2.0 * PAD, 3);
         p.galley(pos2(rect.left() + PAD, tile.bottom() + 18.0), p.layout_job(blurb), t.muted);
 
         // Where the engine comes from, in small print above the buttons.
@@ -989,7 +1007,7 @@ impl Hub {
             p.rect_filled(Rect::from_min_size(bar.min, vec2(bar.width() * frac, bar.height())), CornerRadius::ZERO, accent);
             if !job.removing {
                 let cancel_rect = Rect::from_min_size(pos2(rect.right() - PAD - cancel_w + 8.0, button.top()), vec2(cancel_w - 8.0, button.height()));
-                act_cancel = small_link(ui, &p, cancel_rect, "cancel", "CANCEL", t.muted);
+                act_cancel = small_link(ui, &p, cancel_rect, "cancel", &tr("hub.cancel"), t.muted);
             }
             handled = true;
         } else if ready {
@@ -997,7 +1015,7 @@ impl Hub {
             let over = ui.rect_contains_pointer(button);
             let fill = if over { t.invert_bg.lerp_to_gamma(accent, 0.35) } else { t.invert_bg };
             p.rect_filled(button, CornerRadius::ZERO, fill);
-            p.text(button.center(), Align2::CENTER_CENTER, "OPEN", mono(12.0), t.invert_fg);
+            p.text(button.center(), Align2::CENTER_CENTER, tr("hub.open"), mono(12.0), t.invert_fg);
             if managed {
                 if let Some(label) = self.fix_label(i).filter(|_| !busy_elsewhere) {
                     let upd = Rect::from_min_size(pos2(button.right() + 8.0, button.top()), vec2(100.0, 32.0));
@@ -1016,17 +1034,17 @@ impl Hub {
                     // Compact, so it also fits the narrowest card (320 px) next to OPEN.
                     let yes = Rect::from_min_size(pos2(rect.right() - PAD - 86.0, button.top()), vec2(42.0, 32.0));
                     let no = Rect::from_min_size(pos2(rect.right() - PAD - 42.0, button.top()), vec2(42.0, 32.0));
-                    p.text(pos2(yes.left() - 2.0, button.center().y), Align2::RIGHT_CENTER, "REMOVE?", mono(11.0), t.bad);
-                    if small_link(ui, &p, yes, "yes", "YES", t.bad) {
+                    p.text(pos2(yes.left() - 2.0, button.center().y), Align2::RIGHT_CENTER, tr("hub.remove_q"), mono(11.0), t.bad);
+                    if small_link(ui, &p, yes, "yes", &tr("hub.yes"), t.bad) {
                         act_remove = true;
                     }
-                    if small_link(ui, &p, no, "no", "NO", t.muted) {
+                    if small_link(ui, &p, no, "no", &tr("hub.no"), t.muted) {
                         self.confirm_remove = None;
                     }
                     handled = true;
                 } else if !busy_elsewhere {
                     let rm = Rect::from_min_size(pos2(rect.right() - PAD - 56.0, button.top()), vec2(56.0, 32.0));
-                    if small_link(ui, &p, rm, "remove", "REMOVE", t.faint) {
+                    if small_link(ui, &p, rm, "remove", &tr("hub.remove"), t.faint) {
                         self.confirm_remove = Some(i);
                         handled = true;
                     }
@@ -1034,21 +1052,21 @@ impl Hub {
             }
         } else if app.pack {
             let size = match &self.packs {
-                Packs::Ready(l) => l.plans.get(app.id).map(|pl| format!("INSTALL · {}", mb(pl.download_bytes))),
+                Packs::Ready(l) => l.plans.get(app.id).map(|pl| trf("hub.install_size", &[("size", &mb(pl.download_bytes))])),
                 _ => None,
             };
             let wide = Rect::from_min_size(button.min, vec2(168.0, 32.0));
             let r = ui.interact(wide, id("install"), if busy_elsewhere { Sense::hover() } else { Sense::click() });
             let fill = if busy_elsewhere { t.sunken } else if r.hovered() { t.invert_bg.lerp_to_gamma(accent, 0.35) } else { t.invert_bg };
             p.rect_filled(wide, CornerRadius::ZERO, fill);
-            let label = size.unwrap_or_else(|| if matches!(self.packs, Packs::Loading) { "LOADING…".to_owned() } else { "INSTALL".to_owned() });
+            let label = size.unwrap_or_else(|| if matches!(self.packs, Packs::Loading) { tr("hub.loading") } else { tr("hub.install") });
             p.text(wide.center(), Align2::CENTER_CENTER, label, mono(12.0), if busy_elsewhere { t.faint } else { t.invert_fg });
             if r.hovered() && !busy_elsewhere {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
             let r = match &self.packs {
-                _ if busy_elsewhere => r.on_hover_text("Another install is running."),
-                Packs::Failed(e) => r.on_hover_text(format!("The list of downloads could not be read ({e}). Click to try again.")),
+                _ if busy_elsewhere => r.on_hover_text(tr("hub.busy")),
+                Packs::Failed(e) => r.on_hover_text(trf("hub.list_failed", &[("err", e)])),
                 _ => r,
             };
             if !busy_elsewhere && r.clicked() {
@@ -1057,7 +1075,7 @@ impl Hub {
             handled = true;
         } else {
             p.rect(button, CornerRadius::ZERO, Color32::TRANSPARENT, egui::Stroke::new(1.0, t.line), StrokeKind::Inside);
-            p.text(button.center(), Align2::CENTER_CENTER, "COMING SOON", mono(11.0), t.faint);
+            p.text(button.center(), Align2::CENTER_CENTER, tr("hub.coming_soon"), mono(11.0), t.faint);
         }
 
         if act_cancel && let Some(job) = &self.job {
@@ -1074,40 +1092,46 @@ impl Hub {
     }
 
     /// The repair or update the card offers next to OPEN, if any.
-    fn fix_label(&self, i: usize) -> Option<&'static str> {
+    fn fix_label(&self, i: usize) -> Option<String> {
         match (&self.health[i], &self.status[i]) {
-            (Health::EngineMissing, _) => Some("REINSTALL"),
-            (Health::EngineUntested { .. }, _) => Some("BUNDLE ENGINE"),
-            (_, Some(Status::UpdateAvailable)) => Some("UPDATE"),
+            (Health::EngineMissing, _) => Some(tr("hub.fix_reinstall")),
+            (Health::EngineUntested { .. }, _) => Some(tr("hub.fix_bundle")),
+            (_, Some(Status::UpdateAvailable)) => Some(tr("hub.fix_update")),
             _ => None,
         }
     }
 
     /// The word and colour in the card's top-right corner.
-    fn status_text(&self, t: &Tokens, i: usize) -> (&'static str, Color32) {
+    fn status_text(&self, t: &Tokens, i: usize) -> (String, Color32) {
         if let Some(job) = self.job.as_ref().filter(|j| j.app == i) {
-            return (if job.removing { "REMOVING" } else { "INSTALLING" }, t.accent_ink);
+            return (tr(if job.removing { "hub.st_removing" } else { "hub.st_installing" }), t.accent_ink);
         }
         if self.found[i].is_some() {
             return match (&self.health[i], &self.status[i]) {
-                (Health::EngineMissing, _) => ("ENGINE MISSING", t.bad),
-                (Health::EngineUntested { .. }, _) => ("ENGINE UNTESTED", t.accent_ink),
-                (_, Some(Status::UpdateAvailable)) => ("UPDATE", t.accent_ink),
-                _ => ("READY", t.good),
+                (Health::EngineMissing, _) => (tr("hub.st_engine_missing"), t.bad),
+                (Health::EngineUntested { .. }, _) => (tr("hub.st_engine_untested"), t.accent_ink),
+                (_, Some(Status::UpdateAvailable)) => (tr("hub.st_update"), t.accent_ink),
+                _ => (tr("hub.st_ready"), t.good),
             };
         }
-        if APPS[i].pack { ("NOT INSTALLED", t.faint) } else { ("PLANNED", t.faint) }
+        if APPS[i].pack { (tr("hub.st_not_installed"), t.faint) } else { (tr("hub.st_planned"), t.faint) }
     }
 
     /// What a running install is doing, for the card's small print.
     fn job_line(&self, i: usize) -> Option<(String, bool)> {
         let job = self.job.as_ref().filter(|j| j.app == i)?;
         if job.removing {
-            return Some(("REMOVING…".into(), false));
+            return Some((tr("hub.job_removing"), false));
         }
         let pct = if job.total > 0 { format!(" {}%", job.done * 100 / job.total) } else { String::new() };
-        let what = if job.stage == "engine" { format!("{} ENGINE", APPS[i].engine.to_uppercase()) } else { "APP".to_owned() };
-        Some((format!("DOWNLOADING {what}{pct}"), false))
+        Some((
+            if job.stage == "engine" {
+                trf("hub.job_dl_engine", &[("engine", &APPS[i].engine.to_uppercase()), ("pct", &pct)])
+            } else {
+                trf("hub.job_dl_app", &[("pct", &pct)])
+            },
+            false,
+        ))
     }
 
     /// Small print about the engine: where it comes from now, or where it would come from. The bool marks a warning.
@@ -1116,22 +1140,22 @@ impl Hub {
         let engine = app.engine.to_uppercase();
         if let Some(have) = &self.installed[i] {
             return Some(match (&self.health[i], &have.engine) {
-                (Health::EngineMissing, _) => (format!("{engine} NOT FOUND · REINSTALL"), true),
-                (Health::EngineUntested { found }, _) => (format!("YOUR {engine} IS {found} · NOT TESTED"), true),
-                (_, Some((EngineSource::Bundled, v))) => (format!("BUNDLED {engine} {v}"), false),
-                (_, Some((EngineSource::System { .. }, v))) => (format!("USES YOUR {engine} {v}"), false),
+                (Health::EngineMissing, _) => (trf("hub.src_not_found", &[("engine", &engine)]), true),
+                (Health::EngineUntested { found }, _) => (trf("hub.src_untested", &[("engine", &engine), ("found", &found.to_string())]), true),
+                (_, Some((EngineSource::Bundled, v))) => (trf("hub.src_bundled_v", &[("engine", &engine), ("v", &v.to_string())]), false),
+                (_, Some((EngineSource::System { .. }, v))) => (trf("hub.src_uses_v", &[("engine", &engine), ("v", &v.to_string())]), false),
                 _ => return None,
             });
         }
         if self.found[i].is_some() {
-            return Some((format!("BUNDLED {engine}"), false)); // from the full download
+            return Some((trf("hub.src_bundled", &[("engine", &engine)]), false)); // from the full download
         }
         let Packs::Ready(l) = &self.packs else { return None };
         let pack = l.manifest.packs.iter().find(|p| p.id == app.id)?;
         let plan = l.plans.get(&pack.id)?;
         Some(match (&plan.engine, &pack.engine) {
-            (Some(EngineSource::System { version }), _) => (format!("WILL USE YOUR {engine} {version}"), false),
-            (Some(EngineSource::Bundled), Some(spec)) => (format!("INCLUDES {engine} {}", spec.version), false),
+            (Some(EngineSource::System { version }), _) => (trf("hub.src_will_use", &[("engine", &engine), ("version", &version.to_string())]), false),
+            (Some(EngineSource::Bundled), Some(spec)) => (trf("hub.src_includes", &[("engine", &engine), ("version", &spec.version.to_string())]), false),
             _ => return None,
         })
     }
@@ -1160,7 +1184,7 @@ impl Hub {
             self.icons.paint(&p, i, tile, tint, t.line_strong);
             let x = tile.right() + 14.0;
             p.text(pos2(x, rect.center().y - 9.0), Align2::LEFT_CENTER, app.name, FontId::proportional(16.0), t.ink_strong);
-            p.text(pos2(x, rect.center().y + 10.0), Align2::LEFT_CENTER, app.tagline, FontId::proportional(12.5), t.muted);
+            p.text(pos2(x, rect.center().y + 10.0), Align2::LEFT_CENTER, app.tagline(), FontId::proportional(12.5), t.muted);
 
             let (status, status_color) = self.status_text(t, i);
             let working = self.job.as_ref().is_some_and(|j| j.app == i);
@@ -1205,7 +1229,7 @@ impl Hub {
             } else if ready {
                 let over = ui.rect_contains_pointer(button);
                 p.rect_filled(button, CornerRadius::ZERO, if over { t.invert_bg.lerp_to_gamma(accent, 0.35) } else { t.invert_bg });
-                p.text(button.center(), Align2::CENTER_CENTER, "OPEN", mono(11.0), t.invert_fg);
+                p.text(button.center(), Align2::CENTER_CENTER, tr("hub.open"), mono(11.0), t.invert_fg);
                 if links {
                     let fix = self.fix_label(i);
                     let mut x = button.left() - 14.0;
@@ -1221,18 +1245,18 @@ impl Hub {
                         resp.clicked()
                     };
                     if self.confirm_remove == Some(i) {
-                        if link(ui, "row-yes", "YES, REMOVE", 100.0, t.bad) {
+                        if link(ui, "row-yes", &tr("hub.yes_remove"), 100.0, t.bad) {
                             act_remove = true;
                         }
-                        if link(ui, "row-no", "NO", 36.0, t.muted) {
+                        if link(ui, "row-no", &tr("hub.no"), 36.0, t.muted) {
                             self.confirm_remove = None;
                         }
                     } else {
-                        if link(ui, "row-remove", "REMOVE", 70.0, t.faint) {
+                        if link(ui, "row-remove", &tr("hub.remove"), 70.0, t.faint) {
                             self.confirm_remove = Some(i);
                         }
                         if let Some(label) = fix
-                            && link(ui, "row-update", label, 110.0, t.accent_ink)
+                            && link(ui, "row-update", &label, 110.0, t.accent_ink)
                         {
                             act_install = true;
                         }
@@ -1241,10 +1265,10 @@ impl Hub {
                 }
             } else if app.pack {
                 let label = match &self.packs {
-                    Packs::Ready(l) => l.plans.get(app.id).map(|pl| format!("INSTALL · {}", mb(pl.download_bytes))),
+                    Packs::Ready(l) => l.plans.get(app.id).map(|pl| trf("hub.install_size", &[("size", &mb(pl.download_bytes))])),
                     _ => None,
                 }
-                .unwrap_or_else(|| "INSTALL".to_owned());
+                .unwrap_or_else(|| tr("hub.install"));
                 let wide = Rect::from_min_max(pos2(rect.right() - PAD - 160.0, button.top()), pos2(rect.right() - PAD, button.bottom()));
                 let r = ui.interact(wide, ui.scope_id().with(("install-row", app.id)), if busy_elsewhere { Sense::hover() } else { Sense::click() });
                 let fill = if busy_elsewhere { t.sunken } else if r.hovered() { t.invert_bg.lerp_to_gamma(accent, 0.35) } else { t.invert_bg };
@@ -1257,7 +1281,7 @@ impl Hub {
                 handled = true;
             } else {
                 p.rect(button, CornerRadius::ZERO, Color32::TRANSPARENT, egui::Stroke::new(1.0, t.line), StrokeKind::Inside);
-                p.text(button.center(), Align2::CENTER_CENTER, "SOON", mono(11.0), t.faint);
+                p.text(button.center(), Align2::CENTER_CENTER, tr("hub.soon"), mono(11.0), t.faint);
             }
             if act_remove {
                 self.confirm_remove = None;
@@ -1309,7 +1333,7 @@ fn clipped(text: &str, font: FontId, color: Color32, width: f32, rows: usize) ->
 
 fn main() -> eframe::Result {
     // The notes the DWG conversion reports come from its own app catalog.
-    i18n::init(&[SHELL_CATALOG, include_str!("../../crates/app-dwg-to-pdf/assets/strings.tsv")]);
+    i18n::init(&[SHELL_CATALOG, include_str!("../../crates/app-dwg-to-pdf/assets/strings.tsv"), HUB_CATALOG]);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1040.0, 820.0])

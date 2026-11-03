@@ -4,6 +4,16 @@ All notable changes to voidflare are listed here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-11-03
+
+### Added
+
+- **The hub speaks your language.** The hub's own texts (the cards, the drop panel, the footer, the settings and the welcome dialog) are now in English, Italian, Spanish, French and German, following the language chosen in the settings; the change shows at once in the hub, and in the converter apps the next time they start. The translations have not been reviewed by native speakers yet; the names of the Windows menu entries in the pinning instructions are written from memory.
+
+### Changed
+
+- **The ArtCraft engines are updated to the latest releases:** WordCraft 0.15.0 (was 0.12.0), GridCraft 0.16.0 (0.13.0), DeckCraft 0.15.0 (0.12.0), PdfCraft 0.18.0 (0.15.0), PhotoCraft 0.20.1 (0.19.0), SoundCraft 0.17.0 (0.16.0) and FilmCraft 0.17.0 (0.16.0). Each passed the engine test (one real conversion per engine, with the bundled copy and with the installed one) and is now on the list of versions an app may reuse from your PC.
+
 ## [0.3.4] - 2026-11-03
 
 ### Fixed

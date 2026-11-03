@@ -3,11 +3,11 @@
 
 use std::path::PathBuf;
 
+use vf_core::i18n;
+
 pub struct App {
     pub id: &'static str,
     pub name: &'static str,
-    pub tagline: &'static str,
-    pub blurb: &'static str,
     /// The ArtCraft engine doing the work.
     pub engine: &'static str,
     pub color: [u8; 3],
@@ -17,12 +17,22 @@ pub struct App {
     pub pack: bool,
 }
 
+impl App {
+    /// The one-line description under the name, in the chosen language.
+    pub fn tagline(&self) -> String {
+        i18n::t(&format!("hub.app.{}.tagline", self.id))
+    }
+
+    /// The short paragraph on the card, in the chosen language.
+    pub fn blurb(&self) -> String {
+        i18n::t(&format!("hub.app.{}.blurb", self.id))
+    }
+}
+
 pub const APPS: &[App] = &[
     App {
         id: "dwg-to-pdf",
         name: "DWG to PDF",
-        tagline: "CAD drawings to PDF",
-        blurb: "Sheets or the whole drawing, merged or separate. Runs offline: drawings never leave this PC.",
         engine: "CADCraft",
         color: [0x3f, 0xd6, 0xb8],
         exe: Some("DWG2PDF-portable/DWG2PDF.exe"),
@@ -31,8 +41,6 @@ pub const APPS: &[App] = &[
     App {
         id: "word-to-pdf",
         name: "Word to PDF",
-        tagline: "Documents to PDF",
-        blurb: "DOCX, DOC, RTF and ODT to PDF, one file or a whole folder. No Office needed, nothing uploaded.",
         engine: "WordCraft",
         color: [0x2d, 0x81, 0xff],
         exe: Some("WORD2PDF-portable/WORD2PDF.exe"),
@@ -41,8 +49,6 @@ pub const APPS: &[App] = &[
     App {
         id: "excel-to-pdf",
         name: "Excel to PDF",
-        tagline: "Spreadsheets to PDF",
-        blurb: "XLSX, CSV and TSV spreadsheets to PDF, one file or a whole folder. No Office needed, nothing uploaded.",
         engine: "GridCraft",
         color: [0x4a, 0xd2, 0x7a],
         exe: None,
@@ -51,8 +57,6 @@ pub const APPS: &[App] = &[
     App {
         id: "slides-to-pdf",
         name: "Slides to PDF",
-        tagline: "Presentations to PDF",
-        blurb: "PowerPoint presentations to PDF, one file or a whole folder. No Office needed, nothing uploaded.",
         engine: "DeckCraft",
         color: [0xff, 0xc1, 0x4d],
         exe: None,
@@ -61,8 +65,6 @@ pub const APPS: &[App] = &[
     App {
         id: "pdf-tools",
         name: "PDF Tools",
-        tagline: "Convert, merge, split, OCR, shrink",
-        blurb: "PDF to Word, PowerPoint, HTML, RTF, text or pictures; merge, split, extract pages, shrink; OCR in English.",
         engine: "PdfCraft",
         color: [0xff, 0x62, 0x59],
         exe: None,
@@ -71,8 +73,6 @@ pub const APPS: &[App] = &[
     App {
         id: "image-converter",
         name: "Image Converter",
-        tagline: "Convert images in batch",
-        blurb: "PNG, JPG, WebP, TIFF, BMP, GIF, ICO and more, one image or a whole folder. Nothing uploaded.",
         engine: "PhotoCraft",
         color: [0xb0, 0x8c, 0xff],
         exe: None,
@@ -81,8 +81,6 @@ pub const APPS: &[App] = &[
     App {
         id: "audio-converter",
         name: "Audio Converter",
-        tagline: "Convert and normalise audio",
-        blurb: "MP3, OGG, M4A, FLAC, WAV and more to WAV, FLAC or AIFF. Change the sample rate and bit depth, normalise the volume.",
         engine: "SoundCraft",
         color: [0xff, 0x7a, 0xc8],
         exe: None,
@@ -91,8 +89,6 @@ pub const APPS: &[App] = &[
     App {
         id: "video-converter",
         name: "Video Converter",
-        tagline: "Convert and compress video",
-        blurb: "MP4, MOV, MKV, WebM, AVI and more to MP4 (H.264), ProRes MOV or GIF, or take just the sound. Nothing uploaded.",
         engine: "FilmCraft",
         color: [0x4d, 0xc8, 0xff],
         exe: None,
@@ -101,8 +97,6 @@ pub const APPS: &[App] = &[
     App {
         id: "ebook-converter",
         name: "E-book Converter",
-        tagline: "EPUB, Kindle, text, Word, PDF",
-        blurb: "EPUB and Kindle books (AZW3, MOBI; no DRM) to EPUB, text, HTML, PDF or Word, and text, HTML or Word files to EPUB. Books with DRM are refused. Nothing uploaded.",
         engine: "WordCraft",
         color: [0xe8, 0xb0, 0x5a],
         exe: None,
@@ -128,4 +122,40 @@ pub fn locate(app: &App) -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const CATALOG: &str = include_str!("../assets/hub.tsv");
+
+    /// Every key the hub's code asks for, found in the sources, must be in the catalog in all five languages,
+    /// and every catalog key must be used (so a removed text does not linger untranslated).
+    #[test]
+    fn the_hub_catalog_is_complete_and_matches_the_code() {
+        assert!(i18n::gaps(CATALOG).is_empty(), "missing translations: {:?}", i18n::gaps(CATALOG));
+        let keys: Vec<&str> = CATALOG.lines().skip(1).filter_map(|l| l.split('\t').next()).collect();
+        let sources = [include_str!("main.rs"), include_str!("settings.rs"), include_str!("catalog.rs")].join("\n");
+        let mut used: Vec<String> = Vec::new();
+        for part in sources.split('"').skip(1).step_by(2) {
+            if part.starts_with("hub.") && part.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) {
+                used.push(part.to_owned());
+            }
+        }
+        for app in APPS {
+            used.push(format!("hub.app.{}.tagline", app.id));
+            used.push(format!("hub.app.{}.blurb", app.id));
+        }
+        for key in &used {
+            // the app keys are built with format!, so the placeholder form is not a real key
+            if key.contains('{') {
+                continue;
+            }
+            assert!(keys.contains(&key.as_str()), "the code asks for {key}, which is not in hub.tsv");
+        }
+        for key in keys {
+            assert!(used.iter().any(|u| u == key), "{key} is in hub.tsv but no code uses it");
+        }
+    }
 }
