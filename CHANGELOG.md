@@ -4,8 +4,11 @@ All notable changes to voidflare are listed here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-03
+
 ### Added
 
+- **Choose the appearance in the settings:** *Same as Windows* (as before, and still the default), *Dark* or *Light*. The hub changes at once; the converter apps use the same choice the next time they start.
 - **Drag and drop now shows itself.** While files are dragged over an app, a veil with a border and "Drop the files here to add them" says where to let go; files that cannot be added (a type the app does not read, or already in the list) are now reported instead of silently ignored. Applies to every converter app, PDF Tools and DWG to PDF included.
 
 ### Changed

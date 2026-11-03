@@ -88,10 +88,92 @@ pub fn rgb(c: [u8; 3]) -> Color32 {
     Color32::from_rgb(c[0], c[1], c[2])
 }
 
-/// Installs both appearances; egui picks the one that matches the system.
+/// The appearance the user picked in the hub's settings. Saved in `%APPDATA%\voidflare\theme.txt` (one word:
+/// `system`, `dark` or `light`), shared by the hub and every app, like the language. Without the file, or with
+/// anything else in it, voidflare follows Windows, as it did before the choice existed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Appearance {
+    System,
+    Dark,
+    Light,
+}
+
+impl Appearance {
+    pub const ALL: [Self; 3] = [Self::System, Self::Dark, Self::Light];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::System => "Same as Windows",
+            Self::Dark => "Dark",
+            Self::Light => "Light",
+        }
+    }
+
+    fn word(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Dark => "dark",
+            Self::Light => "light",
+        }
+    }
+
+    pub fn preference(self) -> egui::ThemePreference {
+        match self {
+            Self::System => egui::ThemePreference::System,
+            Self::Dark => egui::ThemePreference::Dark,
+            Self::Light => egui::ThemePreference::Light,
+        }
+    }
+
+    fn file() -> Option<std::path::PathBuf> {
+        std::env::var_os("APPDATA").map(|d| std::path::PathBuf::from(d).join("voidflare").join("theme.txt"))
+    }
+
+    fn parse(text: &str) -> Self {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "dark" => Self::Dark,
+            "light" => Self::Light,
+            _ => Self::System,
+        }
+    }
+
+    /// The saved choice, `System` when there is none.
+    pub fn load() -> Self {
+        Self::file().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| Self::parse(&t)).unwrap_or(Self::System)
+    }
+
+    /// Remembers the choice for the next start of the hub and of every app. A failed write is not an error: the
+    /// choice still applies to the running window.
+    pub fn save(self) {
+        if let Some(path) = Self::file() {
+            if let Some(dir) = path.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            let _ = std::fs::write(path, self.word());
+        }
+    }
+}
+
+/// Installs both appearances and applies the saved choice (egui follows the system when it is `System`).
 pub fn install(ctx: &egui::Context) {
     ctx.set_visuals_of(egui::Theme::Dark, visuals(&Tokens::DARK));
     ctx.set_visuals_of(egui::Theme::Light, visuals(&Tokens::LIGHT));
+    ctx.set_theme(Appearance::load().preference());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Appearance;
+
+    #[test]
+    fn appearance_words_round_trip_and_unknown_means_system() {
+        for a in Appearance::ALL {
+            assert_eq!(Appearance::parse(a.word()), a);
+        }
+        assert_eq!(Appearance::parse(" Dark\r\n"), Appearance::Dark);
+        assert_eq!(Appearance::parse(""), Appearance::System);
+        assert_eq!(Appearance::parse("purple"), Appearance::System);
+    }
 }
 
 fn visuals(t: &Tokens) -> Visuals {

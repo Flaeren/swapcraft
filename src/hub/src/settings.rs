@@ -11,7 +11,7 @@ use eframe::egui::{self, Color32, FontId, Id, Modal, Pos2, Rect, RichText, Sense
 use vf_core::i18n::{self, Lang};
 use vf_core::shortcuts::{self, State};
 use vf_core::update;
-use vf_ui::theme::Tokens;
+use vf_ui::theme::{Appearance, Tokens};
 
 fn mono(size: f32) -> FontId {
     FontId::monospace(size)
@@ -40,6 +40,7 @@ pub struct Settings {
     /// The welcome dialog is showing.
     welcome: bool,
     lang: Lang,
+    appearance: Appearance,
     shortcut: State,
     /// What the last action said, and whether it failed.
     msg: Option<(String, bool)>,
@@ -50,7 +51,7 @@ pub struct Settings {
 impl Settings {
     pub fn new() -> Self {
         let welcome = data_dir().is_some_and(|d| !welcome_done_in(&d));
-        Self { open: false, welcome, lang: i18n::remembered().unwrap_or(Lang::En), shortcut: State::Missing, msg: None, recheck_at: None }
+        Self { open: false, welcome, lang: i18n::remembered().unwrap_or(Lang::En), appearance: Appearance::load(), shortcut: State::Missing, msg: None, recheck_at: None }
     }
 
     pub fn show_welcome(&self) -> bool {
@@ -165,6 +166,17 @@ impl Settings {
                 });
             });
             ui.label(RichText::new("English is the default. The choice applies to the converter apps the next time they start; this window stays in English for now.").size(12.0).color(t.faint));
+
+            section(ui, t, "APPEARANCE");
+            egui::ComboBox::from_id_salt("appearance").selected_text(self.appearance.name()).show_ui(ui, |ui| {
+                for a in Appearance::ALL {
+                    if ui.selectable_value(&mut self.appearance, a, a.name()).clicked() {
+                        a.save();
+                        ctx.set_theme(a.preference());
+                    }
+                }
+            });
+            ui.label(RichText::new("The hub changes at once; the converter apps use the same choice the next time they start.").size(12.0).color(t.faint));
 
             section(ui, t, "UPDATES");
             if ui.checkbox(auto_on, "Check for a newer version when voidflare starts").changed() {
