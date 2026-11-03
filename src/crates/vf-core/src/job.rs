@@ -107,13 +107,20 @@ fn last_line(path: &Path) -> String {
 /// Converts one file. The engine writes to a temp file with a plain name first, so accents and odd
 /// spaces in the final name never reach it.
 pub fn convert_one(spec: &Spec, src: &Path, out_dir: &Path) -> Result<PathBuf, String> {
+    convert_one_noted(spec, src, out_dir, &|_| {})
+}
+
+/// [`convert_one`] that also reports side notes (documents embedded in a Word file, for one) through `note`.
+pub fn convert_one_noted(spec: &Spec, src: &Path, out_dir: &Path, note: &dyn Fn(String)) -> Result<PathBuf, String> {
     let tmp = scratch_dir().map_err(|e| e.to_string())?;
-    let result = run_in(&tmp, spec, src, out_dir);
+    // The engine runs in the scratch folder, so a relative path would be looked up there.
+    let src = &std::path::absolute(src).unwrap_or_else(|_| src.to_path_buf());
+    let result = run_in(&tmp, spec, src, out_dir, note);
     let _ = fs::remove_dir_all(&tmp);
     result
 }
 
-fn run_in(tmp: &Path, spec: &Spec, src: &Path, out_dir: &Path) -> Result<PathBuf, String> {
+fn run_in(tmp: &Path, spec: &Spec, src: &Path, out_dir: &Path, note: &dyn Fn(String)) -> Result<PathBuf, String> {
     let target = tmp.join(format!("out.{}", spec.out_ext));
     let mut cmd = Command::new(&spec.cli);
     cmd.arg("convert").arg(src).arg(&target).args(&spec.extra_args);
@@ -123,6 +130,10 @@ fn run_in(tmp: &Path, spec: &Spec, src: &Path, out_dir: &Path) -> Result<PathBuf
     run_command(&mut cmd, tmp)?;
     if !target.is_file() {
         return Err("the engine finished but wrote no file".to_owned());
+    }
+    // The engine draws an embedded document as a picture; its pages follow the converted PDF.
+    if crate::embedded::applies(spec, src) {
+        crate::embedded::append_to_pdf(src, &target, &spec.cli, note);
     }
     let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("out");
     deliver(&target, out_dir, &format!("{stem}.{}", spec.out_ext))
@@ -241,7 +252,7 @@ pub fn spawn_batch(spec: Spec, files: Vec<PathBuf>, dest: Destination, tx: mpsc:
         .map(|src| {
             let label = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             let (spec, out_dir, source) = (spec.clone(), out_dir_for(&dest, &src), src.clone());
-            Item { label, source: src, run: Box::new(move |_| convert_one(&spec, &source, &out_dir)) }
+            Item { label, source: src, run: Box::new(move |note| convert_one_noted(&spec, &source, &out_dir, note)) }
         })
         .collect();
     spawn_tasks(items, tx, cancel);

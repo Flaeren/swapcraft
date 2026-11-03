@@ -158,7 +158,7 @@ fn run_with(job: Job, cli: PathBuf, source: &Path, out_dir: &Path, note: &dyn Fn
     match job {
         Job::Engine(_, out_ext) => {
             let spec = Spec { cli, out_ext: out_ext.to_owned(), extra_args: vec![], env: vec![] };
-            job::convert_one(&spec, source, out_dir)
+            job::convert_one_noted(&spec, source, out_dir, note)
         }
         Job::Ebook(kind) => {
             let spec = Spec { cli, out_ext: kind.ext().to_owned(), extra_args: vec![], env: vec![] };

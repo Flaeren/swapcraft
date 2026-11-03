@@ -4,6 +4,13 @@ All notable changes to voidflare are listed here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-11-03
+
+### Fixed
+
+- **Word to PDF no longer loses the documents embedded in a Word file.** A PDF, Word, Excel or PowerPoint file inserted with *Insert > Object* (typically inside a table) was drawn as its small preview picture and the document inside was lost. Their pages are now read out of the file and added at the end of the PDF, one bookmark each, and the log says how many. Objects that cannot be read (old binary Office files, linked files) stay as a picture and are counted in the log.
+- A relative file name on the command line (`voidflare-cli convert file.docx --to pdf`) failed, because the engine looked for it in its scratch folder.
+
 ## [0.3.3] - 2026-11-03
 
 ### Added

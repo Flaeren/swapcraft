@@ -3,6 +3,7 @@
 
 pub mod dwg;
 pub mod ebook;
+pub mod embedded;
 pub mod engine;
 pub mod epub;
 pub mod film;
