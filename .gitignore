@@ -16,11 +16,6 @@
 *.pdb
 __pycache__/
 
-# Website
-/site/node_modules/
-/site/dist/
-/site/.astro/
-
 # Working notes written for the maintainer's own sessions.
 /src/CLAUDE.md
 /src/TODO.md

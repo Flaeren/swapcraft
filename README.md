@@ -144,7 +144,6 @@ src/
   fetch-engines.ps1  downloads and verifies them (and builds CADCraft with our patch)
   build-apps.ps1  builds everything into portable/
   release.ps1     packs portable/ into the release files (full bundle, hub, apps, engines, manifest.json, SHA256SUMS.txt)
-site/             the website (voidflare.app)
 docs/             images for this page
 ```
 
