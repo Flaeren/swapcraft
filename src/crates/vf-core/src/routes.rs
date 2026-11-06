@@ -211,6 +211,17 @@ pub fn route_id(route: &Route) -> String {
     }
 }
 
+/// The extension of the file a route writes, or `None` when it writes a folder (one picture per PDF page).
+pub fn output_ext(route: &Route) -> Option<&'static str> {
+    match route.job {
+        Job::Engine(_, ext) | Job::Film(ext, _) => Some(ext),
+        Job::Ebook(kind) => Some(kind.ext()),
+        Job::PdfExport(Export::Png { .. } | Export::Jpeg { .. }) => None,
+        Job::PdfExport(what) => Some(what.ext()),
+        Job::DwgMerged | Job::DwgWhole => Some("pdf"),
+    }
+}
+
 /// The route taking files of `ext` that makes `to` (a [`route_id`], or its label as a fallback).
 pub fn find_route(ext: &str, to: &str) -> Option<&'static Route> {
     let to = to.trim().trim_start_matches('.').to_lowercase();

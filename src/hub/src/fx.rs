@@ -1,8 +1,10 @@
 //! The Journal look, as in `design-styles\journalpatrimony`: a torch that follows the pointer, a grid of
 //! fine dots that swell and part around it, and borders that light up where it passes. Dark theme only.
+//! The light itself is off by default (a setting turns it on); the dots always follow the pointer.
 //! Nothing animates on its own: the hub repaints only while the torch is still catching up with the pointer.
 
 use std::f32::consts::TAU;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use eframe::egui::{self, Color32, Id, Mesh, Painter, Pos2, Rect, Shape, Stroke, pos2, vec2};
 use vf_ui::theme::Tokens;
@@ -15,6 +17,35 @@ const TORCH_R: f32 = 170.0;
 /// How much of the way to the pointer the torch covers each frame at 60 fps.
 const FOLLOW: f32 = 0.12;
 
+/// The torch's light (the glow under the pointer, on borders and cards) is off unless the user turns it on in the
+/// settings; the dots follow the pointer either way. Saved in `%APPDATA%oidflare	orch.txt` (`on` / `off`).
+static LIGHT: AtomicU8 = AtomicU8::new(0); // 0 unread, 1 off, 2 on
+
+fn light_file() -> Option<std::path::PathBuf> {
+    std::env::var_os("APPDATA").map(|d| std::path::PathBuf::from(d).join("voidflare").join("torch.txt"))
+}
+
+pub fn light_on() -> bool {
+    match LIGHT.load(Ordering::Relaxed) {
+        0 => {
+            let on = light_file().and_then(|p| std::fs::read_to_string(p).ok()).is_some_and(|t| t.trim() == "on");
+            LIGHT.store(if on { 2 } else { 1 }, Ordering::Relaxed);
+            on
+        }
+        v => v == 2,
+    }
+}
+
+pub fn set_light(on: bool) {
+    LIGHT.store(if on { 2 } else { 1 }, Ordering::Relaxed);
+    if let Some(p) = light_file() {
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(p, if on { "on" } else { "off" });
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Torch {
     pub pos: Pos2,
@@ -22,11 +53,13 @@ pub struct Torch {
     pub power: f32,
     /// 0..1, grows while a file is dragged over the window.
     pub boost: f32,
+    /// 0..1: the torch's light, faded in and out when it is turned on or off in the settings.
+    pub light: f32,
 }
 
 impl Default for Torch {
     fn default() -> Self {
-        Self { pos: Pos2::ZERO, power: 0.0, boost: 0.0 }
+        Self { pos: Pos2::ZERO, power: 0.0, boost: 0.0, light: 0.0 }
     }
 }
 
@@ -53,7 +86,8 @@ impl Fx {
                 ctx.request_repaint();
             }
         }
-        Torch { pos: self.pos.unwrap_or(Pos2::ZERO), power, boost }
+        let light = ctx.animate_bool_with_time(Id::NULL.with("torch-light"), light_on(), 0.3);
+        Torch { pos: self.pos.unwrap_or(Pos2::ZERO), power, boost, light }
     }
 }
 
@@ -72,9 +106,9 @@ impl Torch {
         if !t.dark {
             return;
         }
-        if self.power > 0.0 {
+        if self.power * self.light > 0.0 {
             let tint = t.ink.lerp_to_gamma(t.accent, self.boost);
-            radial(p, self.pos, self.radius(), tint, (0.10 + 0.05 * self.boost) * self.power);
+            radial(p, self.pos, self.radius(), tint, (0.10 + 0.05 * self.boost) * self.power * self.light);
         }
         let cell = if area.width() < 700.0 { 22.0 } else { CELL };
         let (cols, rows) = ((area.width() / cell).ceil() as i32, (area.height() / cell).ceil() as i32);
@@ -98,11 +132,11 @@ impl Torch {
     pub fn border(&self, p: &Painter, rect: Rect, base: Option<Color32>, glow: Color32, dash: f32, gap: f32, reach: f32) {
         let r = rect.shrink(0.5);
         let reach = reach * (1.0 + 0.6 * self.boost);
-        if base.is_none() && (self.power <= 0.0 || r.distance_to_pos(self.pos) > reach) {
+        if base.is_none() && (self.power * self.light <= 0.0 || r.distance_to_pos(self.pos) > reach) {
             return;
         }
         walk(r, dash, gap, |a, b| {
-            let k = self.near(a.lerp(b, 0.5), reach);
+            let k = self.near(a.lerp(b, 0.5), reach) * self.light;
             match base {
                 Some(base) => {
                     p.line_segment([a, b], Stroke::new(1.0, base.lerp_to_gamma(glow, k * 0.9)));

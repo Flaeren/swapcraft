@@ -4,6 +4,19 @@ All notable changes to voidflare are listed here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-06
+
+### Added
+
+- **Recipes.** A new RECIPES tab in the hub: name a chain of steps (convert, merge into one PDF, shrink, OCR, split, extract pages) and run it on files in one go, for example *DWG to PDF sheets, merge everything, make it smaller*. Each step is something the apps already do, so the result is the same as doing the steps by hand; the files in between stay in a scratch folder and only the last ones are saved, next to the first file or in a folder you choose, with a name you choose (`{name}`, `{folder}`, `{recipe}`), never over an existing file. The tab shows which file types a recipe takes and says when no type can go through its steps. Three example recipes are there on the first start. When you drop a file, the recipes that take it are offered under the formats.
+- **Right-click menu in File Explorer** (Settings > Right-click menu): *Convert with voidflare* on every type voidflare converts, with that type's conversions, the recipes that take it, and *Open in* the app with all the options. With several files selected they are converted together, in one small window that shows the progress and opens the folder at the end. It is added for your Windows user only, no administrator needed, and removing it takes away everything it added. On Windows 11 it is under *Show more options*: the short menu only takes signed, packaged apps. `voidflare.exe --add-menu` and `--remove-menu` do the same from a script.
+- **Recipes from the command line and the MCP server:** `voidflare-cli recipes` lists them, `voidflare-cli recipe "<name>" <files or folders>` runs one; the MCP server has `voidflare_recipes` and `voidflare_recipe_run`, and a recipe that saves to a fixed folder may only do so inside the folders the server was allowed.
+
+### Changed
+
+- **The hub's torch light is off by default.** The dots still swell and part around the pointer; the glow under it and on the borders can be turned back on in Settings > Appearance (*Torch light under the pointer*).
+- **The ArtCraft engines are updated to the latest releases:** WordCraft 0.15.2, GridCraft 0.16.1, DeckCraft 0.15.1, PdfCraft 0.18.2, PhotoCraft 0.20.2, SoundCraft 0.17.1 and FilmCraft 0.17.1. Most are the same code as before, released again with signed programs; WordCraft 0.15.1 and PdfCraft 0.18.1 also bring fixes (Word import, smaller pictures under masks when shrinking a PDF). Each passed the engine test with the bundled copy and the installed one, and a real 127-page book and a spreadsheet were converted with the new bundled engines.
+
 ## [0.3.5] - 2026-11-03
 
 ### Added

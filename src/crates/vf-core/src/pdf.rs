@@ -22,7 +22,7 @@ pub enum Export {
 }
 
 impl Export {
-    fn ext(self) -> &'static str {
+    pub fn ext(self) -> &'static str {
         match self {
             Export::Docx => "docx",
             Export::Pptx => "pptx",

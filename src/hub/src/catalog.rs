@@ -136,12 +136,20 @@ mod tests {
     fn the_hub_catalog_is_complete_and_matches_the_code() {
         assert!(i18n::gaps(CATALOG).is_empty(), "missing translations: {:?}", i18n::gaps(CATALOG));
         let keys: Vec<&str> = CATALOG.lines().skip(1).filter_map(|l| l.split('\t').next()).collect();
-        let sources = [include_str!("main.rs"), include_str!("settings.rs"), include_str!("catalog.rs")].join("\n");
+        // catalog.rs last: the split('"') below has one quote, which would shift every file after it
+        let sources = [include_str!("main.rs"), include_str!("settings.rs"), include_str!("recipes.rs"), include_str!("menu.rs"), include_str!("catalog.rs")].join("\n");
         let mut used: Vec<String> = Vec::new();
         for part in sources.split('"').skip(1).step_by(2) {
-            if part.starts_with("hub.") && part.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) {
+            if ["hub.", "rec.", "menu."].iter().any(|p| part.starts_with(p)) && !part.ends_with(".rs") && !part.ends_with('.') && part.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) {
                 used.push(part.to_owned());
             }
+        }
+        // built with format! in recipes.rs
+        for kind in vf_core::recipe::Step::KINDS {
+            used.push(format!("rec.step_{kind}"));
+        }
+        for level in vf_core::recipe::Level::ALL {
+            used.push(format!("rec.level_{}", level.word()));
         }
         for app in APPS {
             used.push(format!("hub.app.{}.tagline", app.id));

@@ -20,6 +20,9 @@ USAGE:
   voidflare-cli formats                           what converts to what (JSON)
   voidflare-cli convert <file> --to <format> [--out-dir DIR] [--json]
   voidflare-cli engines                           which engines were found (JSON)
+  voidflare-cli recipes                           the recipes saved in the hub (JSON)
+  voidflare-cli recipe <name> <file|folder>... [--json]
+                                                  run a saved recipe on files
   voidflare-cli mcp [--allow DIR]... [--allow-all]
                                                   MCP server on stdin/stdout. It may only touch the folder
                                                   it was started in plus each --allow DIR (--allow-all: anywhere).
@@ -32,6 +35,14 @@ fn main() -> ExitCode {
         Some("formats") => print_json(&api::formats()),
         Some("engines") => print_json(&api::engines()),
         Some("convert") => convert(&args[1..]),
+        Some("recipes") => match api::recipes() {
+            Ok(v) => print_json(&v),
+            Err(e) => {
+                eprintln!("error: {e}");
+                ExitCode::from(1)
+            }
+        },
+        Some("recipe") => run_recipe(&args[1..]),
         Some("mcp") => serve_mcp(&args[1..]),
         Some("--version" | "-V") => {
             println!("voidflare-cli {}", env!("CARGO_PKG_VERSION"));
@@ -76,6 +87,37 @@ fn convert(args: &[String]) -> ExitCode {
         Ok(v) if json => print_json(&v),
         Ok(v) => {
             println!("{}", v["output"].as_str().unwrap_or_default());
+            ExitCode::SUCCESS
+        }
+        Err(e) if json => {
+            println!("{}", serde_json::json!({ "error": e }));
+            ExitCode::from(1)
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn run_recipe(args: &[String]) -> ExitCode {
+    let json = args.iter().any(|a| a == "--json");
+    let rest: Vec<&String> = args.iter().filter(|a| *a != "--json").collect();
+    let Some((name, files)) = rest.split_first().filter(|(_, f)| !f.is_empty()) else {
+        eprintln!("recipe needs a recipe name and at least one file\n\n{HELP}");
+        return ExitCode::from(2);
+    };
+    let files: Vec<PathBuf> = files.iter().map(PathBuf::from).collect();
+    let result = api::find_recipe(name).and_then(|r| api::recipe_run(&r, &files));
+    match result {
+        Ok(v) if json => print_json(&v),
+        Ok(v) => {
+            for o in v["outputs"].as_array().into_iter().flatten() {
+                println!("{}", o.as_str().unwrap_or_default());
+            }
+            for f in v["failed"].as_array().into_iter().flatten() {
+                eprintln!("failed: {}: {}", f["input"].as_str().unwrap_or_default(), f["error"].as_str().unwrap_or_default());
+            }
             ExitCode::SUCCESS
         }
         Err(e) if json => {

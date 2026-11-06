@@ -159,6 +159,21 @@ fn tools() -> Vec<Value> {
             &["path"],
         ),
         tool("voidflare_engines", "Which conversion engines voidflare found on this PC, with versions. Use it to find out why a conversion failed.", json!({}), &[]),
+        tool(
+            "voidflare_recipes",
+            "List the recipes the user saved in voidflare: named chains of steps (convert, merge, shrink, OCR, split, extract) with the file types each takes.",
+            json!({}),
+            &[],
+        ),
+        tool(
+            "voidflare_recipe_run",
+            "Run one of the user's saved recipes on files. Results go where the recipe says (by default beside the first file). Files the recipe cannot take are listed as failed.",
+            json!({
+                "name": { "type": "string", "description": "Recipe name from voidflare_recipes (case does not matter)." },
+                "paths": { "type": "array", "items": { "type": "string" }, "description": "Absolute paths of the files (or folders) to run it on." }
+            }),
+            &["name", "paths"],
+        ),
     ]
 }
 
@@ -216,6 +231,17 @@ pub fn call(sb: &Sandbox, name: &str, args: &Value) -> Result<Value, String> {
             api::pdf_shrink(&file, uint(args, "ppi", 150, 30, 600)?, uint(args, "quality", 60, 10, 100)?, opt_out(sb, args)?.as_deref())
         }
         "voidflare_info" => api::info(&sb.file(text_arg(args, "path")?)?),
+        "voidflare_recipes" => api::recipes(),
+        "voidflare_recipe_run" => {
+            let recipe = api::find_recipe(text_arg(args, "name")?)?;
+            // A recipe that saves to a fixed folder may only do so inside the sandbox, like out_dir.
+            if let vf_core::recipe::Out::Folder(f) = &recipe.out {
+                sb.out_dir(&f.to_string_lossy())?;
+            }
+            let list = args.get("paths").and_then(Value::as_array).ok_or("missing 'paths'")?;
+            let files = list.iter().map(|v| v.as_str().ok_or_else(|| "'paths' must be strings".to_owned()).and_then(|s| sb.file(s))).collect::<Result<Vec<_>, _>>()?;
+            api::recipe_run(&recipe, &files)
+        }
         other => Err(format!("unknown tool '{other}'")),
     }
 }

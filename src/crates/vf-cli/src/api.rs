@@ -102,6 +102,49 @@ pub fn pdf_shrink(input: &Path, ppi: u32, quality: u32, out_dir: Option<&Path>) 
     vf_core::pdf::batch(&pdfcraft()?, input, vf_core::pdf::Pass::Shrink { ppi, quality }, &beside(input, out_dir)).map(|o| done(&o, "shrink"))
 }
 
+/// The saved recipes: name, steps, what they take and where results go.
+pub fn recipes() -> Result<Value, String> {
+    let list: Vec<Value> = vf_core::recipe::load()?
+        .iter()
+        .map(|r| {
+            let out = match &r.out {
+                vf_core::recipe::Out::Beside => json!("beside the source"),
+                vf_core::recipe::Out::Folder(f) => json!(f),
+            };
+            json!({ "name": r.name, "steps": r.steps.iter().map(|s| s.summary()).collect::<Vec<_>>(), "takes": r.takes(), "out": out })
+        })
+        .collect();
+    Ok(json!({ "recipes": list, "file": vf_core::recipe::store_path() }))
+}
+
+/// The saved recipe called `name`, or an error listing the names there are.
+pub fn find_recipe(name: &str) -> Result<vf_core::recipe::Recipe, String> {
+    let all = vf_core::recipe::load()?;
+    vf_core::recipe::find(&all, name).cloned().ok_or_else(|| {
+        let names: Vec<&str> = all.iter().map(|r| r.name.as_str()).collect();
+        if names.is_empty() { "there are no saved recipes (make one in the hub)".to_owned() } else { format!("no recipe called '{name}'; there are: {}", names.join(", ")) }
+    })
+}
+
+/// Runs a recipe on files (folders are searched, not their subfolders, for the types the recipe takes).
+pub fn recipe_run(recipe: &vf_core::recipe::Recipe, inputs: &[PathBuf]) -> Result<Value, String> {
+    let takes = recipe.takes();
+    let mut files: Vec<PathBuf> = inputs.iter().filter(|p| p.is_file()).cloned().collect();
+    let folders: Vec<PathBuf> = inputs.iter().filter(|p| p.is_dir()).cloned().collect();
+    files.extend(vf_core::job::collect(&folders, &takes, false));
+    if files.is_empty() {
+        return Err(format!("no files the recipe '{}' takes ({})", recipe.name, takes.iter().map(|e| format!(".{e}")).collect::<Vec<_>>().join(" ")));
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    let outcomes = vf_core::recipe::run(recipe, &files, &tx, &std::sync::atomic::AtomicBool::new(false));
+    drop(tx);
+    let notes: Vec<String> = rx.into_iter().filter_map(|e| if let vf_core::job::Event::Note(n) = e { Some(n) } else { None }).collect();
+    let made: Vec<&PathBuf> = outcomes.iter().filter_map(|o| o.result.as_ref().ok()).collect();
+    let failed: Vec<Value> = outcomes.iter().filter_map(|o| o.result.as_ref().err().map(|e| json!({ "input": o.source, "error": e }))).collect();
+    let v = json!({ "recipe": recipe.name, "outputs": made, "failed": failed, "notes": notes });
+    if made.is_empty() { Err(serde_json::to_string_pretty(&v).unwrap_or_default()) } else { Ok(v) }
+}
+
 /// Size, type and what the file can become. For a PDF also PdfCraft's own summary (pages, title...).
 pub fn info(input: &Path) -> Result<Value, String> {
     let meta = std::fs::metadata(input).map_err(|e| format!("{}: {e}", input.display()))?;

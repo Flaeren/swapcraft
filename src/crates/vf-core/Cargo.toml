@@ -20,4 +20,4 @@ cfb = "0.16.0"
 # The Start menu shortcut is written through Windows' own shell-link COM object (no PowerShell: it takes tens of
 # seconds to start on some PCs).
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_Storage_FileSystem"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Win32_System_Registry"] }

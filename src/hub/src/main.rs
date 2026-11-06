@@ -4,6 +4,8 @@
 mod catalog;
 mod fx;
 mod icons;
+mod menu;
+mod recipes;
 mod settings;
 
 use std::collections::HashMap;
@@ -52,6 +54,13 @@ const FOOTER_H: f32 = 36.0;
 enum View {
     Grid,
     List,
+}
+
+/// The two tabs under the header.
+#[derive(Clone, Copy, PartialEq)]
+enum Tab {
+    Apps,
+    Recipes,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -160,6 +169,8 @@ struct Hub {
     icons: icons::AppIcons,
     /// The settings window and the first-run welcome dialog.
     settings: settings::Settings,
+    tab: Tab,
+    recipes: recipes::RecipesTab,
 }
 
 impl Hub {
@@ -220,6 +231,9 @@ impl Hub {
             flame: icons::Flame::new(ctx),
             icons: icons::AppIcons::new(ctx, &APPS.iter().map(|a| a.id).collect::<Vec<_>>()),
             settings: settings::Settings::new(),
+            // test hook, like VOIDFLARE_RELEASES_URL: start on the RECIPES tab
+            tab: if std::env::var("VOIDFLARE_HUB_TAB").is_ok_and(|v| v == "recipes") { Tab::Recipes } else { Tab::Apps },
+            recipes: recipes::RecipesTab::default(),
         }
     }
 
@@ -277,6 +291,11 @@ impl eframe::App for Hub {
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
             self.torch.backdrop(ui.painter(), ui.max_rect(), &t);
             self.header(ui, &t);
+            if self.tab == Tab::Recipes {
+                self.recipes_tab(ui, &t);
+                self.footer(ui, &t);
+                return;
+            }
             self.drop_panel(ui, &t);
             self.toolbar(ui, &t);
             let [ready, available, planned] = self.visible();
@@ -578,7 +597,11 @@ impl Hub {
         // Room for a second row of format chips when the file has many targets (a PDF has seven).
         let chips_w: f32 = self.files.first().map_or(0.0, |f| routes::targets(&routes::ext_of(f)).iter().map(|&i| routes::ROUTES[i].label.len() as f32 * 9.0 + 36.0).sum());
         let rows = (chips_w / (ui.available_width() - 4.0 * PAD)).ceil().max(1.0) as usize;
-        let height = if has_files { 176.0 + 36.0 * rows as f32 } else { 220.0 };
+        let recipe_rows = match self.files.first() {
+            Some(f) if !self.recipes.accepting(&routes::ext_of(f)).is_empty() => 66.0,
+            _ => 0.0,
+        };
+        let height = if has_files { 176.0 + 36.0 * rows as f32 + recipe_rows } else { 220.0 };
         let (outer, _) = ui.allocate_exact_size(vec2(ui.available_width(), height + 2.0 * PAD), Sense::hover());
         let rect = outer.shrink2(vec2(PAD, PAD));
         let zone = ui.interact(rect, ui.scope_id().with("drop-zone"), if has_files || self.running { Sense::hover() } else { Sense::click() });
@@ -684,6 +707,27 @@ impl Hub {
         if let Some(i) = chosen {
             self.convert(i);
         }
+        // The recipes that take this kind of file.
+        let recipes = self.recipes.accepting(&ext);
+        if !recipes.is_empty() {
+            ui.add_space(12.0);
+            ui.label(RichText::new(tr("hub.or_recipe")).font(mono(11.0)).color(t.faint));
+            ui.add_space(6.0);
+            let mut run = None;
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
+                for r in &recipes {
+                    let label = RichText::new(format!("▸ {}", r.name)).font(mono(11.5)).color(t.accent_ink);
+                    if ui.add_enabled(!self.running, egui::Button::new(label)).on_hover_text(r.steps.iter().map(|s| s.summary()).collect::<Vec<_>>().join(" → ")).clicked() {
+                        run = Some(r.clone());
+                    }
+                }
+            });
+            if let Some(r) = run {
+                let files: Vec<PathBuf> = self.files.iter().filter(|f| r.accepts(&routes::ext_of(f))).cloned().collect();
+                self.start_recipe(r, files);
+            }
+        }
     }
 }
 
@@ -771,14 +815,36 @@ impl Hub {
         }
         let p = ui.painter();
         let w = self.flame.paint(p, c.x, c.y, 30.0, t.dark);
-        p.text(pos2(c.x + w + 12.0, c.y), Align2::LEFT_CENTER, "voidflare", FontId::proportional(22.0), t.ink_strong);
-        p.text(
-            pos2(gear.left() - 16.0, c.y),
-            Align2::RIGHT_CENTER,
-            "CRAFT YOUR CONVERSION, ALWAYS OFFLINE",
-            mono(11.0),
-            t.faint,
-        );
+        let word = p.text(pos2(c.x + w + 12.0, c.y), Align2::LEFT_CENTER, "voidflare", FontId::proportional(22.0), t.ink_strong);
+        // APPS | RECIPES, right of the wordmark.
+        let mut x = word.right() + 36.0;
+        for (tab, label) in [(Tab::Apps, tr("hub.tab_apps")), (Tab::Recipes, tr("hub.tab_recipes"))] {
+            let galley = ui.painter().layout_no_wrap(label.to_uppercase(), mono(12.0), t.ink);
+            let r = Rect::from_min_size(pos2(x, c.y - 15.0), vec2(galley.size().x + 28.0, 30.0));
+            let resp = ui.interact(r, ui.scope_id().with(("tab", label.as_str())), Sense::click());
+            let on = self.tab == tab;
+            let p = ui.painter();
+            if on {
+                p.rect_filled(r, CornerRadius::ZERO, t.sunken);
+                p.rect_stroke(r, CornerRadius::ZERO, egui::Stroke::new(1.0, t.line_strong), StrokeKind::Inside);
+            }
+            let color = if on || resp.hovered() { t.ink_strong } else { t.muted };
+            p.text(r.center(), Align2::CENTER_CENTER, label.to_uppercase(), mono(12.0), color);
+            if resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if resp.clicked() {
+                self.tab = tab;
+            }
+            x = r.right() + 4.0;
+        }
+        let p = ui.painter();
+        // The tagline gives way to the tabs in a narrow window.
+        let tagline = "CRAFT YOUR CONVERSION, ALWAYS OFFLINE";
+        let tag_w = p.layout_no_wrap(tagline.to_owned(), mono(11.0), t.faint).size().x;
+        if gear.left() - 16.0 - tag_w > x + 24.0 {
+            p.text(pos2(gear.left() - 16.0, c.y), Align2::RIGHT_CENTER, tagline, mono(11.0), t.faint);
+        }
         p.hline(rect.x_range(), rect.bottom() - 0.5, t.hairline());
     }
 
@@ -937,7 +1003,7 @@ impl Hub {
         let p = ui.painter_at(rect);
         p.rect(rect, CornerRadius::ZERO, t.bg.lerp_to_gamma(accent, 0.05 * lift).gamma_multiply(0.86), t.hairline(), StrokeKind::Inside);
         if t.dark {
-            fx::radial(&p, self.torch.pos, 160.0, accent, 0.10 * lift * self.torch.power);
+            fx::radial(&p, self.torch.pos, 160.0, accent, 0.10 * lift * self.torch.power * self.torch.light);
             self.torch.border(&p, rect, None, accent, 6.0, 0.0, 170.0);
         }
         if lift > 0.0 {
@@ -1324,6 +1390,20 @@ fn mb(bytes: u64) -> String {
     format!("{} MB", (bytes as f64 / 1_048_576.0).round().max(1.0) as u64)
 }
 
+/// `text` cut with an ellipsis so it fits in `width` on one line.
+fn fit(ui: &egui::Ui, text: &str, font: FontId, width: f32) -> String {
+    let w = |s: &str| ui.painter().layout_no_wrap(s.to_owned(), font.clone(), Color32::WHITE).size().x;
+    if w(text) <= width {
+        return text.to_owned();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut n = chars.len();
+    while n > 1 && w(&format!("{}…", chars[..n].iter().collect::<String>())) > width {
+        n -= 1;
+    }
+    format!("{}…", chars[..n].iter().collect::<String>().trim_end())
+}
+
 /// Text wrapped to `width` and cut with an ellipsis after `rows` lines.
 fn clipped(text: &str, font: FontId, color: Color32, width: f32, rows: usize) -> LayoutJob {
     let mut job = LayoutJob::simple(text.to_owned(), font, color, width.max(1.0));
@@ -1334,6 +1414,10 @@ fn clipped(text: &str, font: FontId, color: Color32, width: f32, rows: usize) ->
 fn main() -> eframe::Result {
     // The notes the DWG conversion reports come from its own app catalog.
     i18n::init(&[SHELL_CATALOG, include_str!("../../crates/app-dwg-to-pdf/assets/strings.tsv"), HUB_CATALOG]);
+    // Started by the right-click menu: a small progress window instead of the hub.
+    if let Some(result) = menu::run_from_args() {
+        return result;
+    }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1040.0, 820.0])

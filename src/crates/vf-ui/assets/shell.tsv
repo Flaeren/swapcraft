@@ -34,3 +34,10 @@ ui.line_note	    Note: {msg}	    Nota: {msg}	    Nota: {msg}	    Remarque : {msg
 ui.drop_here	Drop the files here to add them	Rilascia qui i file per aggiungerli	Suelta aquí los archivos para añadirlos	Déposez les fichiers ici pour les ajouter	Dateien hier ablegen, um sie hinzuzufügen
 ui.drop_none_title	Nothing added	Niente di nuovo	Nada nuevo	Rien d'ajouté	Nichts hinzugefügt
 ui.drop_none_text	None of the dropped files can be added here: they are not a supported type, or they are already in the list.	Nessuno dei file trascinati può essere aggiunto qui: il tipo non è supportato, oppure sono già nell'elenco.	Ninguno de los archivos soltados se puede añadir aquí: su tipo no es compatible o ya están en la lista.	Aucun des fichiers déposés ne peut être ajouté ici : le type n'est pas pris en charge, ou ils sont déjà dans la liste.	Keine der abgelegten Dateien kann hier hinzugefügt werden: Der Typ wird nicht unterstützt oder sie stehen schon in der Liste.
+recipe.convert	convert to {to}	converti in {to}	convertir a {to}	convertir en {to}	umwandeln in {to}
+recipe.merge	merge into one PDF	unisci in un solo PDF	unir en un solo PDF	fusionner en un seul PDF	zu einem PDF zusammenfügen
+recipe.shrink	shrink ({level})	comprimi ({level})	reducir ({level})	compresser ({level})	verkleinern ({level})
+recipe.ocr	OCR (English)	OCR (inglese)	OCR (inglés)	OCR (anglais)	OCR (Englisch)
+recipe.split	split every {n} page(s)	dividi ogni {n} pagine	dividir cada {n} página(s)	diviser toutes les {n} pages	alle {n} Seiten teilen
+recipe.extract	extract pages {pages}	estrai le pagine {pages}	extraer las páginas {pages}	extraire les pages {pages}	Seiten {pages} extrahieren
+recipe.merged	{n} files merged into one PDF	{n} file uniti in un solo PDF	{n} archivos unidos en un solo PDF	{n} fichiers fusionnés en un seul PDF	{n} Dateien zu einem PDF zusammengefügt

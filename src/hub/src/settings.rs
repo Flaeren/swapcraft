@@ -46,12 +46,14 @@ pub struct Settings {
     msg: Option<(String, bool)>,
     /// When to look again at a shortcut that was just added.
     recheck_at: Option<std::time::Instant>,
+    /// What adding or removing the right-click menu said.
+    menu_msg: Option<(String, bool)>,
 }
 
 impl Settings {
     pub fn new() -> Self {
         let welcome = data_dir().is_some_and(|d| !welcome_done_in(&d));
-        Self { open: false, welcome, lang: i18n::remembered().unwrap_or(Lang::En), appearance: Appearance::load(), shortcut: State::Missing, msg: None, recheck_at: None }
+        Self { open: false, welcome, lang: i18n::remembered().unwrap_or(Lang::En), appearance: Appearance::load(), shortcut: State::Missing, msg: None, recheck_at: None, menu_msg: None }
     }
 
     pub fn show_welcome(&self) -> bool {
@@ -184,6 +186,10 @@ impl Settings {
                 }
             });
             ui.label(RichText::new(i18n::t("hub.appearance_note")).size(12.0).color(t.faint));
+            let mut light = crate::fx::light_on();
+            if ui.checkbox(&mut light, i18n::t("hub.torch_light")).on_hover_text(i18n::t("hub.torch_hint")).changed() {
+                crate::fx::set_light(light);
+            }
 
             section(ui, t, &i18n::t("hub.sec_updates"));
             if ui.checkbox(auto_on, i18n::t("hub.check_at_start")).changed() {
@@ -228,6 +234,35 @@ impl Settings {
                 ui.label(RichText::new(msg).size(12.0).color(if *bad { t.bad } else { t.good }));
             }
             ui.label(RichText::new(i18n::t("hub.pin_note")).size(12.0).color(t.faint));
+
+            section(ui, t, &i18n::t("menu.sec"));
+            let on = crate::menu::installed();
+            ui.label(RichText::new(i18n::t(if on { "menu.on" } else { "menu.off" })).color(if on { t.good } else { t.muted }));
+            ui.horizontal(|ui| {
+                if on {
+                    if ui.button(RichText::new(i18n::t("menu.btn_remove")).font(mono(11.0))).clicked() {
+                        self.menu_msg = Some(match crate::menu::uninstall() {
+                            Ok(()) => (i18n::t("menu.removed"), false),
+                            Err(e) => (e, true),
+                        });
+                    }
+                    if ui.button(RichText::new(i18n::t("menu.btn_rewrite")).font(mono(11.0))).on_hover_text(i18n::t("menu.btn_rewrite_hint")).clicked() {
+                        self.menu_msg = Some(match crate::menu::install() {
+                            Ok(n) => (i18n::tf("menu.added", &[("n", &n.to_string())]), false),
+                            Err(e) => (e, true),
+                        });
+                    }
+                } else if primary(ui, t, &i18n::t("menu.btn_add")).clicked() {
+                    self.menu_msg = Some(match crate::menu::install() {
+                        Ok(n) => (i18n::tf("menu.added", &[("n", &n.to_string())]), false),
+                        Err(e) => (e, true),
+                    });
+                }
+            });
+            if let Some((msg, bad)) = &self.menu_msg {
+                ui.label(RichText::new(msg).size(12.0).color(if *bad { t.bad } else { t.good }));
+            }
+            ui.label(RichText::new(i18n::t("menu.note")).size(12.0).color(t.faint));
 
             section(ui, t, &i18n::t("hub.sec_data"));
             if let Some(dir) = data_dir() {
