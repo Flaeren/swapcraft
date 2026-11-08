@@ -1,4 +1,5 @@
-"""Writes the voidflare logo for the README (docs/img/logo.svg) and the website favicon.
+"""Writes the SwapCraft logo for the README (docs/img/logo.svg): the flame, "Swap" in white, "Craft" in a gradient
+of the voidflare indigos, and "by voidflare" underneath.
 
     python tools/make_logo.py
 
@@ -52,21 +53,28 @@ def flame(x: float, y: float, height: float, tag: str = "") -> str:
 def main() -> None:
     if not FONT.exists():
         urllib.request.urlretrieve(FONT_URL, FONT)
-    path, width = wordmark("voidflare", size=30, tracking=1.5)
-    h, pad, mark_h = 84, 28, 56
+    swap, swap_w = wordmark("Swap", size=30, tracking=1.5)
+    craft, craft_w = wordmark("Craft", size=30, tracking=1.5)
+    by, by_w = wordmark("by voidflare", size=9.5, tracking=1.2)
+    h, pad, mark_h = 96, 28, 60
     mark_w = mark_h * 64 / 96
-    total = pad + mark_w + 22 + width + pad
+    text_x = pad + mark_w + 22
+    craft_x = text_x + swap_w + 1.5
+    width = max(craft_x + craft_w, text_x + by_w) - text_x
+    total = text_x + width + pad
+    base = 50.0  # baseline of SwapCraft; the byline sits under it
     logo = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{total:.0f}" height="{h}" viewBox="0 0 {total:.0f} {h}" '
-            f'role="img" aria-label="voidflare">\n'
+            f'role="img" aria-label="SwapCraft by voidflare">\n'
+            f'  <defs><linearGradient id="craft" gradientUnits="userSpaceOnUse" x1="{craft_x:.2f}" y1="0" '
+            f'x2="{craft_x + craft_w:.2f}" y2="0"><stop offset="0" stop-color="#818cf8"/>'
+            f'<stop offset="1" stop-color="#c7d2fe"/></linearGradient></defs>\n'
             f'  <rect width="{total:.0f}" height="{h}" fill="#121316"/>\n'
             f'  {flame(pad, (h - mark_h) / 2, mark_h)}\n'
-            f'  <path transform="translate({pad + mark_w + 22:.2f} {h / 2 + 10.5})" fill="#ffffff" d="{path}"/>\n'
+            f'  <path transform="translate({text_x:.2f} {base})" fill="#ffffff" d="{swap}"/>\n'
+            f'  <path transform="translate({craft_x:.2f} {base})" fill="url(#craft)" d="{craft}"/>\n'
+            f'  <path transform="translate({text_x + 1:.2f} {base + 20})" fill="#8b8f98" d="{by}"/>\n'
             f'</svg>\n')
     (ROOT / "docs" / "img" / "logo.svg").write_text(logo, encoding="utf-8")
-
-    favicon = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{FLAME_BOX}">'
-               f'<path d="{OUTER}" fill="{BODY}"/><path d="{CORE}" fill="{GLOW}" transform="{CORE_TRANSFORM}"/></svg>\n')
-    (ROOT / "site" / "public" / "favicon.svg").write_text(favicon, encoding="utf-8")
     print(f"logo {total:.0f}x{h}, wordmark {width:.0f} wide")
 
 

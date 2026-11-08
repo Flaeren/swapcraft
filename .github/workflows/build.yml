@@ -131,4 +131,4 @@ jobs:
             exit 0
           fi
           gh release create "$GITHUB_REF_NAME" release/* \
-            --title "voidflare ${GITHUB_REF_NAME#v}" --notes-file notes.md
+            --title "SwapCraft ${GITHUB_REF_NAME#v}" --notes-file notes.md
