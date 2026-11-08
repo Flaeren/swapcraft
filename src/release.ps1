@@ -51,14 +51,14 @@ function New-Zip([string]$Zip, [string]$Dir, [scriptblock]$Skip) {
 function Size-Mb([string]$p) { "{0:N1} MB" -f ((Get-Item $p).Length / 1MB) }
 
 # Leftovers of a hub replaced while it ran (*.old.exe) and the install record the hub writes into a pack it installed.
-$leftovers = { param($rel) $rel -like "*.old.exe" -or $rel -eq "pack.json" -or $rel -like "*/pack.json" }
+$leftovers = { param($rel) $rel -like "*.old.exe" -or $rel -like "*.old.dll" -or $rel -eq "pack.json" -or $rel -like "*/pack.json" }
 
 # 1. full bundle, 2. hub alone
 $full = Join-Path $out "voidflare-$version-windows.zip"
 New-Zip $full $portable $leftovers
 Write-Host ("{0,-52} {1}" -f (Split-Path -Leaf $full), (Size-Mb $full))
 $hubOnly = Join-Path $out "voidflare-hub-$version-windows.zip"
-New-Zip $hubOnly $portable { param($rel) $rel -notin @("voidflare.exe", "voidflare-cli.exe") }
+New-Zip $hubOnly $portable { param($rel) $rel -notin @("voidflare.exe", "voidflare-cli.exe", "voidflare_dragdrop.dll") }
 Write-Host ("{0,-52} {1}" -f (Split-Path -Leaf $hubOnly), (Size-Mb $hubOnly))
 
 # 3. one app zip (+ 4. one engine zip) per app in portable\apps\

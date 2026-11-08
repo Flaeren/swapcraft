@@ -16,6 +16,8 @@ sha2 = "0.11.1"
 zip = { version = "9.2.1", default-features = false, features = ["deflate"] }
 # Reads the OLE containers (`.bin`) that Word uses for embedded objects.
 cfb = "0.16.0"
+# Only its `config` module (the drag-and-drop menu file the DLL reads); the crate itself has no heavy dependencies.
+vf-dragdrop = { path = "../vf-dragdrop" }
 
 # The Start menu shortcut is written through Windows' own shell-link COM object (no PowerShell: it takes tens of
 # seconds to start on some PCs).

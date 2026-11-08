@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for looking. voidflare is small on purpose: every converter is a thin app over an existing engine.
+Thanks for looking. SwapCraft is small on purpose: every converter is a thin app over an existing engine.
 
 ## Reporting a problem
 

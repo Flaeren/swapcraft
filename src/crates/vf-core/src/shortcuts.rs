@@ -11,7 +11,10 @@
 use std::path::{Path, PathBuf};
 
 /// The shortcut's file name, which is also the name shown in the Start menu.
-const LINK_NAME: &str = "voidflare.lnk";
+const LINK_NAME: &str = "SwapCraft.lnk";
+/// The name used up to 0.4.0, before the converter was called SwapCraft. A shortcut that already has it is kept
+/// and used as it is: renaming it would drop the user's pin to Start.
+const LEGACY_LINK_NAME: &str = "voidflare.lnk";
 
 /// The user's Start menu "Programs" folder, where per-user Start menu entries live. Windows is asked for it (the
 /// folder can be redirected, as on many office PCs); `%APPDATA%\Microsoft\Windows\Start Menu\Programs` is only the
@@ -24,9 +27,12 @@ pub fn start_menu_dir() -> Option<PathBuf> {
     std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("Microsoft").join("Windows").join("Start Menu").join("Programs"))
 }
 
-/// The path the Start menu shortcut has (or would have) in `dir`.
+/// The path the Start menu shortcut has (or would have) in `dir`: the old `voidflare.lnk` while it exists and
+/// no `SwapCraft.lnk` does, else `SwapCraft.lnk`.
 pub fn link_path(dir: &Path) -> PathBuf {
-    dir.join(LINK_NAME)
+    let new = dir.join(LINK_NAME);
+    let legacy = dir.join(LEGACY_LINK_NAME);
+    if !new.is_file() && legacy.is_file() { legacy } else { new }
 }
 
 #[cfg(windows)]
@@ -210,6 +216,22 @@ mod tests {
         remove_in(&dir).unwrap();
         assert_eq!(state_in(&dir, &exe), State::Missing);
         remove_in(&dir).unwrap(); // already gone: still fine
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_old_voidflare_shortcut_is_kept_and_used() {
+        let dir = scratch("legacy");
+        let exe = std::env::current_exe().unwrap();
+        assert_eq!(link_path(&dir), dir.join("SwapCraft.lnk"), "new installs get the new name");
+        create_in(&dir, &exe).unwrap();
+        std::fs::rename(dir.join("SwapCraft.lnk"), dir.join("voidflare.lnk")).unwrap();
+        assert_eq!(link_path(&dir), dir.join("voidflare.lnk"));
+        assert_eq!(state_in(&dir, &exe), State::Ok, "the old shortcut still counts");
+        create_in(&dir, &exe).unwrap();
+        assert!(!dir.join("SwapCraft.lnk").exists(), "rewritten in place, not duplicated");
+        remove_in(&dir).unwrap();
+        assert_eq!(state_in(&dir, &exe), State::Missing);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

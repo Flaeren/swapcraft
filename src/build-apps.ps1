@@ -26,6 +26,13 @@ try {
     if (Test-Path $cli) { try { Remove-Item -LiteralPath $cli -Force -ErrorAction Stop } catch { Move-Item -LiteralPath $cli -Destination $oldCli -Force } }
     Copy-Item (Join-Path $src "target\release\voidflare-cli.exe") $cli -Force
     Write-Host "voidflare-cli.exe"
+    # the drag-and-drop menu handler: File Explorer loads it, so it may be in use; like an exe, it can be renamed
+    $dll = Join-Path $out "voidflare_dragdrop.dll"
+    $oldDll = Join-Path $out "voidflare_dragdrop.old.dll"
+    if (Test-Path $oldDll) { Remove-Item -LiteralPath $oldDll -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $dll) { try { Remove-Item -LiteralPath $dll -Force -ErrorAction Stop } catch { Move-Item -LiteralPath $dll -Destination $oldDll -Force } }
+    Copy-Item (Join-Path $src "target\release\voidflare_dragdrop.dll") $dll -Force
+    Write-Host "voidflare_dragdrop.dll"
     $engines = @{ "word-to-pdf" = "WordCraft"; "excel-to-pdf" = "GridCraft"; "slides-to-pdf" = "DeckCraft"; "pdf-tools" = "PdfCraft"; "dwg-to-pdf" = "CADCraft"; "image-converter" = "PhotoCraft"; "audio-converter" = "SoundCraft"; "video-converter" = "FilmCraft"; "ebook-converter" = "WordCraft" }
     $ids = Get-ChildItem (Join-Path $src "crates") -Directory -Filter "app-*" | ForEach-Object { $_.Name.Substring(4) }
     foreach ($id in $ids) {

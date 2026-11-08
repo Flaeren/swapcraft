@@ -262,6 +262,7 @@ impl Settings {
             if let Some((msg, bad)) = &self.menu_msg {
                 ui.label(RichText::new(msg).size(12.0).color(if *bad { t.bad } else { t.good }));
             }
+            ui.label(RichText::new(i18n::t("menu.drag_note")).size(12.0).color(t.faint));
             ui.label(RichText::new(i18n::t("menu.note")).size(12.0).color(t.faint));
 
             section(ui, t, &i18n::t("hub.sec_data"));

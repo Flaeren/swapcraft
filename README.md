@@ -1,6 +1,6 @@
 <p align="center">
-  <a href="https://voidflare.app">
-    <img src="docs/img/logo.svg" alt="voidflare" width="360">
+  <a href="https://swapcraft.voidflare.app">
+    <img src="docs/img/logo.svg" alt="SwapCraft by voidflare" width="360">
   </a>
 </p>
 
@@ -10,9 +10,9 @@
 
 <p align="center">
   <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-6366f1.svg" alt="License: MIT OR Apache-2.0"></a>
-  <a href="https://github.com/Flaeren/voidflare/releases"><img src="https://img.shields.io/github/downloads/Flaeren/voidflare/total?label=downloads&color=6366f1" alt="Total downloads, all releases"></a>
+  <a href="https://github.com/Flaeren/swapcraft/releases"><img src="https://img.shields.io/github/downloads/Flaeren/swapcraft/total?label=downloads&color=6366f1" alt="Total downloads, all releases"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1f2937.svg" alt="Platform: Windows 10 and 11">
-  <img src="https://img.shields.io/badge/status-early%20(v0.3.2)-b45309.svg" alt="Status: early">
+  <img src="https://img.shields.io/badge/status-early%20(v0.4.1)-b45309.svg" alt="Status: early">
   <img src="https://img.shields.io/badge/made%20with-Rust-1f2937.svg" alt="Made with Rust">
   <img src="https://img.shields.io/badge/works-100%25%20offline-0f766e.svg" alt="Works 100% offline">
   <a href="CREDITS.md"><img src="https://img.shields.io/badge/built%20on-the%20ArtCraft%20suite-6366f1.svg" alt="Built on the ArtCraft suite"></a>
@@ -29,16 +29,16 @@
 </p>
 
 <p align="center">
-  <a href="https://voidflare.app"><img src="docs/img/hub.png" alt="The voidflare hub with a PDF loaded and the formats it can become" width="720"></a>
+  <a href="https://swapcraft.voidflare.app"><img src="docs/img/hub.png" alt="The SwapCraft hub with a PDF loaded and the formats it can become" width="720"></a>
 </p>
 
-voidflare takes a file and offers the formats it can become. Your files never leave your PC, there is no account, and you need no Microsoft Office. It is a small hub plus nine apps, and you install only the ones you use: each app is a separate download, and it either comes with its own conversion engine or, if your PC already has a version of ArtCraft that we have tested, uses that one instead of downloading a second copy.
+**SwapCraft** (by voidflare) takes a file and offers the formats it can become. Your files never leave your PC, there is no account, and you need no Microsoft Office. It is a small hub plus nine apps, and you install only the ones you use: each app is a separate download, and it either comes with its own conversion engine or, if your PC already has a version of ArtCraft that we have tested, uses that one instead of downloading a second copy.
 
-> **Status:** early (v0.3.2). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
+> **Status:** early (v0.4.1). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
 
 ## Built on ArtCraft: credits and licences
 
-voidflare's conversions are done by command-line engines of the **[ArtCraft](https://getartcraft.com)** suite, written by its authors and used under their licences; the one exception is reading and writing EPUB and Kindle books, which is voidflare's own Rust code. This project is independent and not affiliated with or endorsed by the ArtCraft team.
+SwapCraft's conversions are done by command-line engines of the **[ArtCraft](https://getartcraft.com)** suite, written by its authors and used under their licences; the one exception is reading and writing EPUB and Kindle books, which is SwapCraft's own Rust code. This project is independent and not affiliated with or endorsed by the ArtCraft team.
 
 | App | Engine | Engine licence |
 |---|---|---|
@@ -50,12 +50,12 @@ voidflare's conversions are done by command-line engines of the **[ArtCraft](htt
 | Image Converter | PhotoCraft | MIT **or** Apache-2.0 |
 | Audio Converter | SoundCraft | MIT **or** Apache-2.0 |
 | Video Converter | FilmCraft | MIT **or** Apache-2.0 |
-| E-book Converter | WordCraft for PDF and Word; reading EPUB and Kindle books and writing EPUB is voidflare's own code | MIT **or** Apache-2.0 |
+| E-book Converter | WordCraft for PDF and Word; reading EPUB and Kindle books and writing EPUB is SwapCraft's own code | MIT **or** Apache-2.0 |
 
 - The release package keeps each engine's `LICENSE-MIT`, `LICENSE-APACHE`, `NOTICE` and `ATTRIBUTION` files next to it. They list the further components, fonts and models each engine bundles.
 - The ArtCraft name, logo and trademarks are not covered by those licences and are not used here as ours.
 - Full details, libraries and translation status: **[CREDITS.md](CREDITS.md)** and **[NOTICE](NOTICE)**.
-- voidflare's own code: **[MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE)**, at your option.
+- SwapCraft's own code: **[MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE)**, at your option.
 
 ## Quick start
 
@@ -84,7 +84,7 @@ You can also drop a file on `voidflare.exe` in Explorer, or send it there with *
 | Video Converter | MP4, MOV, MKV, WebM, AVI, MPEG, TS, MXF | MP4 (H.264), MOV (ProRes), GIF, or only the sound as WAV, M4A, FLAC |
 | E-book Converter | EPUB, AZW3, AZW, MOBI, PRC (no DRM), TXT, HTML, Markdown, DOCX, ODT, RTF | EPUB, TXT, HTML, PDF, DOCX |
 
-Books with DRM (copy protection) are refused: voidflare converts DRM-free books only and never tries to remove protection.
+Books with DRM (copy protection) are refused: SwapCraft converts DRM-free books only and never tries to remove protection.
 
 Available in English, Italiano, Español, Français and Deutsch.
 
@@ -92,9 +92,9 @@ Available in English, Italiano, Español, Français and Deutsch.
 
 - **The hub** (`voidflare.exe`) has a drop panel. It looks at the file type, shows the formats that file can become, and runs the matching engine with default settings. The converted file lands next to the original. The gear in its top right corner opens the settings: language of the apps (English unless you choose otherwise), the update check, and a Start menu shortcut (the first run offers it once).
 - **The apps** have the full options: batches and folders, merging, page ranges, OCR, drawing sheets or the whole drawing.
-- **The engines** are separate command-line programs. An app uses the copy in its own folder first, then a regular ArtCraft installation. When you install an app, voidflare reuses the ArtCraft engine already on your PC only if that exact version is listed in [`src/engine-compat.json`](src/engine-compat.json), meaning we ran it against the real engine; any other version, including a newer one nobody has tried, gets our own tested copy. If ArtCraft later updates to a version we have not tested, the card says so and offers *Bundle engine*. DWG to PDF always brings its own CADCraft, because the official build still draws blocks with a tilted extrusion wrongly ([cadcraft#1158](https://github.com/storytold/cadcraft/issues/1158)).
+- **The engines** are separate command-line programs. An app uses the copy in its own folder first, then a regular ArtCraft installation. When you install an app, SwapCraft reuses the ArtCraft engine already on your PC only if that exact version is listed in [`src/engine-compat.json`](src/engine-compat.json), meaning we ran it against the real engine; any other version, including a newer one nobody has tried, gets our own tested copy. If ArtCraft later updates to a version we have not tested, the card says so and offers *Bundle engine*. DWG to PDF always brings its own CADCraft, because the official build still draws blocks with a tilted extrusion wrongly ([cadcraft#1158](https://github.com/storytold/cadcraft/issues/1158)).
 - **Nothing is sent anywhere.** Conversions run locally and there is no telemetry.
-- **Updates.** When the hub starts it asks `github.com/Flaeren/voidflare` once for the latest release (one HTTPS request, no identifier, nothing about you). The *AUTO-CHECK* switch in the footer turns this off; the *CHECK FOR UPDATES* link does it on demand. The same request reads the release's list of apps. If there is a newer hub, *UPDATE NOW* downloads its small ZIP, checks its SHA-256 against the release's `SHA256SUMS.txt`, swaps it in place of the running hub (the old one is kept as `voidflare.old.exe` until the next start) and restarts it; if the new file does not check out, nothing changes. Only `voidflare.exe` is replaced: the apps you installed are left alone and update from their own cards (*Install*, *Update* and *Remove* install into `apps\` next to the hub, after the same checksum check). voidflare never downloads anything without a click.
+- **Updates.** When the hub starts it asks `github.com/Flaeren/swapcraft` once for the latest release (one HTTPS request, no identifier, nothing about you). The *AUTO-CHECK* switch in the footer turns this off; the *CHECK FOR UPDATES* link does it on demand. The same request reads the release's list of apps. If there is a newer hub, *UPDATE NOW* downloads its small ZIP, checks its SHA-256 against the release's `SHA256SUMS.txt`, swaps it in place of the running hub (the old one is kept as `voidflare.old.exe` until the next start) and restarts it; if the new file does not check out, nothing changes. Only `voidflare.exe` is replaced: the apps you installed are left alone and update from their own cards (*Install*, *Update* and *Remove* install into `apps\` next to the hub, after the same checksum check). SwapCraft never downloads anything without a click.
 
 ## For AI assistants (MCP)
 
@@ -149,11 +149,11 @@ docs/             images for this page
 
 ## Contributing
 
-Bug reports, translation fixes and format requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: see [SECURITY.md](SECURITY.md). If voidflare is useful to you, a star on GitHub helps other people find it.
+Bug reports, translation fixes and format requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: see [SECURITY.md](SECURITY.md). If SwapCraft is useful to you, a star on GitHub helps other people find it.
 
 ## Licence
 
-voidflare is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option. The bundled engines have their own licences, shipped with them; see [Built on ArtCraft](#built-on-artcraft-credits-and-licences).
+SwapCraft is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option. The bundled engines have their own licences, shipped with them; see [Built on ArtCraft](#built-on-artcraft-credits-and-licences).
 
 ---
 

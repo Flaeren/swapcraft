@@ -181,6 +181,8 @@ impl Hub {
             std::thread::sleep(std::time::Duration::from_secs(3));
             update::cleanup_after_update();
         });
+        // The right-click menu added by an older hub has no drag-and-drop part yet: write it once.
+        menu::upgrade_if_needed();
         let mut hub = Self::build(ctx);
         // Reading the pack list is part of the update check: only when that check is on, or when the user clicks.
         if hub.auto_on {
@@ -230,7 +232,14 @@ impl Hub {
             drop_rect: None,
             flame: icons::Flame::new(ctx),
             icons: icons::AppIcons::new(ctx, &APPS.iter().map(|a| a.id).collect::<Vec<_>>()),
-            settings: settings::Settings::new(),
+            // test hook, like VOIDFLARE_RELEASES_URL: VOIDFLARE_HUB_TAB=settings starts with the settings open
+            settings: {
+                let mut s = settings::Settings::new();
+                if std::env::var("VOIDFLARE_HUB_TAB").is_ok_and(|v| v == "settings") {
+                    s.open();
+                }
+                s
+            },
             // test hook, like VOIDFLARE_RELEASES_URL: start on the RECIPES tab
             tab: if std::env::var("VOIDFLARE_HUB_TAB").is_ok_and(|v| v == "recipes") { Tab::Recipes } else { Tab::Apps },
             recipes: recipes::RecipesTab::default(),
@@ -797,6 +806,31 @@ fn file_tile(ui: &mut egui::Ui, t: &Tokens, ext: &str, count: usize) {
     p.text(tile.center() + vec2(0.0, 4.0), Align2::CENTER_CENTER, ext.to_uppercase(), FontId::monospace(if ext.len() > 4 { 14.0 } else { 18.0 }), color);
 }
 
+/// «SwapCraft by voidflare»: «Swap» in the text colour, «Craft» shading through the voidflare indigos letter by
+/// letter, and «by voidflare» small underneath. `left` is the left edge, centred on `left.y`. Returns the area used.
+fn wordmark(p: &egui::Painter, t: &Tokens, left: egui::Pos2) -> Rect {
+    let big = FontId::proportional(22.0);
+    let small = mono(10.5);
+    let swap = p.layout_no_wrap("Swap".to_owned(), big.clone(), t.ink_strong);
+    let by = p.layout_no_wrap("by voidflare".to_owned(), small, t.faint);
+    let swap_rect = swap.size();
+    let top = left.y - (swap_rect.y + 2.0 + by.size().y) / 2.0;
+    p.galley(pos2(left.x, top), swap, t.ink_strong);
+    let (from, to) = if t.dark { (Color32::from_rgb(0x81, 0x8c, 0xf8), Color32::from_rgb(0xc7, 0xd2, 0xfe)) } else { (Color32::from_rgb(0x43, 0x38, 0xca), Color32::from_rgb(0x63, 0x66, 0xf1)) };
+    let mut x = left.x + swap_rect.x;
+    let craft = ["C", "r", "a", "f", "t"];
+    for (i, ch) in craft.iter().enumerate() {
+        let color = from.lerp_to_gamma(to, i as f32 / (craft.len() - 1) as f32);
+        let g = p.layout_no_wrap((*ch).to_owned(), big.clone(), color);
+        let w = g.size().x;
+        p.galley(pos2(x, top), g, color);
+        x += w;
+    }
+    let by_size = by.size();
+    p.galley(pos2(left.x + 1.0, top + swap_rect.y + 2.0), by, t.faint);
+    Rect::from_min_max(pos2(left.x, top), pos2(x.max(left.x + by_size.x), top + swap_rect.y + 2.0 + by_size.y))
+}
+
 fn section_label(ui: &mut egui::Ui, t: &Tokens, label: &str, n: usize) {
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 44.0), Sense::hover());
     let p = ui.painter();
@@ -815,7 +849,7 @@ impl Hub {
         }
         let p = ui.painter();
         let w = self.flame.paint(p, c.x, c.y, 30.0, t.dark);
-        let word = p.text(pos2(c.x + w + 12.0, c.y), Align2::LEFT_CENTER, "voidflare", FontId::proportional(22.0), t.ink_strong);
+        let word = wordmark(p, t, pos2(c.x + w + 12.0, c.y));
         // APPS | RECIPES, right of the wordmark.
         let mut x = word.right() + 36.0;
         for (tab, label) in [(Tab::Apps, tr("hub.tab_apps")), (Tab::Recipes, tr("hub.tab_recipes"))] {
@@ -888,7 +922,7 @@ impl Hub {
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), FOOTER_H), Sense::hover());
         let p = ui.painter();
         p.hline(rect.x_range(), rect.top() + 0.5, t.hairline());
-        p.text(pos2(rect.left() + PAD, rect.center().y), Align2::LEFT_CENTER, "VOIDFLARE.APP", mono(11.0), t.faint);
+        let site = p.text(pos2(rect.left() + PAD, rect.center().y), Align2::LEFT_CENTER, "SWAPCRAFT.VOIDFLARE.APP", mono(11.0), t.faint);
 
         // Updates: only on a click, and the label says what the click will do.
         let (label, color, hint): (String, Color32, String) = match &self.upd {
@@ -904,7 +938,8 @@ impl Hub {
             Upd::Failed(msg) => (trf("hub.upd_failed", &[("msg", &msg.chars().take(70).collect::<String>())]), t.bad, String::new()),
         };
         let clickable = !matches!(self.upd, Upd::Checking | Upd::Downloading(..));
-        let x = rect.left() + PAD + 130.0;
+        // Right after the site's name, with the same gap at any length of it.
+        let x = site.right() + 24.0;
         let galley = ui.painter().layout_no_wrap(label.clone(), mono(11.0), color);
         let action = Rect::from_min_size(pos2(x, rect.top()), vec2(galley.size().x, rect.height()));
         let resp = ui.interact(action, ui.scope_id().with("update-action"), if clickable { Sense::click() } else { Sense::hover() });
@@ -1422,7 +1457,7 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1040.0, 820.0])
             .with_min_inner_size([640.0, 560.0])
-            .with_title("voidflare")
+            .with_title("SwapCraft")
             .with_drag_and_drop(true)
             .with_icon(egui::IconData { rgba: include_bytes!("../assets/app_icon.rgba").to_vec(), width: 256, height: 256 }),
         ..Default::default()

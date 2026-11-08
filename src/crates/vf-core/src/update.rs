@@ -13,7 +13,7 @@ use std::time::Duration;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-pub const REPO: &str = "Flaeren/voidflare";
+pub const REPO: &str = "Flaeren/swapcraft";
 const SUMS_NAME: &str = "SHA256SUMS.txt";
 
 #[derive(Clone, Debug, PartialEq)]
@@ -191,11 +191,13 @@ pub fn download_verified(release: &Release, dest_dir: &Path, progress: &dyn Fn(u
 /// Folder next to the hub where the update is downloaded and unpacked; it is removed afterwards.
 const STAGING: &str = ".voidflare-update";
 
-/// Where the running hub is parked while its replacement takes its name (`voidflare.exe` -> `voidflare.old.exe`).
-/// Windows lets a running program be renamed but not overwritten.
+/// Where the running hub is parked while its replacement takes its name (`voidflare.exe` -> `voidflare.old.exe`;
+/// the drag-and-drop DLL, which Explorer may have loaded, likewise -> `voidflare_dragdrop.old.dll`).
+/// Windows lets a running program or a loaded DLL be renamed but not overwritten.
 pub fn old_name(exe: &Path) -> PathBuf {
     let stem = exe.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "voidflare".to_owned());
-    exe.with_file_name(format!("{stem}.old.exe"))
+    let ext = exe.extension().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "exe".to_owned());
+    exe.with_file_name(format!("{stem}.old.{ext}"))
 }
 
 /// Downloads the release ZIP, checks its SHA-256, and replaces the running hub with the `voidflare.exe` inside it.
@@ -234,8 +236,23 @@ pub fn install_from_zip(zip: &Path, exe: &Path, work: &Path) -> Result<(), Strin
     if is_exe(&new_cli) {
         let _ = replace_exe(&exe.with_file_name(CLI_NAME), &new_cli);
     }
+    // So does the drag-and-drop DLL (same name, so the registry entry stays right). Explorer may have it loaded:
+    // the old one is parked under a new name and Explorer picks up the new one the next time it loads it. Best
+    // effort: an old DLL keeps working with the new hub.
+    let dll = exe.with_file_name(DRAG_DLL);
+    let new_dll = unpacked.join(DRAG_DLL);
+    if is_exe(&new_dll) {
+        if dll.exists() {
+            let _ = replace_exe(&dll, &new_dll);
+        } else {
+            let _ = fs::rename(&new_dll, &dll);
+        }
+    }
     Ok(())
 }
+
+/// The drag-and-drop menu handler that sits beside the hub.
+pub const DRAG_DLL: &str = voidflare_dragdrop::config::DLL_NAME;
 
 /// The command-line program that sits beside the hub.
 pub const CLI_NAME: &str = "voidflare-cli.exe";
@@ -263,6 +280,8 @@ pub fn cleanup_after_update() {
     if let Ok(exe) = std::env::current_exe() {
         let _ = fs::remove_file(old_name(&exe));
         let _ = fs::remove_file(old_name(&exe.with_file_name(CLI_NAME)));
+        // fails while Explorer still has the old DLL loaded; a later start removes it
+        let _ = fs::remove_file(old_name(&exe.with_file_name(DRAG_DLL)));
         if let Some(dir) = exe.parent() {
             let _ = fs::remove_dir_all(dir.join(STAGING));
         }

@@ -1,8 +1,17 @@
 # Changelog
 
-All notable changes to voidflare are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+All notable changes to SwapCraft (formerly voidflare) are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.4.1] - 2026-11-08
+
+### Added
+
+- **Convert here, by dragging.** Drag files with the right mouse button and drop them on a folder: next to *Copy here* and *Move here*, File Explorer now offers *Convert here with SwapCraft*, with the conversions and recipes that fit every dragged file. The results go to the folder you dropped on, and the originals stay where they were. It comes with the right-click menu (Settings > Right-click menu), for your Windows user only, and removing that menu removes this too. It works on Windows 11 without *Show more options*, because the drag menu is still the classic one. A hub that already has the right-click menu adds it by itself the first time it starts.
+
+### Changed
+
+- **The converter is now called SwapCraft, by voidflare.** voidflare stays the name of the maker and of its other programs; this one is SwapCraft. The repository moves to `github.com/Flaeren/swapcraft` (the old address keeps working) and the website to `swapcraft.voidflare.app`. The hub, its window, the Start menu entry for new installs and the File Explorer menus (*Convert with SwapCraft*) use the new name; a menu you added earlier is renamed by itself the first time the hub starts. File and folder names stay as they were, so nothing you installed moves: `voidflare.exe`, `voidflare-cli.exe`, the `%APPDATA%\voidflare` folder, the MCP tool names, and a Start menu shortcut you already have (renaming it would undo your pin).
+- **The ArtCraft engines are updated to the latest releases:** WordCraft 0.16.0, GridCraft 0.17.0, DeckCraft 0.16.0, PdfCraft 0.19.0, PhotoCraft 0.21.0, SoundCraft 0.18.0 and FilmCraft 0.18.0. They bring the engines' own fixes, among them stricter checks on damaged or hostile files (PdfCraft encryption and JBIG2 images, PhotoCraft PSD and EXR memory limits, FilmCraft AVI, MP4 and DNxHD). Each passed the engine test with the bundled copy and the installed one.
 
 ## [0.4.0] - 2026-11-06
 

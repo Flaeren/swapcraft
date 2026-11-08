@@ -1,0 +1,33 @@
+[package]
+name = "vf-dragdrop"
+description = "voidflare's File Explorer drag-and-drop handler: \"Convert here with voidflare\" in the menu that opens when files are dragged with the right mouse button. Loaded inside Explorer, so it stays small: it reads a text file the hub writes and starts voidflare.exe, nothing else."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "voidflare_dragdrop"
+# cdylib: the DLL Explorer loads; rlib: so the tests can call the same COM objects in-process.
+crate-type = ["cdylib", "rlib"]
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_WindowsAndMessaging",
+] }
+# The #[implement] macro expands to paths under `windows_core`, so the crate must be a direct dependency.
+windows-core = "0.62.2"
+
+[dev-dependencies]
+# LoadLibraryW/GetProcAddress for examples/host.rs, which loads the built DLL by path.
+windows = { version = "0.62.2", features = ["Win32_System_LibraryLoader"] }

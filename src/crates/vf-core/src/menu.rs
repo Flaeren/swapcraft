@@ -15,6 +15,9 @@ use std::time::{Duration, Instant, SystemTime};
 use crate::recipe::Recipe;
 use crate::routes::{self, ROUTES};
 
+/// The drag-and-drop menu's file format, DLL name and class id (shared with the DLL itself).
+pub use voidflare_dragdrop::config as dragmenu;
+
 const ROOT: &str = r"HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations";
 const VERB: &str = "voidflare";
 
@@ -60,6 +63,8 @@ pub struct Texts {
     pub recipe: String,
     /// "Open in {app}…"
     pub open_in: String,
+    /// "Convert here with voidflare": the drag-and-drop menu (right mouse button, dropped on a folder)
+    pub here: String,
 }
 
 /// One entry of a file type's submenu.
@@ -126,6 +131,84 @@ pub fn reg_add(exe: &Path, recipes: &[Recipe], texts: &Texts, app_name: &dyn Fn(
         }
     }
     (text, exts)
+}
+
+const CLASSES: &str = r"HKEY_CURRENT_USER\Software\Classes";
+/// Where the drag-and-drop handler is registered: dropping on a folder, and on a drive.
+const DROP_TARGETS: [&str; 2] = ["Directory", "Drive"];
+
+/// The `.reg` text that registers the drag-and-drop DLL (per user: COM looks in `HKCU\Software\Classes` first).
+pub fn drag_reg_add(dll: &Path) -> String {
+    let dll_s = dll.to_string_lossy().trim_start_matches(r"\\?\").to_owned();
+    let id = voidflare_dragdrop::config::CLSID_STR;
+    let mut text = format!(
+        "Windows Registry Editor Version 5.00\r\n\r\n[{CLASSES}\\CLSID\\{id}]\r\n@=\"voidflare drag-and-drop menu\"\r\n\r\n[{CLASSES}\\CLSID\\{id}\\InprocServer32]\r\n@={}\r\n\"ThreadingModel\"=\"Apartment\"\r\n",
+        reg_str(&dll_s)
+    );
+    for t in DROP_TARGETS {
+        text += &format!("\r\n[{CLASSES}\\{t}\\shellex\\DragDropHandlers\\{VERB}]\r\n@=\"{id}\"\r\n");
+    }
+    text
+}
+
+/// The `.reg` text that takes the drag-and-drop DLL's registration away.
+pub fn drag_reg_remove() -> String {
+    let mut text = format!("Windows Registry Editor Version 5.00\r\n\r\n[-{CLASSES}\\CLSID\\{}]\r\n", voidflare_dragdrop::config::CLSID_STR);
+    for t in DROP_TARGETS {
+        text += &format!("\r\n[-{CLASSES}\\{t}\\shellex\\DragDropHandlers\\{VERB}]\r\n");
+    }
+    text
+}
+
+/// What the drag-and-drop menu offers for each type: the same entries as the right-click menu, under `texts.here`.
+pub fn drag_config(exe: &Path, recipes: &[Recipe], texts: &Texts, app_name: &dyn Fn(&str) -> Option<String>) -> voidflare_dragdrop::config::Config {
+    use voidflare_dragdrop::config::{Config, Entry as DragEntry};
+    let types = routes::known_exts()
+        .into_iter()
+        .map(|ext| {
+            let list: Vec<DragEntry> = entries(ext, recipes, texts, app_name).into_iter().map(|e| DragEntry { action: e.action.encode(), separator: e.separator, label: e.label }).collect();
+            (ext.to_owned(), list)
+        })
+        .filter(|(_, l)| !l.is_empty())
+        .collect();
+    Config { exe: PathBuf::from(exe.to_string_lossy().trim_start_matches(r"\\?\")), title: texts.here.clone(), types }
+}
+
+fn drag_file() -> Option<PathBuf> {
+    voidflare_dragdrop::config::path()
+}
+
+/// Registers the DLL next to `exe` and writes its menu file; without the DLL (a build that has none) any older
+/// registration is taken away, so Explorer never looks for a DLL that is not there.
+fn install_drag(exe: &Path, recipes: &[Recipe], texts: &Texts, app_name: &dyn Fn(&str) -> Option<String>) -> Result<(), String> {
+    let dll = exe.parent().map(|d| d.join(voidflare_dragdrop::config::DLL_NAME));
+    match dll.filter(|d| d.is_file()) {
+        Some(dll) => {
+            if let Some(p) = drag_file() {
+                if let Some(dir) = p.parent() {
+                    let _ = fs::create_dir_all(dir);
+                }
+                fs::write(&p, drag_config(exe, recipes, texts, app_name).write()).map_err(|e| e.to_string())?;
+            }
+            import(&drag_reg_add(&dll))
+        }
+        None => uninstall_drag(),
+    }
+}
+
+fn uninstall_drag() -> Result<(), String> {
+    import(&drag_reg_remove())?;
+    // `Drive` (and `shellex`, `DragDropHandlers`) may exist only because of us: remove them when empty.
+    for t in DROP_TARGETS {
+        let base = format!(r"Software\Classes\{t}");
+        if delete_if_empty(&format!(r"{base}\shellex\DragDropHandlers")) && delete_if_empty(&format!(r"{base}\shellex")) {
+            delete_if_empty(&base);
+        }
+    }
+    if let Some(p) = drag_file() {
+        let _ = fs::remove_file(p);
+    }
+    Ok(())
 }
 
 /// The `.reg` text that removes the menu from these types.
@@ -197,6 +280,7 @@ pub fn install(exe: &Path, recipes: &[Recipe], texts: &Texts, app_name: &dyn Fn(
     }
     let (text, exts) = reg_add(exe, recipes, texts, app_name);
     import(&text)?;
+    install_drag(exe, recipes, texts, app_name)?;
     if let Some(p) = state_file() {
         if let Some(dir) = p.parent() {
             let _ = fs::create_dir_all(dir);
@@ -215,6 +299,7 @@ pub fn uninstall() -> Result<(), String> {
         }
     }
     import(&reg_remove(&exts))?;
+    uninstall_drag()?;
     // Adding the menu created `.<ext>` and `.<ext>\shell` where there were none; take them away again when nothing
     // else lives in them (another program's entries or values are left alone).
     for ext in &exts {
@@ -339,7 +424,7 @@ mod tests {
     use crate::recipe::examples;
 
     fn texts() -> Texts {
-        Texts { title: "Convert with voidflare".into(), recipe: "Recipe: {name}".into(), open_in: "Open in {app}…".into() }
+        Texts { title: "Convert with voidflare".into(), recipe: "Recipe: {name}".into(), open_in: "Open in {app}…".into(), here: "Convert here with voidflare".into() }
     }
 
     #[test]
@@ -373,6 +458,35 @@ mod tests {
         assert!(text.contains(r#"@="\"D:\\Programmi città\\voidflare\\voidflare.exe\" --run \"route:pdf-sheets\" \"%1\"""#), "{}", &text[..600]);
         assert!(text.contains(r#"[-HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.dwg\shell\voidflare]"#));
         assert!(reg_remove(&["pdf".into()]).contains(r"[-HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.pdf\shell\voidflare]"));
+    }
+
+    #[test]
+    fn the_drag_and_drop_dll_is_registered_per_user_on_folders_and_drives() {
+        let dll = Path::new(r"D:\Programmi città\voidflare\voidflare_dragdrop.dll");
+        let text = drag_reg_add(dll);
+        let id = dragmenu::CLSID_STR;
+        assert!(text.starts_with("Windows Registry Editor Version 5.00\r\n"));
+        assert!(text.contains(&format!("[HKEY_CURRENT_USER\\Software\\Classes\\CLSID\\{id}\\InprocServer32]\r\n@=\"D:\\\\Programmi città\\\\voidflare\\\\voidflare_dragdrop.dll\"\r\n\"ThreadingModel\"=\"Apartment\"")), "{text}");
+        for t in ["Directory", "Drive"] {
+            assert!(text.contains(&format!("[HKEY_CURRENT_USER\\Software\\Classes\\{t}\\shellex\\DragDropHandlers\\voidflare]\r\n@=\"{id}\"")), "{text}");
+        }
+        assert!(!text.contains("HKEY_LOCAL_MACHINE"));
+        let off = drag_reg_remove();
+        assert!(off.contains(&format!("[-HKEY_CURRENT_USER\\Software\\Classes\\CLSID\\{id}]")));
+        assert!(off.contains(r"[-HKEY_CURRENT_USER\Software\Classes\Drive\shellex\DragDropHandlers\voidflare]"));
+    }
+
+    #[test]
+    fn the_drag_menu_file_has_the_right_click_entries_under_its_own_title() {
+        let name = |id: &str| (id == "dwg-to-pdf").then(|| "DWG to PDF".to_owned());
+        let cfg = drag_config(Path::new(r"\\?\C:\v\voidflare.exe"), &examples(), &texts(), &name);
+        assert_eq!(cfg.exe, PathBuf::from(r"C:\v\voidflare.exe"), "no \\\\?\\ prefix");
+        assert_eq!(cfg.title, "Convert here with voidflare");
+        let back = dragmenu::Config::parse(&cfg.write()).unwrap();
+        let dwg: Vec<String> = back.entries_for(&[PathBuf::from("a.dwg")]).into_iter().map(|e| e.label).collect();
+        let right_click: Vec<String> = entries("dwg", &examples(), &texts(), &name).into_iter().map(|e| e.label).collect();
+        assert_eq!(dwg, right_click);
+        assert!(back.entries_for(&[PathBuf::from("a.zip")]).is_empty());
     }
 
     #[test]

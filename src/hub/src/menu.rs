@@ -33,7 +33,7 @@ pub fn installed() -> bool {
 }
 
 fn texts() -> Texts {
-    Texts { title: tr("menu.title"), recipe: tr("menu.recipe"), open_in: tr("menu.open_in") }
+    Texts { title: tr("menu.title"), recipe: tr("menu.recipe"), open_in: tr("menu.open_in"), here: tr("menu.here") }
 }
 
 /// The name of an app that is installed (an "Open in" entry for one that is not would do nothing).
@@ -54,6 +54,20 @@ pub fn uninstall() -> Result<(), String> {
     menu::uninstall()?;
     STATE.store(1, Ordering::Relaxed);
     Ok(())
+}
+
+/// The menu was added by a hub without the drag-and-drop part (0.4.0), and this one has its DLL: add the drag-and-drop
+/// part by writing the menu again, in the background. Nothing happens when the menu is not added.
+pub fn upgrade_if_needed() {
+    let Ok(exe) = std::env::current_exe() else { return };
+    let has_dll = exe.with_file_name(menu::dragmenu::DLL_NAME).is_file();
+    let has_file = menu::dragmenu::path().is_some_and(|p| p.is_file());
+    // Also rewritten when the saved drag menu has an old title (the name changed from voidflare to SwapCraft in
+    // 0.4.1), so the menu in File Explorer follows the program's name.
+    let stale_title = has_file && menu::dragmenu::path().and_then(|p| std::fs::read_to_string(p).ok()).is_some_and(|text| !text.contains(&texts().here));
+    if installed() && has_dll && (!has_file || stale_title) {
+        refresh(&recipe::load().unwrap_or_default());
+    }
 }
 
 /// After the recipes changed: rewrites the menu so its recipe entries match, in the background (it takes a moment).
@@ -80,8 +94,24 @@ pub fn run_from_args() -> Option<eframe::Result> {
         Some("--run") => {}
         _ => return None,
     }
-    let (Some(raw), Some(file)) = (args.get(1), args.get(2)) else { return Some(Ok(())) };
-    let Some(files) = menu::gather(raw, &PathBuf::from(file)) else { return Some(Ok(())) };
+    let Some(raw) = args.get(1) else { return Some(Ok(())) };
+    // From the drag-and-drop menu: `--run <action> --to <folder> --list <file>`, all the files at once and the
+    // results in the folder they were dropped on. From the right-click menu: `--run <action> <file>`, one process
+    // per file, gathered here.
+    let (files, to) = match args.get(2).map(String::as_str) {
+        Some("--to") => {
+            let (Some(to), Some("--list"), Some(list)) = (args.get(3), args.get(4).map(String::as_str), args.get(5)) else { return Some(Ok(())) };
+            (read_list(&PathBuf::from(list)), Some(PathBuf::from(to)))
+        }
+        Some(file) => match menu::gather(raw, &PathBuf::from(file)) {
+            Some(files) => (files, None),
+            None => return Some(Ok(())),
+        },
+        None => return Some(Ok(())),
+    };
+    if files.is_empty() {
+        return Some(Ok(()));
+    }
     let action = Action::parse(raw);
     if let Some(Action::Open(app)) = &action {
         // "Open in": the app itself shows the files, no window of ours.
@@ -99,7 +129,7 @@ pub fn run_from_args() -> Option<eframe::Result> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([540.0, 340.0])
             .with_min_inner_size([420.0, 260.0])
-            .with_title("voidflare")
+            .with_title("SwapCraft")
             .with_icon(egui::IconData { rgba: include_bytes!("../assets/app_icon.rgba").to_vec(), width: 256, height: 256 }),
         ..Default::default()
     };
@@ -108,9 +138,21 @@ pub fn run_from_args() -> Option<eframe::Result> {
         options,
         Box::new(move |cc| {
             theme::install(&cc.egui_ctx);
-            Ok(Box::new(Runner::start(action, files)))
+            Ok(Box::new(Runner::start(action, files, to)))
         }),
     ))
+}
+
+/// The files of a drag-and-drop click: one path per line, written by the DLL in `%TEMP%\voidflare-menu`. The list
+/// is deleted after reading, but only if it is one of ours (a path given by hand is never deleted).
+fn read_list(list: &std::path::Path) -> Vec<PathBuf> {
+    let files: Vec<PathBuf> = std::fs::read_to_string(list).unwrap_or_default().lines().map(str::trim).filter(|l| !l.is_empty()).map(PathBuf::from).collect();
+    let ours = list.parent() == Some(std::env::temp_dir().join("voidflare-menu").as_path())
+        && list.file_name().is_some_and(|n| n.to_string_lossy().starts_with("drop-"));
+    if ours {
+        let _ = std::fs::remove_file(list);
+    }
+    files
 }
 
 struct Runner {
@@ -127,7 +169,8 @@ struct Runner {
 }
 
 impl Runner {
-    fn start(action: Option<Action>, files: Vec<PathBuf>) -> Self {
+    /// `to`: where the results go (the folder files were dropped on); None = next to each file, or the recipe's choice.
+    fn start(action: Option<Action>, files: Vec<PathBuf>, to: Option<PathBuf>) -> Self {
         let cancel = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel();
         let n = files.len().to_string();
@@ -142,10 +185,11 @@ impl Runner {
                         let name = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                         let id = id.clone();
                         let source = src.clone();
+                        let to = to.clone();
                         let run: Task = Box::new(move |note| {
                             let ext = routes::ext_of(&source);
                             let route = routes::find_route(&ext, &id).ok_or_else(|| format!("a .{ext} file cannot become {id}"))?;
-                            let out_dir = source.parent().map(PathBuf::from).unwrap_or_default();
+                            let out_dir = to.or_else(|| source.parent().map(PathBuf::from)).unwrap_or_default();
                             routes::run_route(route, &source, &out_dir, note)
                         });
                         Item { label: name, source: src, run }
@@ -156,7 +200,10 @@ impl Runner {
                 (trf("menu.converting", &[("n", &n), ("to", &label)]), total)
             }
             Some(Action::Recipe(name)) => match recipe::load().ok().and_then(|all| recipe::find(&all, &name).cloned()) {
-                Some(r) => {
+                Some(mut r) => {
+                    if let Some(dir) = to {
+                        r.out = recipe::Out::Folder(dir);
+                    }
                     let steps = r.steps.len();
                     recipe::spawn(r, files, tx, cancel.clone());
                     (trf("rec.running", &[("name", &name), ("n", &n)]), steps)
