@@ -144,7 +144,7 @@ jobs:
       - name: Tag matches the version
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          v=$(sed -n 's/^version = "\(.*\)"//p' src/Cargo.toml | head -1)
+          v=$(sed -n 's/^version = "\(.*\)"/\1/p' src/Cargo.toml | head -1)
           [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME but src/Cargo.toml says $v" >&2; exit 1; }
 
       - name: Pack the release files
