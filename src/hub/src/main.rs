@@ -696,7 +696,7 @@ impl Hub {
                 if let Some(dir) = self.last_dir.clone()
                     && widgets::button(ui, &tr("hub.open_folder")).clicked()
                 {
-                    let _ = Command::new("explorer").arg(dir).spawn();
+                    vf_core::platform::open_folder(dir);
                 }
             });
         });

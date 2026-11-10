@@ -274,7 +274,7 @@ impl eframe::App for Runner {
                 if let Some(dir) = self.last_dir.clone()
                     && widgets::primary(ui, &t, &tr("hub.open_folder"), true).clicked()
                 {
-                    let _ = std::process::Command::new("explorer").arg(dir).spawn();
+                    vf_core::platform::open_folder(dir);
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                 }
                 if self.done && widgets::button(ui, &tr("hub.close")).clicked() {

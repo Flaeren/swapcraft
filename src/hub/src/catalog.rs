@@ -108,9 +108,9 @@ pub const APPS: &[App] = &[
 /// in the app's own `dist` folder.
 pub fn locate(app: &App) -> Option<PathBuf> {
     let here = std::env::current_exe().ok()?;
-    let rust_exe = format!("{}.exe", app.id);
+    let rust_exe = vf_core::platform::exe(app.id);
     for base in here.parent()?.ancestors() {
-        // Rust apps: `apps/<id>/<id>.exe` (or, in the source tree, the cargo release folder).
+        // Rust apps: `apps/<id>/<id>.exe` (`<id>` on Linux; in the source tree, the cargo release folder).
         let mut candidates = vec![base.join("apps").join(app.id).join(&rust_exe), base.join("target").join("release").join(&rust_exe)];
         // Python apps: `apps/<folder>/<exe>` or the app's own `dist` folder.
         if let Some(rel) = app.exe {
@@ -174,7 +174,9 @@ mod tests {
             assert!(keys.contains(&key.as_str()), "the code asks for {key}, which is not in hub.tsv");
         }
         for key in keys {
-            assert!(used.iter().any(|u| u == key), "{key} is in hub.tsv but no code uses it");
+            // `key@linux` is the Linux wording of `key` (i18n::t picks it there): used when its key is
+            let base = key.strip_suffix("@linux").unwrap_or(key);
+            assert!(used.iter().any(|u| u == base), "{key} is in hub.tsv but no code uses it");
         }
     }
 }

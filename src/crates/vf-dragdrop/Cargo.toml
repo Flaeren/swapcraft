@@ -28,6 +28,6 @@ windows = { version = "0.62.2", features = [
 # The #[implement] macro expands to paths under `windows_core`, so the crate must be a direct dependency.
 windows-core = "0.62.2"
 
-[dev-dependencies]
+[target.'cfg(windows)'.dev-dependencies]
 # LoadLibraryW/GetProcAddress for examples/host.rs, which loads the built DLL by path.
 windows = { version = "0.62.2", features = ["Win32_System_LibraryLoader"] }

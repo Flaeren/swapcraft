@@ -1,5 +1,7 @@
 # The product folder is built from src\ and published as a release asset, never committed.
 /portable/
+# The Linux product folder, built by src/build-apps.sh.
+/portable-linux/
 
 # Engines fetched by src/fetch-engines.ps1 (pinned in src/engines.json).
 /src/engines/

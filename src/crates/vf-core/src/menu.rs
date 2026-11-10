@@ -223,12 +223,17 @@ pub fn reg_remove(exts: &[String]) -> String {
 /// `%APPDATA%\voidflare\menu.txt`: the types the menu was added to, one per line, so removing it later also clears
 /// types a newer version no longer converts.
 fn state_file() -> Option<PathBuf> {
-    std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("voidflare").join("menu.txt"))
+    crate::platform::data_file("menu.txt")
 }
+
+/// Whether this system has the menu at all: it lives in File Explorer, so only Windows. (Linux file managers
+/// each have their own way, not done yet.)
+pub const SUPPORTED: bool = cfg!(windows);
 
 /// Whether the menu was added (and not removed since).
 pub fn installed() -> bool {
-    state_file().and_then(|p| fs::read_to_string(p).ok()).is_some_and(|t| t.lines().any(|l| !l.trim().is_empty()))
+    SUPPORTED
+        && state_file().and_then(|p| fs::read_to_string(p).ok()).is_some_and(|t| t.lines().any(|l| !l.trim().is_empty()))
 }
 
 fn remembered_exts() -> Vec<String> {
@@ -272,6 +277,9 @@ fn notify_shell() {
 
 /// Adds (or rewrites) the menu for every type, pointing at `exe`.
 pub fn install(exe: &Path, recipes: &[Recipe], texts: &Texts, app_name: &dyn Fn(&str) -> Option<String>) -> Result<usize, String> {
+    if !SUPPORTED {
+        return Err("The right-click menu exists only in Windows File Explorer.".to_owned());
+    }
     // Types from an older version that this one no longer converts go first.
     let now: Vec<String> = routes::known_exts().into_iter().map(str::to_owned).collect();
     let stale: Vec<String> = remembered_exts().into_iter().filter(|e| !now.contains(e)).collect();

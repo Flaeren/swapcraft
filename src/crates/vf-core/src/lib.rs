@@ -15,6 +15,7 @@ pub mod mobi;
 pub mod packs;
 pub mod pdf;
 pub mod pdfmerge;
+pub mod platform;
 pub mod recipe;
 pub mod routes;
 pub mod shortcuts;

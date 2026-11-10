@@ -39,9 +39,11 @@ pub struct Release {
 impl Release {
     /// What the hub downloads to update itself: the small hub-only ZIP if the release has one, else the full bundle.
     /// Since 0.5 a release carries two hub ZIPs: `swapcraft-hub-*` (SwapCraft.exe), which this hub takes, and
-    /// `voidflare-hub-*` (the same program as voidflare.exe), for hubs up to 0.4, which look for that name.
+    /// `voidflare-hub-*` (the same program as voidflare.exe), for hubs up to 0.4, which look for that name. On Linux
+    /// the same names end in `-linux-x86_64.zip` instead of `-windows.zip`.
     pub fn update_zip(&self) -> Option<&Asset> {
-        let hub = |prefix: &str| self.assets.iter().find(|a| a.name.starts_with(prefix) && a.name.ends_with("-windows.zip"));
+        let end = format!("-{}.zip", crate::platform::RELEASE_TAG);
+        let hub = |prefix: &str| self.assets.iter().find(|a| a.name.starts_with(prefix) && a.name.ends_with(&end));
         hub("swapcraft-hub-").or_else(|| hub("voidflare-hub-")).or(self.zip.as_ref())
     }
 
@@ -52,7 +54,7 @@ impl Release {
 }
 
 fn settings_file() -> Option<PathBuf> {
-    std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("voidflare").join("updates.txt"))
+    crate::platform::data_file("updates.txt")
 }
 
 /// Whether the hub looks for a newer release by itself when it starts. On unless the user turned it off
@@ -124,16 +126,21 @@ pub fn parse_release(json: &str) -> Result<Release, String> {
         version: tag.trim_start_matches(['v', 'V']).to_owned(),
         page: text("html_url"),
         notes: text("body"),
-        // The full offline bundle: `swapcraft-<version>-windows.zip` since 0.5, `voidflare-<version>-windows.zip` before.
-        // A hub that sees several ZIPs prefers it over the small hub-only and per-app files.
-        zip: ["swapcraft-", "voidflare-"]
-            .iter()
-            .find_map(|prefix| {
-                let hub = format!("{prefix}hub-");
-                assets.iter().find(|a| a.name.to_lowercase().ends_with("-windows.zip") && a.name.starts_with(prefix) && !a.name.starts_with(&hub) && !a.name.contains("-app-") && !a.name.contains("-engine-"))
-            })
-            .or_else(|| assets.iter().find(|a| a.name.to_lowercase().ends_with(".zip")))
-            .cloned(),
+        // The full offline bundle: `swapcraft-<version>-windows.zip` since 0.5, `voidflare-<version>-windows.zip` before
+        // (`-linux-x86_64.zip` on Linux). A hub that sees several ZIPs prefers it over the small hub-only and per-app
+        // files. Only on Windows does any ZIP do as a last resort (the first releases had other names); on Linux it
+        // would be a Windows file.
+        zip: {
+            let end = format!("-{}.zip", crate::platform::RELEASE_TAG);
+            ["swapcraft-", "voidflare-"]
+                .iter()
+                .find_map(|prefix| {
+                    let hub = format!("{prefix}hub-");
+                    assets.iter().find(|a| a.name.to_lowercase().ends_with(&end) && a.name.starts_with(prefix) && !a.name.starts_with(&hub) && !a.name.contains("-app-") && !a.name.contains("-engine-"))
+                })
+                .or_else(|| assets.iter().find(|a| cfg!(windows) && a.name.to_lowercase().ends_with(".zip")))
+                .cloned()
+        },
         sums: assets.iter().find(|a| a.name == SUMS_NAME).cloned(),
         assets,
     })
@@ -202,8 +209,11 @@ const STAGING: &str = ".voidflare-update";
 /// Windows lets a running program or a loaded DLL be renamed but not overwritten.
 pub fn old_name(exe: &Path) -> PathBuf {
     let stem = exe.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "voidflare".to_owned());
-    let ext = exe.extension().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "exe".to_owned());
-    exe.with_file_name(format!("{stem}.old.{ext}"))
+    match exe.extension() {
+        Some(ext) => exe.with_file_name(format!("{stem}.old.{}", ext.to_string_lossy())),
+        // Linux programs have no extension: `swapcraft` -> `swapcraft.old`
+        None => exe.with_file_name(format!("{stem}.old")),
+    }
 }
 
 /// Downloads the release ZIP, checks its SHA-256, and replaces the running hub with the `voidflare.exe` inside it.
@@ -264,14 +274,14 @@ pub fn install_from_zip(zip: &Path, exe: &Path, work: &Path) -> Result<(), Strin
 /// The drag-and-drop menu handler that sits beside the hub.
 pub const DRAG_DLL: &str = voidflare_dragdrop::config::DLL_NAME;
 
-/// The hub program.
-pub const HUB_NAME: &str = "SwapCraft.exe";
-/// Its name up to 0.4.
-pub const LEGACY_HUB_NAME: &str = "voidflare.exe";
+/// The hub program (`swapcraft` on Linux, lower case as programs are there).
+pub const HUB_NAME: &str = if cfg!(windows) { "SwapCraft.exe" } else { "swapcraft" };
+/// Its name up to 0.4 (Windows only: there was no Linux version then).
+pub const LEGACY_HUB_NAME: &str = if cfg!(windows) { "voidflare.exe" } else { "voidflare" };
 /// The command-line program that sits beside the hub.
-pub const CLI_NAME: &str = "swapcraft-cli.exe";
+pub const CLI_NAME: &str = if cfg!(windows) { "swapcraft-cli.exe" } else { "swapcraft-cli" };
 /// Its name up to 0.4.
-pub const LEGACY_CLI_NAME: &str = "voidflare-cli.exe";
+pub const LEGACY_CLI_NAME: &str = if cfg!(windows) { "voidflare-cli.exe" } else { "voidflare-cli" };
 
 /// 0.5 renames the programs: a hub that starts as `voidflare.exe` gives itself the name `SwapCraft.exe`, and
 /// `voidflare-cli.exe` next to it becomes `swapcraft-cli.exe`. Windows lets a running program be renamed. Returns the
@@ -298,9 +308,11 @@ pub fn rename_legacy(exe: &Path) -> Result<Option<PathBuf>, String> {
     Ok(Some(target))
 }
 
+/// A Windows program (or DLL) starts with `MZ`, a Linux one with `\x7fELF`.
 fn is_exe(p: &Path) -> bool {
-    let mut head = [0u8; 2];
-    fs::File::open(p).and_then(|mut f| f.read_exact(&mut head)).is_ok() && &head == b"MZ"
+    let mut head = [0u8; 4];
+    let read = fs::File::open(p).and_then(|mut f| f.read_exact(&mut head)).is_ok();
+    read && if cfg!(windows) { head.starts_with(b"MZ") } else { &head == b"\x7fELF" }
 }
 
 /// `exe` is renamed to its `.old.exe` name, `new` takes its place; if that fails the old one is put back.
@@ -404,6 +416,7 @@ pub fn fetch_verified(zip: &Asset, expected: &str, dest_dir: &Path, progress: &d
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
     const SAMPLE: &str = r#"{
       "tag_name": "v0.2.0",
       "html_url": "https://github.com/Flaeren/voidflare/releases/tag/v0.2.0",
@@ -426,6 +439,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn a_release_is_read_from_the_github_json() {
         let r = parse_release(SAMPLE).unwrap();
         assert_eq!(r.version, "0.2.0");
@@ -437,6 +451,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn with_several_zips_the_full_bundle_is_the_update_file() {
         // The small hub and the per-app ZIPs come first on purpose: a 0.1.0 hub must still pick the full bundle.
         let json = r#"{"tag_name": "v0.2.0", "assets": [
@@ -454,6 +469,43 @@ mod tests {
         // No bundle at all: fall back to any ZIP, as before.
         let only_app = r#"{"tag_name": "v0.2.0", "assets": [{"name": "a.zip", "browser_download_url": "https://e.test/a.zip", "size": 1}]}"#;
         assert_eq!(parse_release(only_app).unwrap().zip.unwrap().name, "a.zip");
+    }
+
+    /// A release carries the Windows and the Linux files side by side; each hub takes only its own, and on Linux
+    /// the hub (and its command line) is swapped for the Linux programs in the hub ZIP.
+    #[test]
+    #[cfg(not(windows))]
+    fn a_linux_hub_takes_only_the_linux_files_and_replaces_itself() {
+        let json = r#"{"tag_name": "v0.6.0", "assets": [
+          {"name": "swapcraft-hub-0.6.0-windows.zip", "browser_download_url": "https://e.test/hw.zip", "size": 1},
+          {"name": "swapcraft-0.6.0-windows.zip", "browser_download_url": "https://e.test/fw.zip", "size": 1},
+          {"name": "swapcraft-app-word-to-pdf-0.6.0-windows-x64.zip", "browser_download_url": "https://e.test/aw.zip", "size": 1},
+          {"name": "swapcraft-hub-0.6.0-linux-x86_64.zip", "browser_download_url": "https://e.test/hl.zip", "size": 1},
+          {"name": "swapcraft-0.6.0-linux-x86_64.zip", "browser_download_url": "https://e.test/fl.zip", "size": 1},
+          {"name": "swapcraft-app-word-to-pdf-0.6.0-linux-x86_64.zip", "browser_download_url": "https://e.test/al.zip", "size": 1},
+          {"name": "SHA256SUMS.txt", "browser_download_url": "https://e.test/s.txt", "size": 1}]}"#;
+        let r = parse_release(json).unwrap();
+        assert_eq!(r.zip.as_ref().unwrap().name, "swapcraft-0.6.0-linux-x86_64.zip", "the full bundle for Linux");
+        assert_eq!(r.update_zip().unwrap().name, "swapcraft-hub-0.6.0-linux-x86_64.zip", "the hub updates from its own small ZIP");
+        let windows_only = r#"{"tag_name": "v0.5.0", "assets": [{"name": "swapcraft-0.5.0-windows.zip", "browser_download_url": "https://e.test/w.zip", "size": 1}]}"#;
+        assert!(parse_release(windows_only).unwrap().zip.is_none(), "a release without Linux files offers nothing to download");
+
+        let root = std::env::temp_dir().join(format!("vf-hub-swap-linux-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("apps/word")).unwrap();
+        fs::write(root.join("apps/word/word"), b"\x7fELF-app-keeps-this").unwrap();
+        let exe = root.join("swapcraft");
+        fs::write(&exe, b"\x7fELF-old-hub").unwrap();
+        fs::write(root.join("swapcraft-cli"), b"\x7fELF-old-cli").unwrap();
+        let zip = root.join("update.zip");
+        zip_with(&zip, &[("swapcraft", b"\x7fELF-new-hub"), ("swapcraft-cli", b"\x7fELF-new-cli"), ("SwapCraft.exe", b"MZ-windows"), ("README.txt", b"hi")]);
+        install_from_zip(&zip, &exe, &root.join(".work")).expect("the swap works");
+        assert_eq!(fs::read(&exe).unwrap(), b"\x7fELF-new-hub");
+        assert_eq!(fs::read(root.join("swapcraft.old")).unwrap(), b"\x7fELF-old-hub", "the old hub is parked, not lost");
+        assert_eq!(fs::read(root.join("swapcraft-cli")).unwrap(), b"\x7fELF-new-cli");
+        assert_eq!(fs::read(root.join("apps/word/word")).unwrap(), b"\x7fELF-app-keeps-this");
+        assert!(!root.join("SwapCraft.exe").exists() && !root.join("README.txt").exists());
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -527,6 +579,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn the_hub_is_replaced_and_the_apps_are_left_alone() {
         let root = std::env::temp_dir().join(format!("vf-hub-swap-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
@@ -550,6 +603,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn a_zip_made_before_0_5_still_updates_the_hub() {
         let root = std::env::temp_dir().join(format!("vf-hub-legacy-zip-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
@@ -565,6 +619,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn voidflare_exe_renames_itself_to_swapcraft_exe() {
         let root = std::env::temp_dir().join(format!("vf-rename-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
@@ -583,6 +638,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn the_new_hub_zip_wins_over_the_legacy_one() {
         let json = r#"{"tag_name": "v0.5.0", "html_url": "https://e.test/r", "assets": [
           {"name": "voidflare-app-word-to-pdf-0.5.0-windows-x64.zip", "browser_download_url": "https://e.test/a.zip", "size": 1},
@@ -596,6 +652,7 @@ mod tests {
     }
 
     /// A tiny web server on a free local port: every path in `routes` answers with its bytes, anything else is 404.
+    #[cfg(windows)]
     fn serve(routes: Vec<(String, Vec<u8>)>) -> String {
         use std::io::BufRead;
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -628,6 +685,7 @@ mod tests {
 
     /// The whole chain the hub's UPDATE NOW runs, minus the window: download, checksum, unpack, swap.
     #[test]
+    #[cfg(windows)]
     fn update_now_downloads_verifies_and_replaces_the_hub() {
         let root = std::env::temp_dir().join(format!("vf-hub-e2e-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);

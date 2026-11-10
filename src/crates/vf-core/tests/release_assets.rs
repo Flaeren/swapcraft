@@ -1,6 +1,6 @@
-//! Checks the files `release.ps1` wrote into `..\release\` the way the hub will use them: the checksum file
+//! Checks the files `release.ps1` (Linux: `release.sh`) wrote into `..\release\` the way the hub will use them: the checksum file
 //! covers every file, the manifest is readable, and every pack installs from its own ZIPs and runs its engine.
-//! Skipped when there is no `release\manifest.json` (CI and fresh checkouts have not run release.ps1).
+//! Skipped when there is no manifest for this platform in `release\` (CI and fresh checkouts have not run the script).
 //!
 //! Run it with:  cargo test --release -p vf-core --test release_assets -- --nocapture
 
@@ -76,7 +76,7 @@ fn every_pack_installs_from_its_own_files_and_its_engine_runs() {
         }
         let choice = pack.engine.as_ref().map(|_| (&EngineSource::Bundled, engine_zip.as_deref()));
         let st = packs::install_from_files(&apps, pack, &app_zip, &app_hash, choice, &cancel).unwrap_or_else(|e| panic!("{}: {e}", pack.id));
-        assert!(apps.join(&pack.id).join(format!("{}.exe", pack.id)).is_file());
+        assert!(apps.join(&pack.id).join(vf_core::platform::exe(&pack.id)).is_file());
         assert_eq!(packs::installed(&apps, &pack.id), Some(st));
         assert_eq!(packs::status(&apps, pack, &sums), packs::Status::UpToDate);
         assert_eq!(packs::health(&apps, pack, None), packs::Health::Ok, "{}", pack.id);

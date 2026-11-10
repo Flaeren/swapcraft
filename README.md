@@ -6,7 +6,7 @@
 
 <h3 align="center">Craft your conversion, always offline.</h3>
 
-<p align="center"><b>Offline file converters for Windows: Office documents, PDF, DWG drawings, images, audio, video and e-books, converted on your own PC.</b><br>Drop a file, pick a format, done.</p>
+<p align="center"><b>Offline file converters for Windows and Linux: Office documents, PDF, DWG drawings, images, audio, video and e-books, converted on your own PC.</b><br>Drop a file, pick a format, done.</p>
 
 <p align="center"><sub>This repository and <a href="https://swapcraft.voidflare.app">swapcraft.voidflare.app</a> are SwapCraft's only official homes.</sub></p>
 
@@ -14,7 +14,7 @@
   <!-- The project -->
   <a href="https://github.com/Flaeren/swapcraft/releases/latest"><img src="https://img.shields.io/github/v/release/Flaeren/swapcraft?sort=semver&color=6366f1" alt="Latest release"></a>
   <a href="https://github.com/Flaeren/swapcraft/actions/workflows/build.yml"><img src="https://github.com/Flaeren/swapcraft/actions/workflows/build.yml/badge.svg?branch=main" alt="Build and tests"></a>
-  <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1f2937.svg" alt="Platform: Windows 10 and 11">
+  <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux-1f2937.svg" alt="Platform: Windows 10 and 11, Linux">
   <img src="https://img.shields.io/badge/made%20with-Rust-1f2937.svg" alt="Made with Rust">
   <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-6366f1.svg" alt="License: MIT OR Apache-2.0"></a>
   <br>
@@ -53,7 +53,7 @@ SwapCraft is built the way the [ArtCraft](https://getartcraft.com) apps are: in 
   <img src="docs/img/recipes.png" alt="The SwapCraft hub on the Recipes tab: a three-step recipe that converts, merges and shrinks" width="720">
 </p>
 
-> **Status:** early (v0.5.0). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
+> **Status:** early (v0.6.0). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
 
 ## Principles
 
@@ -96,6 +96,14 @@ SwapCraft's conversions are done by command-line engines of the **[ArtCraft](htt
 The programs are not code-signed yet, so Windows SmartScreen may warn on first run: choose *More info*, then *Run anyway*. Or unblock the ZIP (right click, Properties, *Unblock*) before extracting.
 
 You can also drop a file on `SwapCraft.exe` in Explorer, or send it there with *Open with*. Each app also runs on its own from `apps\<app>\`.
+
+### On Linux
+
+1. Download `swapcraft-hub-<version>-linux-x86_64.zip` from the [Releases](../../releases) page, or `swapcraft-<version>-linux-x86_64.zip` for everything in one file.
+2. Unzip it to a folder of your own, for example `~/SwapCraft`, and run `swapcraft` (double click it, or `./swapcraft` in a terminal).
+3. Install the converters you need from their cards, as on Windows. In Settings you can add SwapCraft to your applications menu and to the desktop.
+
+Settings and recipes are kept in `~/.config/voidflare`. The right-click menu and *Convert here* when dragging with the right mouse button are Windows File Explorer features and are not on Linux yet. The Linux programs are built on Ubuntu 22.04, so they need a system at least that recent (Linux Mint 21 or newer, for example), 64-bit x86.
 
 ## What it converts
 
@@ -141,13 +149,13 @@ Tools: `voidflare_formats` (what converts to what), `voidflare_convert`, `voidfl
 
 ## System requirements
 
-- Windows 10 or 11, 64-bit.
+- Windows 10 or 11, 64-bit; or Linux on 64-bit x86 with glibc 2.35 or newer (Ubuntu 22.04, Linux Mint 21, Debian 12 and later) and an X11 or Wayland desktop.
 - Disk space: about 20 MB for the hub, plus what you install (an app with its own engine is 30 to 110 MB; all nine with their engines are well over 1 GB, so install only what you need).
 - No Visual C++ runtime and no Microsoft Office. An internet connection is needed only to install or update an app from the hub; the full ZIP needs none.
 
 ## Build from source
 
-You need Windows, the Rust toolchain and an internet connection for the first build. The engines are not installed by hand: `fetch-engines.ps1` downloads the exact versions pinned in [`src/engines.json`](src/engines.json) from the official ArtCraft releases and refuses any file whose SHA-256 differs from the pinned one. CADCraft is built from source at a pinned commit with our patch.
+You need Windows or Linux, the Rust toolchain and an internet connection for the first build. The engines are not installed by hand: `fetch-engines.ps1` downloads the exact versions pinned in [`src/engines.json`](src/engines.json) from the official ArtCraft releases and refuses any file whose SHA-256 differs from the pinned one. CADCraft is built from source at a pinned commit with our patch.
 
 ```powershell
 cd src
@@ -155,6 +163,15 @@ powershell -File fetch-engines.ps1 -BuildCadcraft   # engines, pinned and hash-c
 powershell -File build-apps.ps1                     # writes ..\portable\SwapCraft.exe and ..\portable\apps\<app>\
 powershell -File release.ps1                        # packs portable\ into ..\release\: full bundle, hub, one ZIP per app and engine, manifest.json, SHA256SUMS.txt
 cargo test --release -p vf-core                     # tests that need an engine skip themselves when it is missing
+```
+
+On Linux the same steps are shell scripts (they need `curl`, `jq`, `zip` and `git`, plus the X11/Wayland development packages listed in [`.github/workflows/build.yml`](.github/workflows/build.yml)):
+
+```sh
+cd src
+./fetch-engines.sh --build-cadcraft   # the Linux builds of the same engines, pinned and hash-checked
+./build-apps.sh                       # writes ../portable-linux/swapcraft and ../portable-linux/apps/<app>/
+./release.sh                          # packs it into ../release/: full bundle, hub, apps, engines, manifest-linux-x86_64.json, SHA256SUMS.txt
 ```
 
 ```
@@ -168,9 +185,9 @@ src/
   licenses/       licence texts copied next to each bundled engine
   engines.json    the engines bundled, pinned by version and SHA-256
   engine-compat.json  the ArtCraft engine versions we have tested, which an app may reuse from the PC
-  fetch-engines.ps1  downloads and verifies them (and builds CADCraft with our patch)
-  build-apps.ps1  builds everything into portable/
-  release.ps1     packs portable/ into the release files (full bundle, hub, apps, engines, manifest.json, SHA256SUMS.txt)
+  fetch-engines.ps1  downloads and verifies them (and builds CADCraft with our patch); fetch-engines.sh on Linux
+  build-apps.ps1  builds everything into portable/ (build-apps.sh: portable-linux/)
+  release.ps1     packs portable/ into the release files (full bundle, hub, apps, engines, manifest.json, SHA256SUMS.txt); release.sh on Linux
 docs/             images for this page
 ```
 

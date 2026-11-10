@@ -371,7 +371,10 @@ impl Hub {
                     }
                 });
             };
-            if wide {
+            // On Linux the only thing in the run box (the right-click menu) does not exist: the save box alone.
+            if !vf_core::menu::SUPPORTED {
+                save_box(ui, r);
+            } else if wide {
                 // the gap between the two boxes is the item spacing; the theme's is too tight for two framed cards.
                 // 8 px, the same as between the step rows above.
                 ui.scope(|ui| {
@@ -428,7 +431,7 @@ impl Hub {
             if let Some(dir) = self.last_dir.clone()
                 && widgets::button(ui, &tr("hub.open_folder")).clicked()
             {
-                let _ = std::process::Command::new("explorer").arg(dir).spawn();
+                vf_core::platform::open_folder(dir);
             }
         }
 

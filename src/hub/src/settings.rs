@@ -13,9 +13,9 @@ use vf_core::shortcuts::{self, Place, State};
 use vf_core::update;
 use vf_ui::theme::{Appearance, Tokens};
 
-/// `%APPDATA%\voidflare`, where the hub keeps its few settings.
+/// `%APPDATA%\voidflare` (Linux: `~/.config/voidflare`), where the hub keeps its few settings.
 pub fn data_dir() -> Option<PathBuf> {
-    std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("voidflare"))
+    vf_core::platform::data_dir()
 }
 
 const WELCOME_MARK: &str = "welcome.txt";
@@ -228,7 +228,7 @@ impl Settings {
                         if ui.button(RichText::new(i18n::t("hub.btn_show")).font(FontId::proportional(12.5))).on_hover_text(i18n::t("hub.btn_show_hint")).clicked()
                             && let Some(dir) = shortcuts::start_menu_dir()
                         {
-                            let _ = std::process::Command::new("explorer.exe").arg(format!("/select,{}", shortcuts::link_path(&dir).display())).spawn();
+                            vf_core::platform::reveal(&shortcuts::link_path(&dir));
                         }
                     }
                     State::Missing => {
@@ -279,6 +279,8 @@ impl Settings {
                 }
                 ui.label(RichText::new(i18n::t("hub.pin_note")).size(12.0).color(t.faint));
 
+                // File Explorer's right-click menu: Windows only.
+                if vf_core::menu::SUPPORTED {
                 section(ui, t, &i18n::t("menu.sec"));
                 let on = crate::menu::installed();
                 ui.label(RichText::new(i18n::t(if on { "menu.on" } else { "menu.off" })).color(if on { t.good } else { t.muted }));
@@ -308,13 +310,14 @@ impl Settings {
                 }
                 ui.label(RichText::new(i18n::t("menu.drag_note")).size(12.0).color(t.faint));
                 ui.label(RichText::new(i18n::t("menu.note")).size(12.0).color(t.faint));
+                }
 
                 section(ui, t, &i18n::t("hub.sec_data"));
                 if let Some(dir) = data_dir() {
                     ui.label(RichText::new(dir.display().to_string()).font(FontId::proportional(12.5)).color(t.muted));
                     if ui.button(RichText::new(i18n::t("hub.btn_open_data")).font(FontId::proportional(12.5))).clicked() {
                         let _ = std::fs::create_dir_all(&dir);
-                        let _ = std::process::Command::new("explorer.exe").arg(&dir).spawn();
+                        vf_core::platform::open_folder(&dir);
                     }
                 }
                 ui.label(RichText::new(i18n::tf("hub.data_note", &[("remove", &i18n::t("hub.remove"))])).size(12.0).color(t.faint));

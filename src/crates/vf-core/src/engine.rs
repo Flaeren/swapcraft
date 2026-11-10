@@ -1,4 +1,4 @@
-//! Finding an installed ArtCraft engine (its `*-cli.exe`).
+//! Finding an installed ArtCraft engine (its `*-cli.exe`, `*-cli` on Linux).
 
 use std::path::{Path, PathBuf};
 
@@ -7,21 +7,28 @@ use std::path::{Path, PathBuf};
 pub struct Engine {
     /// Folder name, e.g. `WordCraft`.
     pub folder: &'static str,
-    /// Program name, e.g. `wordcraft-cli.exe`.
+    /// Program name, e.g. `wordcraft-cli.exe` (`wordcraft-cli` on Linux).
     pub cli: &'static str,
     /// Environment variable that points at a program to use instead (to compare engines).
     pub env: &'static str,
 }
 
-pub const WORDCRAFT: Engine = Engine { folder: "WordCraft", cli: "wordcraft-cli.exe", env: "VOIDFLARE_WORDCRAFT" };
-pub const GRIDCRAFT: Engine = Engine { folder: "GridCraft", cli: "gridcraft-cli.exe", env: "VOIDFLARE_GRIDCRAFT" };
-pub const DECKCRAFT: Engine = Engine { folder: "DeckCraft", cli: "deckcraft-cli.exe", env: "VOIDFLARE_DECKCRAFT" };
-pub const PDFCRAFT: Engine = Engine { folder: "PdfCraft", cli: "pdfcraft-cli.exe", env: "VOIDFLARE_PDFCRAFT" };
-pub const PHOTOCRAFT: Engine = Engine { folder: "PhotoCraft", cli: "photocraft-cli.exe", env: "VOIDFLARE_PHOTOCRAFT" };
-pub const SOUNDCRAFT: Engine = Engine { folder: "SoundCraft", cli: "soundcraft-cli.exe", env: "VOIDFLARE_SOUNDCRAFT" };
-pub const FILMCRAFT: Engine = Engine { folder: "FilmCraft", cli: "filmcraft-cli.exe", env: "VOIDFLARE_FILMCRAFT" };
+/// A program name with this platform's suffix, as a constant: `cli!("wordcraft-cli")`.
+macro_rules! cli {
+    ($stem:literal) => {
+        if cfg!(windows) { concat!($stem, ".exe") } else { $stem }
+    };
+}
+
+pub const WORDCRAFT: Engine = Engine { folder: "WordCraft", cli: cli!("wordcraft-cli"), env: "VOIDFLARE_WORDCRAFT" };
+pub const GRIDCRAFT: Engine = Engine { folder: "GridCraft", cli: cli!("gridcraft-cli"), env: "VOIDFLARE_GRIDCRAFT" };
+pub const DECKCRAFT: Engine = Engine { folder: "DeckCraft", cli: cli!("deckcraft-cli"), env: "VOIDFLARE_DECKCRAFT" };
+pub const PDFCRAFT: Engine = Engine { folder: "PdfCraft", cli: cli!("pdfcraft-cli"), env: "VOIDFLARE_PDFCRAFT" };
+pub const PHOTOCRAFT: Engine = Engine { folder: "PhotoCraft", cli: cli!("photocraft-cli"), env: "VOIDFLARE_PHOTOCRAFT" };
+pub const SOUNDCRAFT: Engine = Engine { folder: "SoundCraft", cli: cli!("soundcraft-cli"), env: "VOIDFLARE_SOUNDCRAFT" };
+pub const FILMCRAFT: Engine = Engine { folder: "FilmCraft", cli: cli!("filmcraft-cli"), env: "VOIDFLARE_FILMCRAFT" };
 /// CADCraft installs under `%LOCALAPPDATA%ProgramsArtCraft`, not Program Files (`find` looks in both).
-pub const CADCRAFT: Engine = Engine { folder: "CADCraft", cli: "cadcraft-cli.exe", env: "VOIDFLARE_CADCRAFT" };
+pub const CADCRAFT: Engine = Engine { folder: "CADCraft", cli: cli!("cadcraft-cli"), env: "VOIDFLARE_CADCRAFT" };
 
 /// The engine a manifest names (`wordcraft`, `gridcraft`, ...), if voidflare drives it.
 pub fn by_name(name: &str) -> Option<&'static Engine> {
@@ -49,11 +56,24 @@ impl Engine {
         candidates.into_iter().find(|c| c.is_file())
     }
 
+    #[cfg(windows)]
     fn system_candidates(&self) -> Vec<PathBuf> {
         let program_files = std::env::var_os("ProgramFiles").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Program Files"));
         let mut list = vec![program_files.join(self.folder).join(self.cli)];
         if let Some(local) = std::env::var_os("LOCALAPPDATA") {
             list.push(PathBuf::from(local).join("Programs").join("ArtCraft").join(self.folder).join(self.cli));
+        }
+        list
+    }
+
+    /// On Linux: the engine's own folder under `/opt` (the .deb and .rpm packages), then the programs on the PATH
+    /// (a package's `/usr/bin` link, `~/.local/bin`).
+    #[cfg(not(windows))]
+    fn system_candidates(&self) -> Vec<PathBuf> {
+        let lower = self.folder.to_lowercase();
+        let mut list = vec![PathBuf::from("/opt").join(self.folder).join(self.cli), PathBuf::from("/opt").join(&lower).join(self.cli)];
+        if let Some(path) = std::env::var_os("PATH") {
+            list.extend(std::env::split_paths(&path).map(|d| d.join(self.cli)));
         }
         list
     }

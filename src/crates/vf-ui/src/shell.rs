@@ -3,7 +3,6 @@
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
@@ -230,7 +229,7 @@ pub fn finish(all: &[Outcome], log: &mut Vec<(String, Kind)>, open_folder: bool)
         && let Some(Ok(path)) = ok.last().map(|o| &o.result)
         && let Some(dir) = if path.is_dir() { Some(path.as_path()) } else { path.parent() }
     {
-        let _ = Command::new("explorer").arg(dir).spawn();
+        vf_core::platform::open_folder(dir);
     }
 }
 

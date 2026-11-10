@@ -1,4 +1,4 @@
-//! A Start menu shortcut for the hub.
+//! A Start menu shortcut for the hub (on Linux: an entry in the applications menu, a `.desktop` file).
 //!
 //! Windows has no supported way for a program to pin itself to the taskbar (Microsoft closed it on purpose and the
 //! unofficial tricks break between versions), so this does not try: a Start menu entry is a plain `.lnk` file in the
@@ -12,8 +12,12 @@
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
-/// The shortcut's file name, which is also the name shown in the Start menu.
-const LINK_NAME: &str = "SwapCraft.lnk";
+/// The shortcut's file name, which is also the name shown in the Start menu. On Linux the menu shows the `Name=`
+/// inside the file, and the file name is an id.
+const LINK_NAME: &str = if cfg!(windows) { "SwapCraft.lnk" } else { "swapcraft.desktop" };
+/// The icon the Linux launcher shows: a PNG shipped beside the hub program.
+#[cfg(not(windows))]
+pub const ICON_FILE: &str = "swapcraft.png";
 /// The name used up to 0.4, before the converter was called SwapCraft. The 0.5 hub replaces it with `SwapCraft.lnk`
 /// at its first start (see [`replace_legacy`]); a pin to Start has to be made again.
 const LEGACY_LINK_NAME: &str = "voidflare.lnk";
@@ -23,10 +27,15 @@ const LEGACY_LINK_NAME: &str = "voidflare.lnk";
 /// fallback if that fails.
 pub fn start_menu_dir() -> Option<PathBuf> {
     #[cfg(windows)]
-    if let Some(p) = com::known_programs_folder() {
-        return Some(p);
+    {
+        if let Some(p) = com::known_programs_folder() {
+            return Some(p);
+        }
+        std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("Microsoft").join("Windows").join("Start Menu").join("Programs"))
     }
-    std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("Microsoft").join("Windows").join("Start Menu").join("Programs"))
+    // Linux: the user's own applications folder, which every desktop's menu reads.
+    #[cfg(not(windows))]
+    linux::data_home().map(|d| d.join("applications"))
 }
 
 /// The path the Start menu shortcut has (or would have) in `dir`: the old `voidflare.lnk` while it exists and
@@ -115,6 +124,134 @@ mod com {
     }
 }
 
+#[cfg(not(windows))]
+mod linux {
+    use std::path::{Path, PathBuf};
+
+    /// `$XDG_DATA_HOME`, normally `~/.local/share`.
+    pub fn data_home() -> Option<PathBuf> {
+        std::env::var_os("XDG_DATA_HOME")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").filter(|v| !v.is_empty()).map(|h| PathBuf::from(h).join(".local").join("share")))
+    }
+
+    /// The desktop folder: `XDG_DESKTOP_DIR` from `~/.config/user-dirs.dirs` (it is translated, `Scrivania` in
+    /// Italian), else `~/Desktop`.
+    pub fn desktop() -> Option<PathBuf> {
+        let home = PathBuf::from(std::env::var_os("HOME").filter(|v| !v.is_empty())?);
+        let config = std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
+        let from_dirs = std::fs::read_to_string(config.join("user-dirs.dirs")).ok().and_then(|text| {
+            text.lines().find_map(|l| {
+                let v = l.trim().strip_prefix("XDG_DESKTOP_DIR=")?.trim().trim_matches('"');
+                let v = v.replace("$HOME", &home.to_string_lossy());
+                (!v.is_empty()).then(|| PathBuf::from(v))
+            })
+        });
+        Some(from_dirs.unwrap_or_else(|| home.join("Desktop")))
+    }
+
+    /// A value for `Exec=`: the path in double quotes, with the characters the spec says to escape.
+    fn quote(p: &Path) -> String {
+        let mut out = String::from("\"");
+        for c in p.to_string_lossy().chars() {
+            match c {
+                '"' | '`' | '$' | '\\' => {
+                    out.push('\\');
+                    out.push(c);
+                }
+                '%' => out.push_str("%%"),
+                _ => out.push(c),
+            }
+        }
+        out.push('"');
+        out
+    }
+
+    fn unquote(v: &str) -> String {
+        let v = v.trim();
+        let inner = v.strip_prefix('"').and_then(|x| x.strip_suffix('"')).unwrap_or(v);
+        let mut out = String::new();
+        let mut chars = inner.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' => out.extend(chars.next()),
+                '%' => {
+                    if chars.next() == Some('%') {
+                        out.push('%');
+                    }
+                }
+                _ => out.push(c),
+            }
+        }
+        out
+    }
+
+    /// The text of the launcher. `%F` lets the menu pass the files dropped on it.
+    pub fn entry(target: &Path) -> String {
+        let dir = target.parent().unwrap_or(Path::new("/"));
+        let icon = dir.join(super::ICON_FILE);
+        let mut text = String::from("[Desktop Entry]\nType=Application\nName=SwapCraft\nGenericName=File converter\n");
+        text.push_str("Comment=Offline file converters\n");
+        text.push_str(&format!("Exec={} %F\n", quote(target)));
+        text.push_str(&format!("Path={}\n", dir.display()));
+        if icon.is_file() {
+            text.push_str(&format!("Icon={}\n", icon.display()));
+        }
+        text.push_str("Terminal=false\nCategories=Utility;Office;\nStartupWMClass=swapcraft\n");
+        text
+    }
+
+    pub fn write(link: &Path, target: &Path, executable: bool) -> Result<(), String> {
+        std::fs::write(link, entry(target)).map_err(|e| format!("could not write {}: {e}", link.display()))?;
+        if executable {
+            // A launcher on the desktop runs only when it is executable; GNOME also wants it marked trusted.
+            crate::platform::set_mode(link, 0o755);
+            let _ = std::process::Command::new("gio")
+                .arg("set")
+                .arg(link)
+                .arg("metadata::trusted")
+                .arg("true")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+        }
+        Ok(())
+    }
+
+    /// The program an existing launcher starts (its `Exec=` without the `%F`).
+    pub fn read(link: &Path) -> Option<PathBuf> {
+        let text = std::fs::read_to_string(link).ok()?;
+        let exec = text.lines().find_map(|l| l.strip_prefix("Exec="))?.trim();
+        let exec = exec.strip_suffix("%F").unwrap_or(exec).trim();
+        Some(PathBuf::from(unquote(exec))).filter(|p| !p.as_os_str().is_empty())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn a_launcher_points_back_at_its_program() {
+            let dir = std::env::temp_dir().join(format!("vf-desktop-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            let app = dir.join("Swap Craft $1 100%");
+            std::fs::create_dir_all(&app).unwrap();
+            let target = app.join("swapcraft");
+            std::fs::write(&target, b"ELF").unwrap();
+            std::fs::write(app.join(super::super::ICON_FILE), b"png").unwrap();
+            let link = dir.join("swapcraft.desktop");
+            write(&link, &target, true).unwrap();
+            let text = std::fs::read_to_string(&link).unwrap();
+            assert!(text.contains("Exec=\"") && text.contains("\\$1 100%%") && text.contains("Icon="), "{text}");
+            assert_eq!(read(&link).unwrap(), target);
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&link).unwrap().permissions().mode() & 0o111, 0o111, "a desktop launcher must be executable");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+}
+
 /// Creates (or replaces) the shortcut to `target` in `dir`; its working folder is the one `target` sits in.
 pub fn create_in(dir: &Path, target: &Path) -> Result<(), String> {
     if !target.is_file() {
@@ -124,8 +261,12 @@ pub fn create_in(dir: &Path, target: &Path) -> Result<(), String> {
     let link = link_path(dir);
     #[cfg(windows)]
     com::write(link.clone(), target.to_path_buf())?;
+    // Linux: the applications menu reads the file as it is; on the desktop it must also be executable.
     #[cfg(not(windows))]
-    return Err("Start menu shortcuts exist only on Windows".into());
+    {
+        let on_desktop = desktop_dir().is_some_and(|d| d == dir);
+        return linux::write(&link, target, on_desktop);
+    }
     #[cfg(windows)]
     if link.is_file() {
         notify_shell(&link, true);
@@ -157,7 +298,7 @@ pub fn target_in(dir: &Path) -> Option<PathBuf> {
     #[cfg(windows)]
     return com::read(link);
     #[cfg(not(windows))]
-    None
+    linux::read(&link)
 }
 
 /// Deletes the shortcut in `dir`; fine if it was not there.
@@ -245,13 +386,17 @@ pub enum Place {
     Desktop,
 }
 
-/// The user's desktop folder: asked of Windows, `%USERPROFILE%\Desktop` only as the fallback.
+/// The user's desktop folder: asked of Windows, `%USERPROFILE%\Desktop` only as the fallback (Linux: see `linux::desktop`).
 pub fn desktop_dir() -> Option<PathBuf> {
     #[cfg(windows)]
-    if let Some(p) = com::known_desktop_folder() {
-        return Some(p);
+    {
+        if let Some(p) = com::known_desktop_folder() {
+            return Some(p);
+        }
+        std::env::var_os("USERPROFILE").map(|d| PathBuf::from(d).join("Desktop"))
     }
-    std::env::var_os("USERPROFILE").map(|d| PathBuf::from(d).join("Desktop"))
+    #[cfg(not(windows))]
+    linux::desktop()
 }
 
 /// The folder of a place.

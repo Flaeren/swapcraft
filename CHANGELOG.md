@@ -2,6 +2,16 @@
 
 All notable changes to SwapCraft (formerly voidflare) are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.0] - 2026-11-10
+
+### Added
+
+- **SwapCraft for Linux** (64-bit, x86_64). The hub and all nine apps run on Linux, with the official Linux builds of the ArtCraft engines at the same versions as on Windows (CADCraft built from source with our patch, as on Windows). Download `swapcraft-hub-<version>-linux-x86_64.zip`, unzip it and run `swapcraft`, then install the converters you need from their cards; or take `swapcraft-<version>-linux-x86_64.zip`, which has everything in one file. Settings can put SwapCraft in your applications menu and on the desktop. Your settings and recipes are kept in `~/.config/voidflare`. The command line (`swapcraft-cli`) and the MCP server work as on Windows. Not on Linux yet: the right-click menu and *Convert here* when dragging with the right mouse button, which belong to Windows File Explorer. Built on Ubuntu 22.04, so it needs a system at least that recent (Linux Mint 21 or newer, for example).
+
+### Changed
+
+- **On Windows nothing changes:** the release simply carries the Linux files next to the Windows ones, and a Windows hub only ever looks at its own.
+
 ## [0.5.0] - 2026-11-10
 
 ### Changed

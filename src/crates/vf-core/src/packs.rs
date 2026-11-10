@@ -18,7 +18,9 @@ use sha2::{Digest, Sha256};
 
 use crate::update::{self, Release};
 
-pub const MANIFEST_NAME: &str = "manifest.json";
+/// The list of packs in a release. Windows keeps the original name, so hubs up to 0.5 still find it; each other
+/// platform has its own, because its packs are other files.
+pub const MANIFEST_NAME: &str = if cfg!(windows) { "manifest.json" } else { "manifest-linux-x86_64.json" };
 const STATE_FILE: &str = "pack.json";
 /// Upper bounds for one ZIP: far above any real pack (the largest is ~110 MB), far below a ZIP bomb.
 const MAX_ENTRIES: usize = 20_000;
@@ -286,6 +288,12 @@ pub fn extract_zip(zip_path: &Path, dest: &Path, cancel: &AtomicBool) -> Result<
             }
             out.write_all(&buf[..n]).map_err(|e| format!("Cannot write {}: {e}", target.display()))?;
         }
+        // Linux: keep the permissions the file was packed with, or the programs inside would not run.
+        #[cfg(unix)]
+        if let Some(mode) = entry.unix_mode() {
+            drop(out);
+            crate::platform::set_mode(&target, mode);
+        }
     }
     Ok(())
 }
@@ -383,9 +391,10 @@ pub fn install_from_files(
 
     let built = (|| -> Result<Installed, String> {
         extract_zip(app_zip, &staging, cancel)?;
-        let exe = staging.join(format!("{}.exe", pack.id));
+        let exe_name = crate::platform::exe(&pack.id);
+        let exe = staging.join(&exe_name);
         if !exe.is_file() {
-            return Err(format!("The app ZIP does not contain {}.exe, so it was not installed.", pack.id));
+            return Err(format!("The app ZIP does not contain {exe_name}, so it was not installed."));
         }
         let mut recorded = None;
         if let (Some(spec), Some((source, zip))) = (&pack.engine, engine) {
@@ -480,6 +489,8 @@ pub fn install(
 
 #[cfg(test)]
 mod tests {
+    /// The app program inside a pack: `word-to-pdf.exe` on Windows, `word-to-pdf` on Linux.
+    const APP_EXE: &str = if cfg!(windows) { "word-to-pdf.exe" } else { "word-to-pdf" };
     use super::*;
 
     fn zip_with(path: &Path, files: &[(&str, &[u8])]) {
@@ -575,7 +586,7 @@ mod tests {
         let d = scratch("flow");
         let apps = d.join("apps");
         let (app_zip, eng_zip) = (d.join("app.zip"), d.join("engine.zip"));
-        zip_with(&app_zip, &[("word-to-pdf.exe", b"exe v1"), ("LICENSE-MIT", b"mit")]);
+        zip_with(&app_zip, &[(APP_EXE, b"exe v1"), ("LICENSE-MIT", b"mit")]);
         zip_with(&eng_zip, &[("wordcraft-cli.exe", b"engine"), ("models/m.bin", b"model")]);
         let cancel = AtomicBool::new(false);
         let p = pack();
@@ -583,7 +594,7 @@ mod tests {
 
         let st = install_from_files(&apps, &p, &app_zip, &h1, Some((&EngineSource::Bundled, Some(&eng_zip))), &cancel).unwrap();
         assert_eq!(st.engine, Some((EngineSource::Bundled, "0.12.0".into())));
-        assert_eq!(fs::read(apps.join("word-to-pdf/word-to-pdf.exe")).unwrap(), b"exe v1");
+        assert_eq!(fs::read(apps.join("word-to-pdf").join(APP_EXE)).unwrap(), b"exe v1");
         assert_eq!(fs::read(apps.join("word-to-pdf/wordcraft/models/m.bin")).unwrap(), b"model");
         assert_eq!(installed(&apps, "word-to-pdf"), Some(st));
         assert!(!apps.join(".word-to-pdf.installing").exists() && !apps.join(".word-to-pdf.previous").exists());
@@ -599,11 +610,11 @@ mod tests {
         assert_eq!(status(&apps, &Pack { id: "other".into(), ..p.clone() }, &sums), Status::NotInstalled);
 
         // Update to a new app ZIP, engine reused from the PC: the bundled engine folder goes away with the old install.
-        zip_with(&app_zip, &[("word-to-pdf.exe", b"exe v2")]);
+        zip_with(&app_zip, &[(APP_EXE, b"exe v2")]);
         let sys = EngineSource::System { version: "0.13.2".into() };
         let st2 = install_from_files(&apps, &p, &app_zip, &h2, Some((&sys, None)), &cancel).unwrap();
         assert_eq!(st2.engine, Some((sys.clone(), "0.13.2".into())));
-        assert_eq!(fs::read(apps.join("word-to-pdf/word-to-pdf.exe")).unwrap(), b"exe v2");
+        assert_eq!(fs::read(apps.join("word-to-pdf").join(APP_EXE)).unwrap(), b"exe v2");
         assert!(!apps.join("word-to-pdf/wordcraft").exists(), "no duplicate engine when the PC's is used");
         assert_eq!(installed(&apps, "word-to-pdf").unwrap().engine, Some((sys, "0.13.2".into())));
 
@@ -618,14 +629,14 @@ mod tests {
         let d = scratch("keep");
         let apps = d.join("apps");
         let (good, bad) = (d.join("good.zip"), d.join("bad.zip"));
-        zip_with(&good, &[("word-to-pdf.exe", b"works")]);
+        zip_with(&good, &[(APP_EXE, b"works")]);
         zip_with(&bad, &[("readme.txt", b"no exe in here")]);
         let cancel = AtomicBool::new(false);
         let p = Pack { engine: None, ..pack() };
         install_from_files(&apps, &p, &good, "aa", None, &cancel).unwrap();
         let err = install_from_files(&apps, &p, &bad, "bb", None, &cancel).unwrap_err();
         assert!(err.contains("does not contain"), "{err}");
-        assert_eq!(fs::read(apps.join("word-to-pdf/word-to-pdf.exe")).unwrap(), b"works");
+        assert_eq!(fs::read(apps.join("word-to-pdf").join(APP_EXE)).unwrap(), b"works");
         assert!(!apps.join(".word-to-pdf.installing").exists());
         // A folder that voidflare did not install (no pack.json) is never deleted.
         fs::create_dir_all(apps.join("foreign")).unwrap();
@@ -638,7 +649,7 @@ mod tests {
         let d = scratch("cancel");
         let apps = d.join("apps");
         let z = d.join("a.zip");
-        zip_with(&z, &[("word-to-pdf.exe", b"x")]);
+        zip_with(&z, &[(APP_EXE, b"x")]);
         let p = Pack { engine: None, ..pack() };
         let err = install_from_files(&apps, &p, &z, "aa", None, &AtomicBool::new(true)).unwrap_err();
         assert!(err.contains("Cancelled"), "{err}");
@@ -685,7 +696,7 @@ mod tests {
         let d = scratch("engmove");
         let apps = d.join("apps");
         let (app_zip, eng_zip) = (d.join("app.zip"), d.join("engine.zip"));
-        zip_with(&app_zip, &[("word-to-pdf.exe", b"x")]);
+        zip_with(&app_zip, &[(APP_EXE, b"x")]);
         zip_with(&eng_zip, &[("wordcraft-cli.exe", b"e")]);
         let h = "dd".repeat(32);
         let p = pack();
@@ -708,7 +719,7 @@ mod tests {
         let d = scratch("health");
         let apps = d.join("apps");
         let (app_zip, eng_zip) = (d.join("app.zip"), d.join("engine.zip"));
-        zip_with(&app_zip, &[("word-to-pdf.exe", b"x")]);
+        zip_with(&app_zip, &[(APP_EXE, b"x")]);
         zip_with(&eng_zip, &[("wordcraft-cli.exe", b"e")]);
         let mut p = pack();
         p.engine.as_mut().unwrap().compatible = vec!["0.13.2".into()];

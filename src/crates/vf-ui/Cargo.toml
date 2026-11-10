@@ -12,3 +12,8 @@ egui.workspace = true
 eframe.workspace = true
 vf-core.workspace = true
 rfd = "0.17"
+
+# eframe is built without its default features (see the workspace); on Linux it needs a window system to open
+# windows at all: both X11 and Wayland, the session picks one.
+[target.'cfg(target_os = "linux")'.dependencies]
+eframe = { workspace = true, features = ["x11", "wayland"] }

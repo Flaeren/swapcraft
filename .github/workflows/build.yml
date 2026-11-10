@@ -1,6 +1,6 @@
 name: build
 
-# Builds the portable package from a clean Windows machine: the engines come from their official releases at the
+# Builds the portable packages from clean Windows and Linux machines: the engines come from their official releases at the
 # versions pinned in src/engines.json (hash-checked), CADCraft is built from source with our patch, then the hub
 # and the apps are built and packed. Nothing here depends on anything installed by hand.
 #
@@ -97,9 +97,74 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # The same for Linux (x86_64): fetch-engines.sh / build-apps.sh / release.sh, the counterparts of the PowerShell
+  # scripts. Its files go into the same release, next to the Windows ones.
+  package-linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build dependencies (window system, OpenGL/Vulkan headers)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q pkg-config libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxkbcommon-dev             libwayland-dev libgl1-mesa-dev libgtk-3-dev zip jq
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+
+      - name: Cache Cargo downloads and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('src/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Engines (pinned, hash-checked) and CADCraft with our patch
+        working-directory: src
+        run: bash fetch-engines.sh --build-cadcraft
+
+      - name: Tests
+        working-directory: src
+        run: |
+          e="$PWD/engines"
+          export VOIDFLARE_WORDCRAFT=$e/wordcraft/wordcraft-cli VOIDFLARE_GRIDCRAFT=$e/gridcraft/gridcraft-cli             VOIDFLARE_DECKCRAFT=$e/deckcraft/deckcraft-cli VOIDFLARE_PDFCRAFT=$e/pdfcraft/pdfcraft-cli             VOIDFLARE_CADCRAFT=$e/cadcraft/cadcraft-cli
+          cargo test --release --workspace
+
+      - name: Build the hub and the apps
+        working-directory: src
+        run: bash build-apps.sh
+
+      - name: Tag matches the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          v=$(sed -n 's/^version = "\(.*\)"//p' src/Cargo.toml | head -1)
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME but src/Cargo.toml says $v" >&2; exit 1; }
+
+      - name: Pack the release files
+        working-directory: src
+        run: bash release.sh
+
+      - name: Check the release files
+        working-directory: src
+        run: cargo test --release -p vf-core --test release_assets -- --nocapture
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: swapcraft-linux
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: package
+    needs: [package, package-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -110,6 +175,23 @@ jobs:
         with:
           name: voidflare-windows
           path: release
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: swapcraft-linux
+          path: release-linux
+
+      # One release, both systems: the Linux files join the Windows ones and SHA256SUMS.txt is written again over
+      # all of them (each job's own list covered only its files). No name is in both sets.
+      - name: Put the Windows and Linux files together
+        run: |
+          rm release-linux/SHA256SUMS.txt
+          for f in release-linux/*; do
+            [ -e "release/$(basename "$f")" ] && { echo "$(basename "$f") is in both sets" >&2; exit 1; }
+          done
+          mv release-linux/* release/
+          cd release && LC_ALL=C ls -1 | grep -v '^SHA256SUMS.txt$' | xargs sha256sum > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - name: Release notes from the changelog
         run: |

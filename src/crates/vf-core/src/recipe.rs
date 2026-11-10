@@ -262,7 +262,7 @@ pub fn store_path() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("VOIDFLARE_RECIPES") {
         return Some(PathBuf::from(p));
     }
-    std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("voidflare").join("recipes.json"))
+    crate::platform::data_file("recipes.json")
 }
 
 /// The saved recipes. A missing file is no recipes; a broken one is an error, so it is never overwritten blindly.
@@ -507,7 +507,7 @@ mod tests {
     #[test]
     fn result_names_use_the_template_and_stay_legal() {
         let mut r = recipe(vec![Step::Ocr]);
-        let src = Path::new(r"C:\Cantiere Via Roma\Tavola A1.pdf");
+        let src = if cfg!(windows) { Path::new(r"C:\Cantiere Via Roma\Tavola A1.pdf") } else { Path::new("/home/u/Cantiere Via Roma/Tavola A1.pdf") };
         assert_eq!(r.result_name(src), "Tavola A1");
         r.file_name = "{folder} - {recipe}".into();
         assert_eq!(r.result_name(src), "Cantiere Via Roma - Test");

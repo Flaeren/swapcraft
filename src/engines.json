@@ -1,5 +1,5 @@
 {
-  "comment": "The engines voidflare bundles, pinned. fetch-engines.ps1 downloads each asset, refuses it unless its SHA-256 is the one below, and unpacks it into src/engines/<name>/. To move to a newer engine: change tag, asset and sha256 together (the hash is in the release's SHA256SUMS.txt), run the tests, then build.",
+  "comment": "The engines voidflare bundles, pinned. fetch-engines.ps1 downloads each asset, refuses it unless its SHA-256 is the one below, and unpacks it into src/engines/<name>/. To move to a newer engine: change tag, asset and sha256 together (the hash is in the release's SHA256SUMS.txt), run the tests, then build. Linux: the `linux` entry of each engine, used by fetch-engines.sh the same way.",
   "engines": [
     {
       "name": "wordcraft",
@@ -11,7 +11,11 @@
       "license": "MIT OR Apache-2.0",
       "also": [
         "ebook-converter"
-      ]
+      ],
+      "linux": {
+        "asset": "wordcraft-0.17.0-linux-x86_64.tar.gz",
+        "sha256": "9c744c0c31a3ce25df82680fc75e645d682846faccbe103f4f91a758b19f3687"
+      }
     },
     {
       "name": "gridcraft",
@@ -20,7 +24,11 @@
       "tag": "v0.18.0",
       "asset": "gridcraft-0.18.0-windows-x64-portable.zip",
       "sha256": "ee3a5249c3282840b5b99fa5a202f4356508772eeed9b41344751698dfbe364f",
-      "license": "MIT OR Apache-2.0"
+      "license": "MIT OR Apache-2.0",
+      "linux": {
+        "asset": "gridcraft-0.18.0-linux-x86_64.tar.gz",
+        "sha256": "69205fd72e48e83e763c53c8f6ca3edc01d38ba8ba0d16e2b184a9c858a4cd5f"
+      }
     },
     {
       "name": "deckcraft",
@@ -29,7 +37,11 @@
       "tag": "v0.17.0",
       "asset": "deckcraft-0.17.0-windows-x64-portable.zip",
       "sha256": "53f1fd1bd669c9f3fc6ecb704a749b679325b5ea27f7e86e7a51bafe9ff768d3",
-      "license": "MIT OR Apache-2.0"
+      "license": "MIT OR Apache-2.0",
+      "linux": {
+        "asset": "deckcraft-0.17.0-linux-x86_64.tar.gz",
+        "sha256": "a61a05095a52a80990aa8990b447100553e99c8fa6edc8754aa52740a1a6f9b0"
+      }
     },
     {
       "name": "pdfcraft",
@@ -38,7 +50,11 @@
       "tag": "v0.20.0",
       "asset": "pdfcraft-0.20.0-windows-x64-portable.zip",
       "sha256": "efb636a8c5c4f8041e6dbe39f56f40992c9a1b199a0b8a27cd0fc4d6037715d2",
-      "license": "MIT OR Apache-2.0"
+      "license": "MIT OR Apache-2.0",
+      "linux": {
+        "asset": "pdfcraft-0.20.0-linux-x86_64.tar.gz",
+        "sha256": "1a0f29c7a6ae04916126231d843b2ea836a21b8db09f2ef416951015a437e8bc"
+      }
     },
     {
       "name": "photocraft",
@@ -47,7 +63,11 @@
       "tag": "v0.22.0",
       "asset": "photocraft-0.22.0-windows-x64-portable.zip",
       "sha256": "d6e13cd7de440d9aae5964aaf70b15762b64dc05127155c3e2f06308f153e46b",
-      "license": "MIT OR Apache-2.0"
+      "license": "MIT OR Apache-2.0",
+      "linux": {
+        "asset": "photocraft-0.22.0-linux-x86_64.tar.gz",
+        "sha256": "eedeafa4675dfbd1f2351e6bfa4b82f54453694eb36da1bbd5ca8bbf5f54f202"
+      }
     },
     {
       "name": "soundcraft",
@@ -56,7 +76,11 @@
       "tag": "v0.19.0",
       "asset": "soundcraft-0.19.0-windows-x64-portable.zip",
       "sha256": "cb42bc25e262e4b57b80831f1680d86ff052720b37a98e4eca0e8ca0ca9ee1af",
-      "license": "MIT OR Apache-2.0"
+      "license": "MIT OR Apache-2.0",
+      "linux": {
+        "asset": "soundcraft-0.19.0-linux-x86_64.tar.gz",
+        "sha256": "89a29bf48c299eee593d7cd684b21c8483ca287abc196657ae3f959a1ebc18ad"
+      }
     },
     {
       "name": "filmcraft",
@@ -65,7 +89,11 @@
       "tag": "v0.19.0",
       "asset": "filmcraft-0.19.0-windows-x64-portable.zip",
       "sha256": "b31f362b4767da4336f14b025ae92618b48e0a37b84e55905a6afc9fe51a5aae",
-      "license": "MIT OR Apache-2.0"
+      "license": "MIT OR Apache-2.0",
+      "linux": {
+        "asset": "filmcraft-0.19.0-linux-x86_64.tar.gz",
+        "sha256": "76149343c19700ba6ac905fde8a019e0917d06507f426a5938396d97a1ca2124"
+      }
     }
   ],
   "cadcraft": {

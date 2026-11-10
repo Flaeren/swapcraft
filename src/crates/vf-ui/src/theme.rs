@@ -174,7 +174,7 @@ impl Appearance {
     }
 
     fn file() -> Option<std::path::PathBuf> {
-        std::env::var_os("APPDATA").map(|d| std::path::PathBuf::from(d).join("voidflare").join("appearance.txt"))
+        vf_core::platform::data_file("appearance.txt")
     }
 
     fn parse(text: &str) -> Self {
