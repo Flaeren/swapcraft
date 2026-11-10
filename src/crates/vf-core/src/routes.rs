@@ -193,6 +193,29 @@ pub fn start(route: &Route, files: Vec<PathBuf>, tx: mpsc::Sender<Event>, cancel
     Ok(())
 }
 
+/// The catalog key that translates a route's label: `route.` and the label in lower case with every run of other
+/// characters as `_` ("PDF · sheets, merged" → `route.pdf_sheets_merged`).
+pub fn label_key(label: &str) -> String {
+    let mut slug = String::new();
+    for c in label.chars() {
+        if c.is_ascii_alphanumeric() {
+            slug.push(c.to_ascii_lowercase());
+        } else if !slug.is_empty() && !slug.ends_with('_') {
+            slug.push('_');
+        }
+    }
+    format!("route.{}", slug.trim_end_matches('_'))
+}
+
+/// A route's label in the current language, for people: the hub's catalog has `route.*` keys for the labels with
+/// words in them ("PDF · sheets, merged"); plain format names, and any program without that catalog (the CLI, the
+/// MCP server), keep the English label.
+pub fn shown_label(label: &str) -> String {
+    let key = label_key(label);
+    let s = crate::i18n::t(&key);
+    if s == key { label.to_owned() } else { s }
+}
+
 /// A short id for a route, stable for scripts: the target format in lower case (`pdf`, `docx`, `png`,
 /// `dwg-pdf-sheets`...). Two routes of one source never share an id.
 pub fn route_id(route: &Route) -> String {

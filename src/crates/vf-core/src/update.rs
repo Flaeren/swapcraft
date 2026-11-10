@@ -38,8 +38,11 @@ pub struct Release {
 
 impl Release {
     /// What the hub downloads to update itself: the small hub-only ZIP if the release has one, else the full bundle.
+    /// Since 0.5 a release carries two hub ZIPs: `swapcraft-hub-*` (SwapCraft.exe), which this hub takes, and
+    /// `voidflare-hub-*` (the same program as voidflare.exe), for hubs up to 0.4, which look for that name.
     pub fn update_zip(&self) -> Option<&Asset> {
-        self.assets.iter().find(|a| a.name.starts_with("voidflare-hub-") && a.name.ends_with("-windows.zip")).or(self.zip.as_ref())
+        let hub = |prefix: &str| self.assets.iter().find(|a| a.name.starts_with(prefix) && a.name.ends_with("-windows.zip"));
+        hub("swapcraft-hub-").or_else(|| hub("voidflare-hub-")).or(self.zip.as_ref())
     }
 
     /// The release file with exactly this name.
@@ -121,11 +124,14 @@ pub fn parse_release(json: &str) -> Result<Release, String> {
         version: tag.trim_start_matches(['v', 'V']).to_owned(),
         page: text("html_url"),
         notes: text("body"),
-        // The full offline bundle keeps the name `voidflare-<version>-windows.zip` (the one 0.1.0 hubs look for);
-        // a hub that sees several ZIPs prefers it over the small hub-only and per-app files.
-        zip: assets
+        // The full offline bundle: `swapcraft-<version>-windows.zip` since 0.5, `voidflare-<version>-windows.zip` before.
+        // A hub that sees several ZIPs prefers it over the small hub-only and per-app files.
+        zip: ["swapcraft-", "voidflare-"]
             .iter()
-            .find(|a| a.name.to_lowercase().ends_with("-windows.zip") && a.name.starts_with("voidflare-") && !a.name.starts_with("voidflare-hub-"))
+            .find_map(|prefix| {
+                let hub = format!("{prefix}hub-");
+                assets.iter().find(|a| a.name.to_lowercase().ends_with("-windows.zip") && a.name.starts_with(prefix) && !a.name.starts_with(&hub) && !a.name.contains("-app-") && !a.name.contains("-engine-"))
+            })
             .or_else(|| assets.iter().find(|a| a.name.to_lowercase().ends_with(".zip")))
             .cloned(),
         sums: assets.iter().find(|a| a.name == SUMS_NAME).cloned(),
@@ -219,22 +225,26 @@ pub fn install_hub_at(exe: &Path, release: &Release, progress: &dyn Fn(u64, u64)
     result.map(|()| exe.to_path_buf())
 }
 
-/// Unpacks `zip` inside `work` and puts its `voidflare.exe` in place of `exe`.
+/// Unpacks `zip` inside `work` and puts its hub (`SwapCraft.exe`, or `voidflare.exe` in a ZIP made before 0.5)
+/// in place of `exe`.
 pub fn install_from_zip(zip: &Path, exe: &Path, work: &Path) -> Result<(), String> {
     let unpacked = work.join("unpacked");
     crate::packs::extract_zip(zip, &unpacked, &AtomicBool::new(false))?;
-    let new = unpacked.join("voidflare.exe");
-    let mut head = [0u8; 2];
-    let ok = fs::File::open(&new).and_then(|mut f| f.read_exact(&mut head)).is_ok() && &head == b"MZ";
-    if !ok {
-        return Err("The update has no usable voidflare.exe; nothing was changed.".to_owned());
-    }
+    let new = [HUB_NAME, LEGACY_HUB_NAME].iter().map(|n| unpacked.join(n)).find(|p| is_exe(p));
+    let Some(new) = new else {
+        return Err("The update has no usable SwapCraft.exe; nothing was changed.".to_owned());
+    };
     replace_exe(exe, &new)?;
     // The command-line program (and MCP server) travels with the hub: replace it too when the update has one.
     // Best effort: an MCP client may be holding it, and a stale command line never stops the hub.
-    let new_cli = unpacked.join(CLI_NAME);
+    let new_cli = [CLI_NAME, LEGACY_CLI_NAME].iter().map(|n| unpacked.join(n)).find(|p| is_exe(p)).unwrap_or_else(|| unpacked.join(CLI_NAME));
     if is_exe(&new_cli) {
-        let _ = replace_exe(&exe.with_file_name(CLI_NAME), &new_cli);
+        let cli = exe.with_file_name(CLI_NAME);
+        if cli.exists() {
+            let _ = replace_exe(&cli, &new_cli);
+        } else {
+            let _ = fs::rename(&new_cli, &cli);
+        }
     }
     // So does the drag-and-drop DLL (same name, so the registry entry stays right). Explorer may have it loaded:
     // the old one is parked under a new name and Explorer picks up the new one the next time it loads it. Best
@@ -254,8 +264,39 @@ pub fn install_from_zip(zip: &Path, exe: &Path, work: &Path) -> Result<(), Strin
 /// The drag-and-drop menu handler that sits beside the hub.
 pub const DRAG_DLL: &str = voidflare_dragdrop::config::DLL_NAME;
 
+/// The hub program.
+pub const HUB_NAME: &str = "SwapCraft.exe";
+/// Its name up to 0.4.
+pub const LEGACY_HUB_NAME: &str = "voidflare.exe";
 /// The command-line program that sits beside the hub.
-pub const CLI_NAME: &str = "voidflare-cli.exe";
+pub const CLI_NAME: &str = "swapcraft-cli.exe";
+/// Its name up to 0.4.
+pub const LEGACY_CLI_NAME: &str = "voidflare-cli.exe";
+
+/// 0.5 renames the programs: a hub that starts as `voidflare.exe` gives itself the name `SwapCraft.exe`, and
+/// `voidflare-cli.exe` next to it becomes `swapcraft-cli.exe`. Windows lets a running program be renamed. Returns the
+/// new path of the hub when it was renamed (the caller starts it and ends), None when there was nothing to do. A
+/// failure leaves the hub where it was: it keeps working under the old name and tries again at the next start.
+pub fn rename_legacy(exe: &Path) -> Result<Option<PathBuf>, String> {
+    let is_legacy = exe.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(LEGACY_HUB_NAME));
+    if !is_legacy {
+        return Ok(None);
+    }
+    let target = exe.with_file_name(HUB_NAME);
+    if target.exists() {
+        // an older copy of the new name (or a half-done rename): the running program is the one to keep
+        fs::remove_file(&target).map_err(|e| format!("Cannot replace {}: {e}", target.display()))?;
+    }
+    fs::rename(exe, &target).map_err(|e| format!("Cannot rename {}: {e}", exe.display()))?;
+    let (old_cli, new_cli) = (exe.with_file_name(LEGACY_CLI_NAME), exe.with_file_name(CLI_NAME));
+    if old_cli.exists() {
+        // best effort: an MCP client may be holding the old one
+        if !new_cli.exists() || fs::remove_file(&new_cli).is_ok() {
+            let _ = fs::rename(&old_cli, &new_cli);
+        }
+    }
+    Ok(Some(target))
+}
 
 fn is_exe(p: &Path) -> bool {
     let mut head = [0u8; 2];
@@ -491,21 +532,67 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(root.join("apps/word")).unwrap();
         fs::write(root.join("apps/word/word.exe"), b"MZ-app-keeps-this").unwrap();
-        let exe = root.join("voidflare.exe");
+        let exe = root.join("SwapCraft.exe");
         fs::write(&exe, b"MZ-old-hub").unwrap();
         let zip = root.join("update.zip");
         // a full bundle: the hub plus an app that must NOT be taken
-        zip_with(&zip, &[("voidflare.exe", b"MZ-new-hub"), ("voidflare-cli.exe", b"MZ-new-cli"), ("apps/word/word.exe", b"MZ-new-app"), ("README.txt", b"hi")]);
-        fs::write(root.join("voidflare-cli.exe"), b"MZ-old-cli").unwrap();
+        zip_with(&zip, &[("SwapCraft.exe", b"MZ-new-hub"), ("swapcraft-cli.exe", b"MZ-new-cli"), ("apps/word/word.exe", b"MZ-new-app"), ("README.txt", b"hi")]);
+        fs::write(root.join("swapcraft-cli.exe"), b"MZ-old-cli").unwrap();
 
         install_from_zip(&zip, &exe, &root.join(".work")).expect("the swap works");
         assert_eq!(fs::read(&exe).unwrap(), b"MZ-new-hub");
-        assert_eq!(fs::read(root.join("voidflare.old.exe")).unwrap(), b"MZ-old-hub", "the old hub is parked, not lost");
+        assert_eq!(fs::read(root.join("SwapCraft.old.exe")).unwrap(), b"MZ-old-hub", "the old hub is parked, not lost");
         assert_eq!(fs::read(root.join("apps/word/word.exe")).unwrap(), b"MZ-app-keeps-this", "installed apps are untouched");
         assert!(!root.join("README.txt").exists(), "nothing but the hub (and its command line) is copied out");
-        assert_eq!(fs::read(root.join("voidflare-cli.exe")).unwrap(), b"MZ-new-cli", "the command line travels with the hub");
-        assert_eq!(fs::read(root.join("voidflare-cli.old.exe")).unwrap(), b"MZ-old-cli");
+        assert_eq!(fs::read(root.join("swapcraft-cli.exe")).unwrap(), b"MZ-new-cli", "the command line travels with the hub");
+        assert_eq!(fs::read(root.join("swapcraft-cli.old.exe")).unwrap(), b"MZ-old-cli");
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_zip_made_before_0_5_still_updates_the_hub() {
+        let root = std::env::temp_dir().join(format!("vf-hub-legacy-zip-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let exe = root.join("SwapCraft.exe");
+        fs::write(&exe, b"MZ-old-hub").unwrap();
+        let zip = root.join("update.zip");
+        zip_with(&zip, &[("voidflare.exe", b"MZ-new-hub"), ("voidflare-cli.exe", b"MZ-new-cli")]);
+        install_from_zip(&zip, &exe, &root.join(".work")).expect("the swap works");
+        assert_eq!(fs::read(&exe).unwrap(), b"MZ-new-hub");
+        assert_eq!(fs::read(root.join("swapcraft-cli.exe")).unwrap(), b"MZ-new-cli", "the old command line arrives under the new name");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn voidflare_exe_renames_itself_to_swapcraft_exe() {
+        let root = std::env::temp_dir().join(format!("vf-rename-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let old = root.join("voidflare.exe");
+        fs::write(&old, b"MZ-hub").unwrap();
+        fs::write(root.join("voidflare-cli.exe"), b"MZ-cli").unwrap();
+        fs::write(root.join("SwapCraft.exe"), b"MZ-stale").unwrap();
+        let new = rename_legacy(&old).expect("renamed").expect("there was something to do");
+        assert_eq!(new, root.join("SwapCraft.exe"));
+        assert_eq!(fs::read(&new).unwrap(), b"MZ-hub", "the running program wins over a stale copy of the new name");
+        assert!(!old.exists() && !root.join("voidflare-cli.exe").exists());
+        assert_eq!(fs::read(root.join("swapcraft-cli.exe")).unwrap(), b"MZ-cli");
+        assert_eq!(rename_legacy(&new).unwrap(), None, "a hub already called SwapCraft.exe is left alone");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_new_hub_zip_wins_over_the_legacy_one() {
+        let json = r#"{"tag_name": "v0.5.0", "html_url": "https://e.test/r", "assets": [
+          {"name": "voidflare-app-word-to-pdf-0.5.0-windows-x64.zip", "browser_download_url": "https://e.test/a.zip", "size": 1},
+          {"name": "voidflare-hub-0.5.0-windows.zip", "browser_download_url": "https://e.test/old.zip", "size": 1},
+          {"name": "swapcraft-hub-0.5.0-windows.zip", "browser_download_url": "https://e.test/new.zip", "size": 1},
+          {"name": "swapcraft-0.5.0-windows.zip", "browser_download_url": "https://e.test/full.zip", "size": 1}
+        ]}"#;
+        let r = parse_release(json).unwrap();
+        assert_eq!(r.update_zip().unwrap().name, "swapcraft-hub-0.5.0-windows.zip");
+        assert_eq!(r.zip.as_ref().unwrap().name, "swapcraft-0.5.0-windows.zip");
     }
 
     /// A tiny web server on a free local port: every path in `routes` answers with its bytes, anything else is 404.

@@ -15,7 +15,7 @@ use vf_core::job::{self, Destination, Event, Outcome, Spec};
 use vf_core::{t, tf};
 
 use crate::theme::{self, Tokens};
-use crate::widgets::{self, Kind, PAD, button, mono, section};
+use crate::widgets::{self, Kind, PAD, button, section};
 
 pub const SHELL_CATALOG: &str = include_str!("../assets/shell.tsv");
 
@@ -268,7 +268,7 @@ pub fn drop_overlay(ctx: &egui::Context, tk: &Tokens) {
     let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("drop-veil")));
     painter.rect_filled(rect, 0.0, tk.bg.gamma_multiply(0.86));
     painter.rect_stroke(rect.shrink(10.0), 0.0, egui::Stroke::new(2.0, tk.accent), egui::StrokeKind::Inside);
-    painter.text(rect.center(), Align2::CENTER_CENTER, t("ui.drop_here"), mono(14.0), tk.ink_strong);
+    painter.text(rect.center(), Align2::CENTER_CENTER, t("ui.drop_here"), crate::theme::strong(16.0), tk.ink_strong);
 }
 
 /// After files were dropped: if the list did not grow, say so instead of leaving the window as it was.
@@ -331,7 +331,7 @@ impl ConverterApp {
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let key = if self.files.len() == 1 { "ui.count_one" } else { "ui.count_many" };
-                ui.label(RichText::new(tf(key, &[("n", &self.files.len().to_string())]).to_uppercase()).font(mono(11.0)).color(tk.faint));
+                ui.label(RichText::new(tf(key, &[("n", &self.files.len().to_string())])).font(egui::FontId::proportional(12.5)).color(tk.muted));
             });
         });
 
@@ -372,7 +372,7 @@ impl ConverterApp {
             if widgets::primary(ui, tk, &t("app.convert"), !self.running && self.cli.is_some()).clicked() {
                 self.start();
             }
-            if ui.add_enabled(self.running, egui::Button::new(RichText::new(t("ui.cancel").to_uppercase()).font(mono(11.5)))).clicked() {
+            if ui.add_enabled(self.running, egui::Button::new(RichText::new(t("ui.cancel")).font(egui::FontId::proportional(13.0)))).clicked() {
                 self.cancel.store(true, Ordering::Relaxed);
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {

@@ -2,6 +2,19 @@
 
 All notable changes to SwapCraft (formerly voidflare) are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.0] - 2026-11-10
+
+### Changed
+
+- **SwapCraft is now the name of the files too.** The first time the new hub starts, it renames itself from `voidflare.exe` to `SwapCraft.exe` and the command line from `voidflare-cli.exe` to `swapcraft-cli.exe`, replaces a `voidflare.lnk` Start menu shortcut with `SwapCraft.lnk`, writes the File Explorer menus again for the new name, and tells you once. Your settings, recipes and the `%APPDATA%\voidflare` folder stay as they are. Windows ties a pin to the file name, so if you had pinned it to Start or to the taskbar, pin it again from there. **If you added the MCP server to an AI assistant by hand, change its path to `swapcraft-cli.exe`** (the tool names stay the same).
+- **A new look.** A black theme is now the default for everyone, and you can switch to Same as Windows, Dark or Light in Settings. The text is set in Inter and IBM Plex Mono, the hub has a new butterfly icon, and an app's card lights up in that app's colour under the pointer. The torch light and the dot grid are gone.
+- **Format names are translated.** Names such as *PDF · sheets, merged* or *PNG pictures* now follow your language in the hub, in Recipes and in the File Explorer menus. The command line and the MCP server keep the English names, so scripts do not change.
+- **The ArtCraft engines are updated to the latest releases:** WordCraft 0.17.0, GridCraft 0.18.0, DeckCraft 0.17.0, PdfCraft 0.20.0, PhotoCraft 0.22.0, SoundCraft 0.19.0 and FilmCraft 0.19.0. Among the engines' own fixes: WordCraft opens encrypted `.docx` files again and keeps non-Unicode paths on the command line, and PdfCraft keeps ruled tables when it exports a PDF to Word. Each engine passed the engine test with the bundled copy and the installed one.
+
+### Added
+
+- **SwapCraft on the desktop.** Settings has a button that puts a SwapCraft shortcut on your desktop, and takes it away again.
+
 ## [0.4.1] - 2026-11-08
 
 ### Added

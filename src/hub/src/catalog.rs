@@ -155,6 +155,17 @@ mod tests {
             used.push(format!("hub.app.{}.tagline", app.id));
             used.push(format!("hub.app.{}.blurb", app.id));
         }
+        // route labels with words in them are translated (`routes::shown_label`); product names stay as they are
+        const NAMES: [&str; 3] = ["Word (DOCX)", "PowerPoint (PPTX)", "MOV (ProRes)"];
+        for r in vf_core::routes::ROUTES {
+            let words = r.label.split(|c: char| !c.is_ascii_alphabetic()).any(|w| w.len() > 1 && w.chars().any(|c| c.is_ascii_lowercase()) && w != "WebP");
+            if words && !NAMES.contains(&r.label) {
+                let key = vf_core::routes::label_key(r.label);
+                if !used.contains(&key) {
+                    used.push(key);
+                }
+            }
+        }
         for key in &used {
             // the app keys are built with format!, so the placeholder form is not a real key
             if key.contains('{') {

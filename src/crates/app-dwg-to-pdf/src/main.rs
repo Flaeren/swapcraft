@@ -15,7 +15,7 @@ use vf_core::job::{self, Destination, Event, Item, out_dir_for};
 use vf_core::{t, tf};
 use vf_ui::shell::{self, SHELL_CATALOG};
 use vf_ui::theme::{self, Tokens};
-use vf_ui::widgets::{self, Kind, PAD, button, mono, section};
+use vf_ui::widgets::{self, Kind, PAD, button, section};
 
 const CATALOG: &str = include_str!("../assets/strings.tsv");
 const ICON_256: &[u8] = include_bytes!("../assets/icon_256.rgba");
@@ -164,7 +164,7 @@ impl DwgApp {
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let key = if self.files.len() == 1 { "ui.count_one" } else { "ui.count_many" };
-                ui.label(RichText::new(tf(key, &[("n", &self.files.len().to_string())]).to_uppercase()).font(mono(11.0)).color(tk.faint));
+                ui.label(RichText::new(tf(key, &[("n", &self.files.len().to_string())])).font(egui::FontId::proportional(12.5)).color(tk.muted));
             });
         });
 
@@ -201,7 +201,7 @@ impl DwgApp {
             if widgets::primary(ui, tk, &t("app.convert"), !self.running && self.cli.is_some()).clicked() {
                 self.start();
             }
-            if ui.add_enabled(self.running, egui::Button::new(RichText::new(t("ui.cancel").to_uppercase()).font(mono(11.5)))).clicked() {
+            if ui.add_enabled(self.running, egui::Button::new(RichText::new(t("ui.cancel")).font(egui::FontId::proportional(13.0)))).clicked() {
                 self.cancel.store(true, Ordering::Relaxed);
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {

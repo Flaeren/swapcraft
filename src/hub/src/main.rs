@@ -1,8 +1,7 @@
-//! voidflare hub: one window that lists the voidflare converters and starts them.
+//! The SwapCraft hub (SwapCraft.exe; voidflare.exe up to 0.4): one window that lists the converters and starts them.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod catalog;
-mod fx;
 mod icons;
 mod menu;
 mod recipes;
@@ -39,16 +38,17 @@ use vf_core::packs::{self, EngineSource, Health, Status};
 use vf_core::routes;
 use vf_core::update;
 use vf_ui::shell::{SHELL_CATALOG, drain, dropped_files, finish};
-use vf_ui::theme::{self, Tokens, rgb};
+use vf_ui::theme::{self, Tokens, rgb, strong};
 use vf_ui::widgets::{self, Kind};
 
-const CARD_MIN_W: f32 = 320.0;
-const CARD_H: f32 = 268.0;
-const PAD: f32 = 20.0;
-const STRIP_H: f32 = 36.0;
-const ROW_H: f32 = 68.0;
+const CARD_MIN_W: f32 = 300.0;
+const CARD_H: f32 = 196.0;
+/// The space between two cards, and between two rows of the list.
+const GAP: f32 = 10.0;
+const PAD: f32 = 24.0;
+const ROW_H: f32 = 64.0;
 const BAR_H: f32 = 56.0;
-const FOOTER_H: f32 = 36.0;
+const FOOTER_H: f32 = 40.0;
 
 #[derive(Clone, Copy, PartialEq)]
 enum View {
@@ -161,17 +161,18 @@ struct Hub {
     log: Vec<(String, Kind)>,
     progress: (usize, usize),
     last_dir: Option<PathBuf>,
-    /// The torch and dot grid; `drop_rect` is where the torch goes while a file is dragged over the window.
-    fx: fx::Fx,
-    torch: fx::Torch,
-    drop_rect: Option<Rect>,
-    flame: icons::Flame,
     icons: icons::AppIcons,
+    mark: icons::Mark,
     /// The settings window and the first-run welcome dialog.
     settings: settings::Settings,
     tab: Tab,
     recipes: recipes::RecipesTab,
+    /// "voidflare is now SwapCraft": shown once, right after the hub renamed itself (see `main`).
+    renamed_notice: bool,
 }
+
+/// Left in the data folder by the hub that renamed itself, for the SwapCraft.exe it starts.
+const RENAMED_MARK: &str = "renamed.txt";
 
 impl Hub {
     fn new(ctx: &egui::Context) -> Self {
@@ -183,7 +184,17 @@ impl Hub {
         });
         // The right-click menu added by an older hub has no drag-and-drop part yet: write it once.
         menu::upgrade_if_needed();
+        // 0.5: this hub was voidflare.exe a moment ago (see `main`). The Start menu entry and the right-click menus
+        // are pointed at SwapCraft.exe without asking; a notice says what changed.
+        let renamed = settings::data_dir().is_some_and(|d| std::fs::remove_file(d.join(RENAMED_MARK)).is_ok());
+        // an old voidflare.lnk is replaced by SwapCraft.lnk (a pin to Start is lost: Windows ties it to the file name)
+        let _ = vf_core::shortcuts::replace_legacy();
+        if renamed && menu::installed() {
+            let _ = menu::install();
+        }
         let mut hub = Self::build(ctx);
+        // test hook, like VOIDFLARE_HUB_TAB=settings: VOIDFLARE_HUB_TAB=renamed shows the notice
+        hub.renamed_notice = renamed || std::env::var("VOIDFLARE_HUB_TAB").is_ok_and(|v| v == "renamed");
         // Reading the pack list is part of the update check: only when that check is on, or when the user clicks.
         if hub.auto_on {
             hub.check_updates(ctx, true);
@@ -227,11 +238,8 @@ impl Hub {
             log: Vec::new(),
             progress: (0, 0),
             last_dir: None,
-            fx: fx::Fx::default(),
-            torch: fx::Torch::default(),
-            drop_rect: None,
-            flame: icons::Flame::new(ctx),
             icons: icons::AppIcons::new(ctx, &APPS.iter().map(|a| a.id).collect::<Vec<_>>()),
+            mark: icons::Mark::new(ctx),
             // test hook, like VOIDFLARE_RELEASES_URL: VOIDFLARE_HUB_TAB=settings starts with the settings open
             settings: {
                 let mut s = settings::Settings::new();
@@ -243,6 +251,7 @@ impl Hub {
             // test hook, like VOIDFLARE_RELEASES_URL: start on the RECIPES tab
             tab: if std::env::var("VOIDFLARE_HUB_TAB").is_ok_and(|v| v == "recipes") { Tab::Recipes } else { Tab::Apps },
             recipes: recipes::RecipesTab::default(),
+            renamed_notice: false,
         }
     }
 
@@ -295,10 +304,8 @@ impl eframe::App for Hub {
         if !dropped.is_empty() && !self.running {
             self.set_files(&dropped);
         }
-        self.torch = self.fx.update(ui.ctx(), &t, self.drop_rect.map(|r| r.center()));
         egui::CentralPanel::default().frame(egui::Frame::new().fill(t.bg)).show(ui, |ui| {
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-            self.torch.backdrop(ui.painter(), ui.max_rect(), &t);
             self.header(ui, &t);
             if self.tab == Tab::Recipes {
                 self.recipes_tab(ui, &t);
@@ -330,6 +337,25 @@ impl eframe::App for Hub {
         });
         let ctx = ui.ctx().clone();
         self.settings.ui(&ctx, &t, &mut self.auto_on);
+        if self.renamed_notice && !self.settings.show_welcome() {
+            let mut close = false;
+            let resp = egui::Modal::new(egui::Id::unique("renamed")).show(&ctx, |ui| {
+                ui.set_width(400.0);
+                ui.add_space(4.0);
+                ui.label(RichText::new(tr("hub.renamed_title")).font(strong(18.0)).color(t.ink_strong));
+                ui.add_space(8.0);
+                ui.label(RichText::new(tr("hub.renamed_text")).font(FontId::proportional(14.0)).color(t.ink));
+                ui.add_space(6.0);
+                ui.label(RichText::new(tr("hub.renamed_pin")).font(FontId::proportional(12.5)).color(t.muted));
+                ui.add_space(16.0);
+                if widgets::primary(ui, &t, &tr("hub.renamed_ok"), true).clicked() {
+                    close = true;
+                }
+            });
+            if close || resp.should_close() {
+                self.renamed_notice = false;
+            }
+        }
     }
 }
 
@@ -604,24 +630,25 @@ impl Hub {
         let hovering = ui.ctx().input(|i| !i.raw.hovered_files.is_empty());
         let has_files = !self.files.is_empty();
         // Room for a second row of format chips when the file has many targets (a PDF has seven).
-        let chips_w: f32 = self.files.first().map_or(0.0, |f| routes::targets(&routes::ext_of(f)).iter().map(|&i| routes::ROUTES[i].label.len() as f32 * 9.0 + 36.0).sum());
+        let chips_w: f32 = self.files.first().map_or(0.0, |f| routes::targets(&routes::ext_of(f)).iter().map(|&i| routes::shown_label(routes::ROUTES[i].label).chars().count() as f32 * 9.0 + 36.0).sum());
         let rows = (chips_w / (ui.available_width() - 4.0 * PAD)).ceil().max(1.0) as usize;
         let recipe_rows = match self.files.first() {
             Some(f) if !self.recipes.accepting(&routes::ext_of(f)).is_empty() => 66.0,
             _ => 0.0,
         };
-        let height = if has_files { 176.0 + 36.0 * rows as f32 + recipe_rows } else { 220.0 };
-        let (outer, _) = ui.allocate_exact_size(vec2(ui.available_width(), height + 2.0 * PAD), Sense::hover());
-        let rect = outer.shrink2(vec2(PAD, PAD));
+        let height = if has_files { 176.0 + 36.0 * rows as f32 + recipe_rows } else { 176.0 };
+        let (outer, _) = ui.allocate_exact_size(vec2(ui.available_width(), height + 8.0 + 16.0), Sense::hover());
+        let rect = Rect::from_min_max(outer.min + vec2(PAD, 8.0), outer.max - vec2(PAD, 16.0));
         let zone = ui.interact(rect, ui.scope_id().with("drop-zone"), if has_files || self.running { Sense::hover() } else { Sense::click() });
         let lit = ui.ctx().animate_bool_with_time(ui.scope_id().with("drop-lit"), hovering || (zone.hovered() && !has_files), 0.2);
-        {
-            let p = ui.painter();
-            // Translucent, so the dots and the torch read through.
-            p.rect_filled(rect, CornerRadius::ZERO, t.bg.lerp_to_gamma(t.accent, 0.04 + 0.08 * lit).gamma_multiply(0.86));
-            self.torch.border(p, rect, Some(t.line_strong.lerp_to_gamma(t.accent, lit)), t.accent_ink, 6.0, 5.0, 170.0);
-        }
-        self.drop_rect = Some(rect);
+        // A card like the app cards; it takes the indigo of the flame while a file is over it.
+        ui.painter().rect(
+            rect,
+            CornerRadius::same(12),
+            t.card.lerp_to_gamma(t.accent, 0.08 * lit),
+            egui::Stroke::new(1.0, t.line.lerp_to_gamma(t.accent, 0.8 * lit)),
+            StrokeKind::Inside,
+        );
         if zone.hovered() && !has_files {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
@@ -634,11 +661,11 @@ impl Hub {
         if !has_files {
             let p = ui.painter();
             let c = rect.center();
-            p.text(pos2(c.x, c.y - 26.0), Align2::CENTER_CENTER, tr("hub.drop_title"), mono(20.0), t.ink_strong);
+            p.text(pos2(c.x, c.y - 26.0), Align2::CENTER_CENTER, tr("hub.drop_title"), strong(21.0), t.ink_strong);
             p.text(pos2(c.x, c.y + 6.0), Align2::CENTER_CENTER, tr("hub.drop_sub"), FontId::proportional(14.0), t.muted);
             p.text(pos2(c.x, c.y + 44.0), Align2::CENTER_CENTER, "DOCX · XLSX · PPTX · PDF · DWG · CSV · RTF · ODT", mono(11.0), t.faint);
             if let Some(msg) = &self.notice {
-                p.text(pos2(c.x, rect.bottom() - 18.0), Align2::CENTER_CENTER, msg, mono(11.5), t.bad);
+                p.text(pos2(c.x, rect.bottom() - 18.0), Align2::CENTER_CENTER, msg, FontId::proportional(12.5), t.bad);
             }
         } else {
             let mut inner = ui.new_child(UiBuilder::new().max_rect(rect.shrink(18.0)).layout(Layout::top_down(Align::Min)));
@@ -659,7 +686,7 @@ impl Hub {
         let n = self.files.len();
         let ext = routes::ext_of(&self.files[0]);
         ui.horizontal(|ui| {
-            ui.label(RichText::new(tr("hub.ready")).font(mono(11.0)).color(t.faint));
+            ui.label(RichText::new(tr("hub.ready")).font(FontId::proportional(12.5)).color(t.muted));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if widgets::button(ui, &tr("hub.clear")).clicked() && !self.running {
                     self.files.clear();
@@ -683,11 +710,11 @@ impl Hub {
             ui.vertical(|ui| {
                 let name = |f: &PathBuf| f.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                 if n == 1 {
-                    ui.label(RichText::new(name(&self.files[0])).size(18.0).strong().color(t.ink_strong));
+                    ui.label(RichText::new(name(&self.files[0])).font(strong(17.0)).color(t.ink_strong));
                     let dir = self.files[0].parent().map(|p| p.display().to_string()).unwrap_or_default();
                     ui.label(RichText::new(format!("{} · {}", human_size(self.bytes), dir.trim_start_matches(r"\\?\"))).font(mono(11.0)).color(t.faint));
                 } else {
-                    ui.label(RichText::new(trf("hub.n_files", &[("n", &n.to_string()), ("ext", &ext.to_uppercase())])).size(18.0).strong().color(t.ink_strong));
+                    ui.label(RichText::new(trf("hub.n_files", &[("n", &n.to_string()), ("ext", &ext.to_uppercase())])).font(strong(17.0)).color(t.ink_strong));
                     let shown: Vec<String> = self.files.iter().take(3).map(name).collect();
                     let more = if n > 3 { format!("  {}", trf("hub.more", &[("n", &(n - 3).to_string())])) } else { String::new() };
                     ui.label(RichText::new(format!("{}{more}", shown.join("  ·  "))).size(13.0).color(t.muted));
@@ -699,7 +726,7 @@ impl Hub {
         let (line, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
         ui.painter().hline(line.x_range(), line.center().y, t.hairline());
         ui.add_space(10.0);
-        ui.label(RichText::new(tr("hub.convert_to")).font(mono(11.0)).color(t.faint));
+        ui.label(RichText::new(tr("hub.convert_to")).font(FontId::proportional(12.5)).color(t.muted));
         ui.add_space(6.0);
         let mut chosen = None;
         ui.horizontal_wrapped(|ui| {
@@ -707,7 +734,7 @@ impl Hub {
             for i in routes::targets(&ext) {
                 let route = &routes::ROUTES[i];
                 let more = APPS.iter().find(|a| a.id == route.app).map_or(route.app, |a| a.name);
-                let button = widgets::primary(ui, t, route.label, !self.running).on_hover_text(trf("hub.default_hint", &[("app", more)]));
+                let button = chip(ui, t, &routes::shown_label(route.label), !self.running).on_hover_text(trf("hub.default_hint", &[("app", more)]));
                 if button.clicked() {
                     chosen = Some(i);
                 }
@@ -720,13 +747,13 @@ impl Hub {
         let recipes = self.recipes.accepting(&ext);
         if !recipes.is_empty() {
             ui.add_space(12.0);
-            ui.label(RichText::new(tr("hub.or_recipe")).font(mono(11.0)).color(t.faint));
+            ui.label(RichText::new(tr("hub.or_recipe")).font(FontId::proportional(12.5)).color(t.muted));
             ui.add_space(6.0);
             let mut run = None;
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
                 for r in &recipes {
-                    let label = RichText::new(format!("▸ {}", r.name)).font(mono(11.5)).color(t.accent_ink);
+                    let label = RichText::new(format!("▸ {}", r.name)).font(FontId::proportional(13.0)).color(t.engine_ink);
                     if ui.add_enabled(!self.running, egui::Button::new(label)).on_hover_text(r.steps.iter().map(|s| s.summary()).collect::<Vec<_>>().join(" → ")).clicked() {
                         run = Some(r.clone());
                     }
@@ -744,16 +771,52 @@ fn mono(size: f32) -> FontId {
     FontId::monospace(size)
 }
 
+/// A format chip in the drop panel: a grey pill that turns warm white under the pointer.
+fn chip(ui: &mut egui::Ui, t: &Tokens, label: &str, enabled: bool) -> egui::Response {
+    let id = ui.next_auto_id();
+    let over = ui.ctx().read_response(id).is_some_and(|r| r.hovered()) && enabled;
+    let (fill, ink) = if over { (t.invert_bg, t.invert_fg) } else { (t.chip, t.ink) };
+    let b = egui::Button::new(RichText::new(label).font(FontId::proportional(13.0)).color(ink)).fill(fill).stroke(egui::Stroke::NONE).min_size(vec2(0.0, 32.0));
+    ui.add_enabled(enabled, b)
+}
+
+/// A pill-shaped button drawn at `rect`. `solid`: warm white with dark text (or `accent` under the pointer when it
+/// is given); otherwise an outline in `ink`.
+fn pill(ui: &mut egui::Ui, p: &egui::Painter, t: &Tokens, rect: Rect, id: egui::Id, label: &str, solid: bool, ink: Color32, enabled: bool) -> egui::Response {
+    let r = ui.interact(rect, id, if enabled { Sense::click() } else { Sense::hover() });
+    let over = r.hovered() && enabled;
+    if over {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let round = CornerRadius::same((rect.height() / 2.0) as u8);
+    if !enabled {
+        p.rect(rect, round, t.chip, egui::Stroke::NONE, StrokeKind::Inside);
+        p.text(rect.center(), Align2::CENTER_CENTER, label, FontId::proportional(12.5), t.faint);
+    } else if solid || over {
+        p.rect_filled(rect, round, t.invert_bg);
+        p.text(rect.center(), Align2::CENTER_CENTER, label, strong(12.5), t.invert_fg);
+    } else {
+        p.rect(rect, round, Color32::TRANSPARENT, egui::Stroke::new(1.0, t.line_strong), StrokeKind::Inside);
+        p.text(rect.center(), Align2::CENTER_CENTER, label, strong(12.5), ink);
+    }
+    r
+}
+
+/// The width a pill needs for `label`.
+fn pill_w(ui: &egui::Ui, label: &str) -> f32 {
+    ui.painter().layout_no_wrap(label.to_owned(), strong(12.5), Color32::WHITE).size().x + 30.0
+}
+
 /// A text link in the footer whose right edge is at `right`; opens `url` in the browser. Returns its left edge.
 fn footer_link(ui: &mut egui::Ui, t: &Tokens, bar: Rect, right: f32, label: &str, url: &str) -> f32 {
-    let galley = ui.painter().layout_no_wrap(label.to_owned(), mono(11.0), t.faint);
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), FOOT(), t.faint);
     let rect = Rect::from_min_size(pos2(right - galley.size().x, bar.top()), vec2(galley.size().x, bar.height()));
     let resp = ui.interact(rect, ui.scope_id().with(("footer-link", url)), Sense::click());
-    let color = if resp.hovered() { t.ink_strong } else { t.faint };
+    let color = if resp.hovered() { t.ink_strong } else { t.engine_ink };
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    ui.painter().text(pos2(rect.left(), bar.center().y), Align2::LEFT_CENTER, label, mono(11.0), color);
+    ui.painter().text(pos2(rect.left(), bar.center().y), Align2::LEFT_CENTER, label, FOOT(), color);
     if resp.hovered() {
         ui.painter().hline(rect.x_range(), bar.center().y + 8.0, egui::Stroke::new(1.0, color));
     }
@@ -786,38 +849,31 @@ fn kind_color(ext: &str) -> Color32 {
     }
 }
 
-/// The file's icon: a tinted square with the extension, with a second sheet behind it for several files.
+/// The file's icon: a rounded tile with the extension in its colour, with a second tile behind it for several files.
 fn file_tile(ui: &mut egui::Ui, t: &Tokens, ext: &str, count: usize) {
-    let (rect, _) = ui.allocate_exact_size(vec2(84.0, 84.0), Sense::hover());
-    let tile = rect.shrink2(vec2(6.0, 6.0));
+    let (rect, _) = ui.allocate_exact_size(vec2(60.0, 66.0), Sense::hover());
+    let tile = Rect::from_min_size(rect.min + vec2(4.0, 8.0), vec2(48.0, 56.0));
     let color = kind_color(ext);
     let p = ui.painter();
     if count > 1 {
-        let back = tile.translate(vec2(6.0, -6.0));
-        p.rect_filled(back, CornerRadius::ZERO, t.sunken);
-        p.rect_stroke(back, CornerRadius::ZERO, egui::Stroke::new(1.0, color.gamma_multiply(0.55)), StrokeKind::Inside);
+        p.rect_filled(tile.translate(vec2(6.0, -6.0)), CornerRadius::same(9), t.chip.gamma_multiply(0.6));
     }
-    p.rect_filled(tile, CornerRadius::ZERO, t.bg.lerp_to_gamma(color, 0.18));
-    p.rect_stroke(tile, CornerRadius::ZERO, egui::Stroke::new(1.5, color), StrokeKind::Inside);
-    // Folded corner.
-    let fold = 14.0;
-    let (a, b, c) = (pos2(tile.right() - fold, tile.top()), pos2(tile.right(), tile.top() + fold), pos2(tile.right() - fold, tile.top() + fold));
-    p.add(egui::Shape::convex_polygon(vec![a, b, c], color.gamma_multiply(0.6), egui::Stroke::NONE));
-    p.text(tile.center() + vec2(0.0, 4.0), Align2::CENTER_CENTER, ext.to_uppercase(), FontId::monospace(if ext.len() > 4 { 14.0 } else { 18.0 }), color);
+    p.rect_filled(tile, CornerRadius::same(9), t.chip);
+    p.text(tile.center(), Align2::CENTER_CENTER, ext.to_uppercase(), mono(if ext.len() > 4 { 10.0 } else { 12.0 }), color);
 }
 
 /// «SwapCraft by voidflare»: «Swap» in the text colour, «Craft» shading through the voidflare indigos letter by
 /// letter, and «by voidflare» small underneath. `left` is the left edge, centred on `left.y`. Returns the area used.
 fn wordmark(p: &egui::Painter, t: &Tokens, left: egui::Pos2) -> Rect {
-    let big = FontId::proportional(22.0);
-    let small = mono(10.5);
+    let big = strong(26.0);
     let swap = p.layout_no_wrap("Swap".to_owned(), big.clone(), t.ink_strong);
-    let by = p.layout_no_wrap("by voidflare".to_owned(), small, t.faint);
-    let swap_rect = swap.size();
-    let top = left.y - (swap_rect.y + 2.0 + by.size().y) / 2.0;
+    let by = p.layout_no_wrap("by voidflare".to_owned(), FontId::proportional(12.0), t.muted);
+    let size = swap.size();
+    let gap = 1.0;
+    let top = left.y - (size.y + gap + by.size().y) / 2.0;
     p.galley(pos2(left.x, top), swap, t.ink_strong);
     let (from, to) = if t.dark { (Color32::from_rgb(0x81, 0x8c, 0xf8), Color32::from_rgb(0xc7, 0xd2, 0xfe)) } else { (Color32::from_rgb(0x43, 0x38, 0xca), Color32::from_rgb(0x63, 0x66, 0xf1)) };
-    let mut x = left.x + swap_rect.x;
+    let mut x = left.x + size.x;
     let craft = ["C", "r", "a", "f", "t"];
     for (i, ch) in craft.iter().enumerate() {
         let color = from.lerp_to_gamma(to, i as f32 / (craft.len() - 1) as f32);
@@ -827,43 +883,45 @@ fn wordmark(p: &egui::Painter, t: &Tokens, left: egui::Pos2) -> Rect {
         x += w;
     }
     let by_size = by.size();
-    p.galley(pos2(left.x + 1.0, top + swap_rect.y + 2.0), by, t.faint);
-    Rect::from_min_max(pos2(left.x, top), pos2(x.max(left.x + by_size.x), top + swap_rect.y + 2.0 + by_size.y))
+    p.galley(pos2(left.x + 1.0, top + size.y + gap), by, t.muted);
+    Rect::from_min_max(pos2(left.x, top), pos2(x.max(left.x + by_size.x), top + size.y + gap + by_size.y))
+}
+
+/// The footer's type.
+#[allow(non_snake_case)]
+fn FOOT() -> FontId {
+    FontId::proportional(12.0)
 }
 
 fn section_label(ui: &mut egui::Ui, t: &Tokens, label: &str, n: usize) {
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 44.0), Sense::hover());
-    let p = ui.painter();
-    p.text(pos2(rect.left() + PAD, rect.bottom() - 12.0), Align2::LEFT_BOTTOM, format!("{} · {n}", label.to_uppercase()), mono(11.0), t.faint);
-    p.hline(rect.x_range(), rect.bottom() - 0.5, t.hairline());
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::hover());
+    ui.painter().text(pos2(rect.left() + PAD, rect.bottom() - 12.0), Align2::LEFT_BOTTOM, format!("{label} · {n}"), FontId::proportional(13.0), t.muted);
 }
 
 impl Hub {
     fn header(&mut self, ui: &mut egui::Ui, t: &Tokens) {
-        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), BAR_H + 8.0), Sense::hover());
-        let c = pos2(rect.left() + PAD, rect.center().y);
+        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), BAR_H + 20.0), Sense::hover());
+        let c = pos2(rect.left() + PAD, rect.center().y + 4.0);
         // the gear sits in the top right corner; the tagline gives way to it
         let gear = Rect::from_center_size(pos2(rect.right() - PAD - 14.0, c.y), vec2(32.0, 32.0));
         if !self.settings.show_welcome() && settings::gear_button(ui, t, gear) {
             self.settings.open();
         }
-        let p = ui.painter();
-        let w = self.flame.paint(p, c.x, c.y, 30.0, t.dark);
-        let word = wordmark(p, t, pos2(c.x + w + 12.0, c.y));
-        // APPS | RECIPES, right of the wordmark.
-        let mut x = word.right() + 36.0;
+        let w = self.mark.paint(ui.painter(), c.x, c.y, 44.0);
+        let word = wordmark(ui.painter(), t, pos2(c.x + w + 12.0, c.y));
+        // Apps | Recipes: pills right of the wordmark.
+        let mut x = word.right() + 32.0;
         for (tab, label) in [(Tab::Apps, tr("hub.tab_apps")), (Tab::Recipes, tr("hub.tab_recipes"))] {
-            let galley = ui.painter().layout_no_wrap(label.to_uppercase(), mono(12.0), t.ink);
+            let galley = ui.painter().layout_no_wrap(label.clone(), FontId::proportional(13.5), t.ink);
             let r = Rect::from_min_size(pos2(x, c.y - 15.0), vec2(galley.size().x + 28.0, 30.0));
             let resp = ui.interact(r, ui.scope_id().with(("tab", label.as_str())), Sense::click());
             let on = self.tab == tab;
             let p = ui.painter();
             if on {
-                p.rect_filled(r, CornerRadius::ZERO, t.sunken);
-                p.rect_stroke(r, CornerRadius::ZERO, egui::Stroke::new(1.0, t.line_strong), StrokeKind::Inside);
+                p.rect_filled(r, CornerRadius::same(15), t.chip);
             }
             let color = if on || resp.hovered() { t.ink_strong } else { t.muted };
-            p.text(r.center(), Align2::CENTER_CENTER, label.to_uppercase(), mono(12.0), color);
+            p.text(r.center(), Align2::CENTER_CENTER, &label, if on { strong(13.5) } else { FontId::proportional(13.5) }, color);
             if resp.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
@@ -874,38 +932,37 @@ impl Hub {
         }
         let p = ui.painter();
         // The tagline gives way to the tabs in a narrow window.
-        let tagline = "CRAFT YOUR CONVERSION, ALWAYS OFFLINE";
-        let tag_w = p.layout_no_wrap(tagline.to_owned(), mono(11.0), t.faint).size().x;
+        let tagline = "Craft your conversion, always offline.";
+        let tag_w = p.layout_no_wrap(tagline.to_owned(), FontId::proportional(13.0), t.muted).size().x;
         if gear.left() - 16.0 - tag_w > x + 24.0 {
-            p.text(pos2(gear.left() - 16.0, c.y), Align2::RIGHT_CENTER, tagline, mono(11.0), t.faint);
+            p.text(pos2(gear.left() - 16.0, c.y), Align2::RIGHT_CENTER, tagline, FontId::proportional(13.0), t.muted);
         }
-        p.hline(rect.x_range(), rect.bottom() - 0.5, t.hairline());
     }
 
     fn toolbar(&mut self, ui: &mut egui::Ui, t: &Tokens) {
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), BAR_H), Sense::hover());
         let mut bar = ui.new_child(UiBuilder::new().max_rect(rect.shrink2(vec2(PAD, 0.0))).layout(Layout::left_to_right(Align::Center)));
         bar.spacing_mut().item_spacing.x = 12.0;
-        bar.add(egui::TextEdit::singleline(&mut self.query).hint_text(tr("hub.search")).desired_width(260.0).margin(vec2(10.0, 7.0)));
+        bar.add(egui::TextEdit::singleline(&mut self.query).hint_text(tr("hub.search")).font(FontId::proportional(13.5)).desired_width(260.0).margin(vec2(14.0, 8.0)));
         // UPDATE ALL shows only when two or more installed apps have an update (with one, its card has UPDATE)
         let n_update = self.updatable().len();
         let queued = !self.queue.is_empty() || self.job.as_ref().is_some_and(|j| !j.removing && self.status[j.app] == Some(Status::UpdateAvailable));
         let mut go_update_all = false;
         bar.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
-            ui.selectable_value(&mut self.view, View::List, RichText::new(tr("hub.list")).font(mono(11.0)));
-            ui.selectable_value(&mut self.view, View::Grid, RichText::new(tr("hub.grid")).font(mono(11.0)));
+            ui.selectable_value(&mut self.view, View::List, RichText::new(tr("hub.list")).font(FontId::proportional(13.0)));
+            ui.selectable_value(&mut self.view, View::Grid, RichText::new(tr("hub.grid")).font(FontId::proportional(13.0)));
             ui.add_space(8.0);
             let (asc, desc) = (tr("hub.sort_az"), tr("hub.sort_za"));
-            let label = if self.sort == Sort::NameAsc { asc.to_uppercase() } else { desc.to_uppercase() };
-            egui::ComboBox::from_id_salt("sort").selected_text(RichText::new(label).font(mono(11.0))).show_ui(ui, |ui| {
+            let label = if self.sort == Sort::NameAsc { asc.clone() } else { desc.clone() };
+            egui::ComboBox::from_id_salt("sort").selected_text(RichText::new(label).font(FontId::proportional(13.0))).show_ui(ui, |ui| {
                 ui.selectable_value(&mut self.sort, Sort::NameAsc, asc);
                 ui.selectable_value(&mut self.sort, Sort::NameDesc, desc);
             });
             if n_update >= 2 && !queued && self.job.is_none() {
                 ui.add_space(8.0);
                 let label = trf("hub.update_all", &[("n", &n_update.to_string())]);
-                let b = egui::Button::new(RichText::new(label).font(mono(11.0)).color(t.invert_fg)).fill(t.invert_bg);
+                let b = egui::Button::new(RichText::new(label).font(strong(12.5)).color(t.invert_fg)).fill(t.invert_bg);
                 if ui.add(b).on_hover_text(tr("hub.update_all_hint")).clicked() {
                     go_update_all = true;
                 }
@@ -915,18 +972,21 @@ impl Hub {
             let ctx = ui.ctx().clone();
             self.update_all(&ctx);
         }
-        ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, t.hairline());
     }
 
     fn footer(&mut self, ui: &mut egui::Ui, t: &Tokens) {
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), FOOTER_H), Sense::hover());
-        let p = ui.painter();
-        p.hline(rect.x_range(), rect.top() + 0.5, t.hairline());
-        let site = p.text(pos2(rect.left() + PAD, rect.center().y), Align2::LEFT_CENTER, "SWAPCRAFT.VOIDFLARE.APP", mono(11.0), t.faint);
+        ui.painter().hline(rect.x_range(), rect.top() + 0.5, egui::Stroke::new(1.0, t.line));
+        // Our site, a link like the ArtCraft one on the right.
+        const SITE: &str = "swapcraft.voidflare.app";
+        let site_w = ui.painter().layout_no_wrap(SITE.to_owned(), FOOT(), t.faint).size().x;
+        let site_left = rect.left() + PAD;
+        footer_link(ui, t, rect, site_left + site_w, SITE, "https://swapcraft.voidflare.app/");
+        let site = Rect::from_min_size(pos2(site_left, rect.top()), vec2(site_w, rect.height()));
 
         // Updates: only on a click, and the label says what the click will do.
         let (label, color, hint): (String, Color32, String) = match &self.upd {
-            Upd::Idle => (tr("hub.upd_check"), t.faint, tr("hub.upd_check_hint")),
+            Upd::Idle => (tr("hub.upd_check"), t.muted, tr("hub.upd_check_hint")),
             Upd::Checking => (tr("hub.upd_checking"), t.faint, String::new()),
             Upd::UpToDate => (tr("hub.upd_uptodate"), t.good, String::new()),
             Upd::Available(r) => match r.update_zip() {
@@ -940,11 +1000,11 @@ impl Hub {
         let clickable = !matches!(self.upd, Upd::Checking | Upd::Downloading(..));
         // Right after the site's name, with the same gap at any length of it.
         let x = site.right() + 24.0;
-        let galley = ui.painter().layout_no_wrap(label.clone(), mono(11.0), color);
+        let galley = ui.painter().layout_no_wrap(label.clone(), FOOT(), color);
         let action = Rect::from_min_size(pos2(x, rect.top()), vec2(galley.size().x, rect.height()));
         let resp = ui.interact(action, ui.scope_id().with("update-action"), if clickable { Sense::click() } else { Sense::hover() });
         let shown = if resp.hovered() && clickable { t.ink_strong } else { color };
-        ui.painter().text(pos2(x, rect.center().y), Align2::LEFT_CENTER, &label, mono(11.0), shown);
+        ui.painter().text(pos2(x, rect.center().y), Align2::LEFT_CENTER, &label, FOOT(), shown);
         if resp.hovered() && clickable {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             ui.painter().hline(action.x_range(), rect.center().y + 8.0, egui::Stroke::new(1.0, shown));
@@ -970,11 +1030,11 @@ impl Hub {
         // The switch for the check at start, right after the update label.
         let auto_label = if self.auto_on { tr("hub.auto_on") } else { tr("hub.auto_off") };
         let auto_x = x + galley.size().x + 24.0;
-        let auto_w = ui.painter().layout_no_wrap(auto_label.clone(), mono(11.0), t.faint).size().x;
+        let auto_w = ui.painter().layout_no_wrap(auto_label.clone(), FOOT(), t.faint).size().x;
         let auto_rect = Rect::from_min_size(pos2(auto_x, rect.top()), vec2(auto_w, rect.height()));
         let auto_resp = ui.interact(auto_rect, ui.scope_id().with("auto-check"), Sense::click());
-        let auto_color = if auto_resp.hovered() { t.ink_strong } else { t.faint };
-        ui.painter().text(pos2(auto_x, rect.center().y), Align2::LEFT_CENTER, &auto_label, mono(11.0), auto_color);
+        let auto_color = if auto_resp.hovered() { t.ink_strong } else { t.muted };
+        ui.painter().text(pos2(auto_x, rect.center().y), Align2::LEFT_CENTER, &auto_label, FOOT(), auto_color);
         if auto_resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
@@ -987,7 +1047,7 @@ impl Hub {
         let p = ui.painter();
         match &self.notice {
             Some(msg) => {
-                p.text(pos2(rect.right() - PAD, rect.center().y), Align2::RIGHT_CENTER, msg, mono(11.0), t.bad);
+                p.text(pos2(rect.right() - PAD, rect.center().y), Align2::RIGHT_CENTER, msg, FOOT(), t.bad);
             }
             None => {
                 // Right to left: the link to ArtCraft, then the version. In a narrow window they give way to the update
@@ -995,12 +1055,12 @@ impl Hub {
                 let room = rect.right() - PAD - (auto_x + auto_w) - 24.0;
                 // widths are measured, because the text is longer in some languages
                 let (built, version) = (tr("hub.built_on"), trf("hub.version_line", &[("v", env!("CARGO_PKG_VERSION"))]));
-                let built_w = ui.painter().layout_no_wrap(built.clone(), mono(11.0), t.faint).size().x;
-                let version_w = ui.painter().layout_no_wrap(version.clone(), mono(11.0), t.faint).size().x;
+                let built_w = ui.painter().layout_no_wrap(built.clone(), FOOT(), t.faint).size().x;
+                let version_w = ui.painter().layout_no_wrap(version.clone(), FOOT(), t.faint).size().x;
                 if room > built_w + 10.0 {
                     let link = footer_link(ui, t, rect, rect.right() - PAD, &built, "https://getartcraft.com");
                     if room > built_w + version_w + 30.0 {
-                        ui.painter().text(pos2(link - 14.0, rect.center().y), Align2::RIGHT_CENTER, version, mono(11.0), t.faint);
+                        ui.painter().text(pos2(link - 14.0, rect.center().y), Align2::RIGHT_CENTER, version, FOOT(), t.faint);
                     }
                 }
             }
@@ -1008,16 +1068,15 @@ impl Hub {
     }
 
     fn grid(&mut self, ui: &mut egui::Ui, t: &Tokens, group: &[usize]) {
-        let width = ui.available_width();
-        let cols = ((width / CARD_MIN_W).floor() as usize).max(1);
-        // Neighbouring cards share one hairline, so each is one pixel wider than its slot.
-        let card_w = (width + (cols as f32 - 1.0)) / cols as f32;
+        let width = ui.available_width() - 2.0 * PAD;
+        let cols = (((width + GAP) / (CARD_MIN_W + GAP)).floor() as usize).max(1);
+        let card_w = (width - GAP * (cols as f32 - 1.0)) / cols as f32;
         let rows = group.len().div_ceil(cols);
-        let height = rows as f32 * (CARD_H - 1.0) + 1.0;
-        let (area, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+        let height = rows as f32 * (CARD_H + GAP) - GAP;
+        let (area, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
         for (n, &i) in group.iter().enumerate() {
             let (row, col) = (n / cols, n % cols);
-            let min = area.min + vec2(col as f32 * (card_w - 1.0), row as f32 * (CARD_H - 1.0));
+            let min = area.min + vec2(PAD + col as f32 * (card_w + GAP), row as f32 * (CARD_H + GAP));
             self.card(ui, t, i, Rect::from_min_size(min, vec2(card_w, CARD_H)));
         }
     }
@@ -1026,65 +1085,59 @@ impl Hub {
         let app = &APPS[i];
         let ready = self.found[i].is_some();
         let resp = ui.interact(rect, ui.scope_id().with(("card", app.id)), if ready { Sense::click() } else { Sense::hover() });
-        let hovered = resp.hovered();
-        if ready && hovered {
+        // test hook, like VOIDFLARE_HUB_TAB: VOIDFLARE_HUB_HOVER=<app id> draws that card as if the pointer were on it
+        let forced = std::env::var("VOIDFLARE_HUB_HOVER").is_ok_and(|v| v == app.id);
+        let hovered = resp.hovered() || ui.rect_contains_pointer(rect) || forced;
+        if ready && resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
-        let lift = ui.ctx().animate_bool_with_time(ui.scope_id().with(("lift", app.id)), hovered, 0.25);
+        let lift = ui.ctx().animate_bool_with_time(ui.scope_id().with(("lift", app.id)), hovered, 0.2);
         let color = rgb(app.color);
         // Apps that are not available are drawn in greys, and in colour while the pointer is over them.
         let accent = if ready { color } else { t.muted.lerp_to_gamma(color, lift) };
 
-        let p = ui.painter_at(rect);
-        p.rect(rect, CornerRadius::ZERO, t.bg.lerp_to_gamma(accent, 0.05 * lift).gamma_multiply(0.86), t.hairline(), StrokeKind::Inside);
-        if t.dark {
-            fx::radial(&p, self.torch.pos, 160.0, accent, 0.10 * lift * self.torch.power * self.torch.light);
-            self.torch.border(&p, rect, None, accent, 6.0, 0.0, 170.0);
-        }
-        if lift > 0.0 {
-            let inside = rect.shrink(1.0);
-            p.rect_filled(Rect::from_min_size(inside.min, vec2(inside.width() * lift, 2.0)), CornerRadius::ZERO, accent);
-        }
-
-        // Top strip: the engine, and the status.
-        let strip = Rect::from_min_size(rect.min, vec2(rect.width(), STRIP_H));
-        p.hline(strip.x_range(), strip.bottom() - 0.5, t.hairline());
-        p.text(
-            pos2(rect.left() + PAD, strip.center().y),
-            Align2::LEFT_CENTER,
-            trf("hub.engine", &[("name", &app.engine.to_uppercase())]),
-            mono(11.0),
-            if ready || hovered { t.muted } else { t.faint },
+        // The card lights up in the app's own colour: a tint, the border, and a bar along the top.
+        let p = ui.painter_at(rect.expand(1.0));
+        p.rect(
+            rect,
+            CornerRadius::same(12),
+            t.card.lerp_to_gamma(accent, 0.07 * lift),
+            egui::Stroke::new(1.0, t.line.lerp_to_gamma(accent, 0.55 * lift)),
+            StrokeKind::Inside,
         );
-        let (status, status_color) = self.status_text(t, i);
-        p.text(pos2(rect.right() - PAD, strip.center().y), Align2::RIGHT_CENTER, status, mono(11.0), status_color);
+        if lift > 0.0 {
+            let w = (rect.width() - 24.0) * lift;
+            p.rect_filled(Rect::from_min_size(pos2(rect.center().x - w / 2.0, rect.top()), vec2(w, 2.0)), CornerRadius::same(1), accent);
+        }
+        let inner = rect.shrink(18.0);
 
         // Icon, name and tagline.
-        let tile = Rect::from_min_size(pos2(rect.left() + PAD, strip.bottom() + 18.0 - 4.0 * lift), vec2(64.0, 64.0));
+        let tile = Rect::from_min_size(inner.min, vec2(48.0, 48.0));
         let tint = if ready { Color32::WHITE } else { Color32::from_gray(150).lerp_to_gamma(Color32::WHITE, lift) };
-        self.icons.paint(&p, i, tile, tint, t.line_strong);
+        self.icons.paint(&p, i, tile, tint, t.line);
         let text_x = tile.right() + 14.0;
-        let text_w = rect.right() - PAD - text_x;
-        p.text(pos2(text_x, tile.center().y - 11.0), Align2::LEFT_CENTER, app.name, FontId::proportional(20.0), t.ink_strong);
+        let text_w = inner.right() - text_x;
+        p.text(pos2(text_x, tile.center().y - 10.0), Align2::LEFT_CENTER, app.name, strong(16.5), t.ink_strong);
         let tagline = clipped(&app.tagline(), FontId::proportional(13.0), t.muted, text_w, 1);
-        p.galley(pos2(text_x, tile.center().y + 6.0), p.layout_job(tagline), t.muted);
+        p.galley(pos2(text_x, tile.center().y + 2.0), p.layout_job(tagline), t.muted);
 
-        // Description.
-        let blurb = clipped(&app.blurb(), FontId::proportional(12.5), t.muted, rect.width() - 2.0 * PAD, 3);
-        p.galley(pos2(rect.left() + PAD, tile.bottom() + 18.0), p.layout_job(blurb), t.muted);
+        // Description, two lines at most.
+        let blurb = clipped(&app.blurb(), FontId::proportional(12.5), t.muted, inner.width(), 2);
+        p.galley(pos2(inner.left(), tile.bottom() + 12.0), p.layout_job(blurb), t.muted);
 
-        // Where the engine comes from, in small print above the buttons.
-        let button = Rect::from_min_size(pos2(rect.left() + PAD, rect.bottom() - PAD - 32.0), vec2(112.0, 32.0));
+        // The foot: the engine and its status on the left, the actions on the right.
+        let foot_y = inner.bottom() - 15.0;
+        let button_h = 30.0;
         let ctx = ui.ctx().clone();
         let working = self.job.as_ref().is_some_and(|j| j.app == i);
         let busy_elsewhere = self.job.is_some() && !working;
+        // Where the engine comes from, in small print above the foot.
         let line = if working { self.job_line(i) } else { self.source_line(i) };
         if let Some((text, warn)) = line {
-            let color = if warn { t.bad } else if working { t.accent_ink } else { t.faint };
-            p.text(pos2(rect.left() + PAD, button.top() - 16.0), Align2::LEFT_CENTER, text, mono(10.5), color);
+            let color = if warn { t.bad } else if working { t.engine_ink } else { t.faint };
+            p.text(pos2(inner.left(), foot_y - 26.0), Align2::LEFT_CENTER, text, mono(10.5), color);
         }
 
-        // Action. The buttons are their own click targets above the card, so a click on them never launches the app.
         let scope = ui.scope_id();
         let id = |what: &str| scope.with((what, app.id));
         let mut handled = false;
@@ -1094,48 +1147,54 @@ impl Hub {
             let color = if r.hovered() { t.ink_strong } else { base };
             if r.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                p.hline(rect.x_range(), rect.center().y + 8.0, egui::Stroke::new(1.0, color));
             }
-            p.text(rect.center(), Align2::CENTER_CENTER, label, mono(11.0), color);
+            p.text(rect.center(), Align2::CENTER_CENTER, label, FontId::proportional(12.5), color);
             r.clicked()
         };
+        // the right edge of the room left for the engine text in the foot
+        let mut actions_left: f32;
         if working {
             let job = self.job.as_ref().expect("working implies a job");
             let cancel_w = if job.removing { 0.0 } else { 70.0 };
-            let bar = Rect::from_min_size(pos2(rect.left() + PAD, button.center().y - 3.0), vec2(rect.width() - 2.0 * PAD - cancel_w, 6.0));
-            p.rect_filled(bar, CornerRadius::ZERO, t.sunken);
+            let bar = Rect::from_min_size(pos2(inner.left(), foot_y - 2.0), vec2(inner.width() - cancel_w, 4.0));
+            p.rect_filled(bar, CornerRadius::same(2), t.chip);
             let frac = if job.total > 0 { (job.done as f32 / job.total as f32).clamp(0.0, 1.0) } else { 0.0 };
-            p.rect_filled(Rect::from_min_size(bar.min, vec2(bar.width() * frac, bar.height())), CornerRadius::ZERO, accent);
+            p.rect_filled(Rect::from_min_size(bar.min, vec2(bar.width() * frac, bar.height())), CornerRadius::same(2), accent);
             if !job.removing {
-                let cancel_rect = Rect::from_min_size(pos2(rect.right() - PAD - cancel_w + 8.0, button.top()), vec2(cancel_w - 8.0, button.height()));
+                let cancel_rect = Rect::from_min_size(pos2(inner.right() - cancel_w + 8.0, foot_y - button_h / 2.0), vec2(cancel_w - 8.0, button_h));
                 act_cancel = small_link(ui, &p, cancel_rect, "cancel", &tr("hub.cancel"), t.muted);
             }
+            actions_left = inner.left();
             handled = true;
         } else if ready {
             let managed = self.installed[i].is_some();
-            let over = ui.rect_contains_pointer(button);
-            let fill = if over { t.invert_bg.lerp_to_gamma(accent, 0.35) } else { t.invert_bg };
-            p.rect_filled(button, CornerRadius::ZERO, fill);
-            p.text(button.center(), Align2::CENTER_CENTER, tr("hub.open"), mono(12.0), t.invert_fg);
+            let open = tr("hub.open");
+            let ow = pill_w(ui, &open).max(72.0);
+            let open_rect = Rect::from_min_size(pos2(inner.right() - ow, foot_y - button_h / 2.0), vec2(ow, button_h));
+            // the open pill fills in when the card is under the pointer; a click anywhere on the card opens the app
+            let r = pill(ui, &p, t, open_rect, id("open"), &open, hovered, t.ink_strong, true);
+            if r.clicked() {
+                self.launch(i);
+                handled = true;
+            }
+            actions_left = open_rect.left() - 8.0;
             if managed {
                 if let Some(label) = self.fix_label(i).filter(|_| !busy_elsewhere) {
-                    let upd = Rect::from_min_size(pos2(button.right() + 8.0, button.top()), vec2(100.0, 32.0));
-                    let r = ui.interact(upd, id("update"), Sense::click());
-                    p.rect(upd, CornerRadius::ZERO, Color32::TRANSPARENT, egui::Stroke::new(1.0, if r.hovered() { t.accent_ink } else { t.line_strong }), StrokeKind::Inside);
-                    p.text(upd.center(), Align2::CENTER_CENTER, label, mono(11.0), t.accent_ink);
-                    if r.hovered() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    }
-                    if r.clicked() {
+                    let uw = pill_w(ui, &label);
+                    let upd = Rect::from_min_size(pos2(actions_left - uw, open_rect.top()), vec2(uw, button_h));
+                    if pill(ui, &p, t, upd, id("update"), &label, false, t.engine_ink, true).clicked() {
                         act_install = true;
                         handled = true;
                     }
+                    actions_left = upd.left() - 8.0;
                 }
+                // Remove sits in the top right corner and shows while the card is under the pointer.
+                let corner_y = rect.top() + 18.0;
                 if self.confirm_remove == Some(i) {
-                    // Compact, so it also fits the narrowest card (320 px) next to OPEN.
-                    let yes = Rect::from_min_size(pos2(rect.right() - PAD - 86.0, button.top()), vec2(42.0, 32.0));
-                    let no = Rect::from_min_size(pos2(rect.right() - PAD - 42.0, button.top()), vec2(42.0, 32.0));
-                    p.text(pos2(yes.left() - 2.0, button.center().y), Align2::RIGHT_CENTER, tr("hub.remove_q"), mono(11.0), t.bad);
+                    let no = Rect::from_min_size(pos2(inner.right() - 32.0, corner_y - 10.0), vec2(32.0, 20.0));
+                    let yes = Rect::from_min_size(pos2(no.left() - 36.0, corner_y - 10.0), vec2(36.0, 20.0));
+                    p.rect_filled(Rect::from_min_max(pos2(yes.left() - 74.0, yes.top() - 2.0), pos2(no.right() + 2.0, no.bottom() + 2.0)), CornerRadius::same(6), t.card);
+                    p.text(pos2(yes.left() - 4.0, corner_y), Align2::RIGHT_CENTER, tr("hub.remove_q"), FontId::proportional(12.5), t.bad);
                     if small_link(ui, &p, yes, "yes", &tr("hub.yes"), t.bad) {
                         act_remove = true;
                     }
@@ -1143,9 +1202,11 @@ impl Hub {
                         self.confirm_remove = None;
                     }
                     handled = true;
-                } else if !busy_elsewhere {
-                    let rm = Rect::from_min_size(pos2(rect.right() - PAD - 56.0, button.top()), vec2(56.0, 32.0));
-                    if small_link(ui, &p, rm, "remove", &tr("hub.remove"), t.faint) {
+                } else if !busy_elsewhere && lift > 0.5 {
+                    let label = tr("hub.remove");
+                    let w = ui.painter().layout_no_wrap(label.clone(), FontId::proportional(12.5), t.faint).size().x + 8.0;
+                    let rm = Rect::from_min_size(pos2(inner.right() - w, corner_y - 10.0), vec2(w, 20.0));
+                    if small_link(ui, &p, rm, "remove", &label, t.faint) {
                         self.confirm_remove = Some(i);
                         handled = true;
                     }
@@ -1156,15 +1217,10 @@ impl Hub {
                 Packs::Ready(l) => l.plans.get(app.id).map(|pl| trf("hub.install_size", &[("size", &mb(pl.download_bytes))])),
                 _ => None,
             };
-            let wide = Rect::from_min_size(button.min, vec2(168.0, 32.0));
-            let r = ui.interact(wide, id("install"), if busy_elsewhere { Sense::hover() } else { Sense::click() });
-            let fill = if busy_elsewhere { t.sunken } else if r.hovered() { t.invert_bg.lerp_to_gamma(accent, 0.35) } else { t.invert_bg };
-            p.rect_filled(wide, CornerRadius::ZERO, fill);
             let label = size.unwrap_or_else(|| if matches!(self.packs, Packs::Loading) { tr("hub.loading") } else { tr("hub.install") });
-            p.text(wide.center(), Align2::CENTER_CENTER, label, mono(12.0), if busy_elsewhere { t.faint } else { t.invert_fg });
-            if r.hovered() && !busy_elsewhere {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            }
+            let w = pill_w(ui, &label);
+            let wide = Rect::from_min_size(pos2(inner.right() - w, foot_y - button_h / 2.0), vec2(w, button_h));
+            let r = pill(ui, &p, t, wide, id("install"), &label, true, t.invert_fg, !busy_elsewhere);
             let r = match &self.packs {
                 _ if busy_elsewhere => r.on_hover_text(tr("hub.busy")),
                 Packs::Failed(e) => r.on_hover_text(trf("hub.list_failed", &[("err", e)])),
@@ -1173,10 +1229,28 @@ impl Hub {
             if !busy_elsewhere && r.clicked() {
                 act_install = true;
             }
+            actions_left = wide.left() - 8.0;
             handled = true;
         } else {
-            p.rect(button, CornerRadius::ZERO, Color32::TRANSPARENT, egui::Stroke::new(1.0, t.line), StrokeKind::Inside);
-            p.text(button.center(), Align2::CENTER_CENTER, tr("hub.coming_soon"), mono(11.0), t.faint);
+            let label = tr("hub.coming_soon");
+            let w = pill_w(ui, &label);
+            let soon = Rect::from_min_size(pos2(inner.right() - w, foot_y - button_h / 2.0), vec2(w, button_h));
+            pill(ui, &p, t, soon, id("soon"), &label, false, t.faint, false);
+            actions_left = soon.left() - 8.0;
+        }
+
+        // The engine in violet mono, then its status.
+        if actions_left > inner.left() + 40.0 {
+            let (status, status_color) = self.status_text(t, i);
+            let room = actions_left - inner.left();
+            let engine = app.engine.to_lowercase();
+            let eng = ui.painter().layout_no_wrap(engine.clone(), mono(12.0), t.engine_ink);
+            let ew = eng.size().x.min(room);
+            p.text(pos2(inner.left(), foot_y), Align2::LEFT_CENTER, fit(ui, &engine, mono(12.0), room), mono(12.0), t.engine_ink);
+            if room - ew > 50.0 {
+                let st = fit(ui, &format!("· {status}"), FontId::proportional(12.5), room - ew - 8.0);
+                p.text(pos2(inner.left() + ew + 8.0, foot_y), Align2::LEFT_CENTER, st, FontId::proportional(12.5), status_color);
+            }
         }
 
         if act_cancel && let Some(job) = &self.job {
@@ -1227,7 +1301,7 @@ impl Hub {
         let pct = if job.total > 0 { format!(" {}%", job.done * 100 / job.total) } else { String::new() };
         Some((
             if job.stage == "engine" {
-                trf("hub.job_dl_engine", &[("engine", &APPS[i].engine.to_uppercase()), ("pct", &pct)])
+                trf("hub.job_dl_engine", &[("engine", APPS[i].engine), ("pct", &pct)])
             } else {
                 trf("hub.job_dl_app", &[("pct", &pct)])
             },
@@ -1238,7 +1312,7 @@ impl Hub {
     /// Small print about the engine: where it comes from now, or where it would come from. The bool marks a warning.
     fn source_line(&self, i: usize) -> Option<(String, bool)> {
         let app = &APPS[i];
-        let engine = app.engine.to_uppercase();
+        let engine = app.engine.to_owned();
         if let Some(have) = &self.installed[i] {
             return Some(match (&self.health[i], &have.engine) {
                 (Health::EngineMissing, _) => (trf("hub.src_not_found", &[("engine", &engine)]), true),
@@ -1265,7 +1339,9 @@ impl Hub {
         for &i in group {
             let app = &APPS[i];
             let ready = self.found[i].is_some();
-            let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), if ready { Sense::click() } else { Sense::hover() });
+            let (slot, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H + 6.0), Sense::hover());
+            let rect = Rect::from_min_size(slot.min + vec2(PAD, 0.0), vec2(slot.width() - 2.0 * PAD, ROW_H));
+            let resp = ui.interact(rect, ui.scope_id().with(("row-hit", app.id)), if ready { Sense::click() } else { Sense::hover() });
             let hovered = resp.hovered();
             if ready && hovered {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -1273,24 +1349,30 @@ impl Hub {
             let lift = ui.ctx().animate_bool_with_time(ui.scope_id().with(("row", app.id)), hovered, 0.2);
             let color = rgb(app.color);
             let accent = if ready { color } else { t.muted.lerp_to_gamma(color, lift) };
-            let p = ui.painter_at(rect);
-            p.rect_filled(rect, CornerRadius::ZERO, t.bg.lerp_to_gamma(accent, 0.05 * lift));
-            p.hline(rect.x_range(), rect.bottom() - 0.5, t.hairline());
+            let p = ui.painter_at(rect.expand(1.0));
+            p.rect(
+                rect,
+                CornerRadius::same(12),
+                t.card.lerp_to_gamma(accent, 0.07 * lift),
+                egui::Stroke::new(1.0, t.line.lerp_to_gamma(accent, 0.55 * lift)),
+                StrokeKind::Inside,
+            );
             if lift > 0.0 {
-                p.rect_filled(Rect::from_min_size(rect.min, vec2(2.0, rect.height() * lift)), CornerRadius::ZERO, accent);
+                let h = (rect.height() - 20.0) * lift;
+                p.rect_filled(Rect::from_min_size(pos2(rect.left(), rect.center().y - h / 2.0), vec2(2.0, h)), CornerRadius::same(1), accent);
             }
 
             let tile = Rect::from_center_size(pos2(rect.left() + PAD + 20.0, rect.center().y), vec2(44.0, 44.0));
             let tint = if ready { Color32::WHITE } else { Color32::from_gray(150).lerp_to_gamma(Color32::WHITE, lift) };
-            self.icons.paint(&p, i, tile, tint, t.line_strong);
+            self.icons.paint(&p, i, tile, tint, t.line);
             let x = tile.right() + 14.0;
-            p.text(pos2(x, rect.center().y - 9.0), Align2::LEFT_CENTER, app.name, FontId::proportional(16.0), t.ink_strong);
+            p.text(pos2(x, rect.center().y - 9.0), Align2::LEFT_CENTER, app.name, strong(15.0), t.ink_strong);
             p.text(pos2(x, rect.center().y + 10.0), Align2::LEFT_CENTER, app.tagline(), FontId::proportional(12.5), t.muted);
 
             let (status, status_color) = self.status_text(t, i);
             let working = self.job.as_ref().is_some_and(|j| j.app == i);
             let busy_elsewhere = self.job.is_some() && !working;
-            let button = Rect::from_center_size(pos2(rect.right() - PAD - 50.0, rect.center().y), vec2(100.0, 28.0));
+            let button = Rect::from_center_size(pos2(rect.right() - 18.0 - 40.0, rect.center().y), vec2(80.0, 30.0));
             // INSTALL is wider than OPEN and the REMOVE / UPDATE links sit left of OPEN: the columns of text (status,
             // engine) end where the actions begin, so they never run under them.
             let links = ready && !working && self.installed[i].is_some() && !busy_elsewhere && rect.width() > 700.0;
@@ -1312,25 +1394,28 @@ impl Hub {
             let engine_x = status_x - 100.0;
             let text_end = rect.left() + 440.0;
             if engine_x > text_end {
-                p.text(pos2(engine_x, rect.center().y), Align2::LEFT_CENTER, app.engine.to_uppercase(), mono(11.0), t.muted);
+                p.text(pos2(engine_x, rect.center().y), Align2::LEFT_CENTER, app.engine.to_lowercase(), mono(12.0), t.engine_ink);
             }
             if status_x > text_end {
-                p.text(pos2(status_x, rect.center().y), Align2::LEFT_CENTER, status, mono(11.0), status_color);
+                p.text(pos2(status_x, rect.center().y), Align2::LEFT_CENTER, status, FontId::proportional(12.5), status_color);
             }
             let ctx = ui.ctx().clone();
             let (mut act_install, mut act_remove, mut handled) = (false, false, false);
             if working {
                 let line = self.job_line(i).map(|(s, _)| s).unwrap_or_default();
-                p.text(pos2(button.right(), rect.center().y), Align2::RIGHT_CENTER, line, mono(10.5), t.accent_ink);
+                p.text(pos2(button.right(), rect.center().y), Align2::RIGHT_CENTER, line, mono(10.5), t.engine_ink);
                 let r = ui.interact(button, ui.scope_id().with(("cancel-row", app.id)), Sense::click());
                 if !self.job.as_ref().is_some_and(|j| j.removing) && r.clicked() && let Some(job) = &self.job {
                     job.cancel.store(true, Ordering::Relaxed);
                 }
                 handled = true;
             } else if ready {
-                let over = ui.rect_contains_pointer(button);
-                p.rect_filled(button, CornerRadius::ZERO, if over { t.invert_bg.lerp_to_gamma(accent, 0.35) } else { t.invert_bg });
-                p.text(button.center(), Align2::CENTER_CENTER, tr("hub.open"), mono(11.0), t.invert_fg);
+                let row_over = ui.rect_contains_pointer(rect);
+                let r = pill(ui, &p, t, button, ui.scope_id().with(("row-open", app.id)), &tr("hub.open"), row_over, t.ink_strong, true);
+                if r.clicked() {
+                    self.launch(i);
+                    handled = true;
+                }
                 if links {
                     let fix = self.fix_label(i);
                     let mut x = button.left() - 14.0;
@@ -1342,7 +1427,7 @@ impl Hub {
                         if resp.hovered() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                         }
-                        p.text(r.center(), Align2::CENTER_CENTER, label, mono(11.0), c);
+                        p.text(r.center(), Align2::CENTER_CENTER, label, FontId::proportional(12.5), c);
                         resp.clicked()
                     };
                     if self.confirm_remove == Some(i) {
@@ -1372,17 +1457,12 @@ impl Hub {
                 .unwrap_or_else(|| tr("hub.install"));
                 let wide = Rect::from_min_max(pos2(rect.right() - PAD - 160.0, button.top()), pos2(rect.right() - PAD, button.bottom()));
                 let r = ui.interact(wide, ui.scope_id().with(("install-row", app.id)), if busy_elsewhere { Sense::hover() } else { Sense::click() });
-                let fill = if busy_elsewhere { t.sunken } else if r.hovered() { t.invert_bg.lerp_to_gamma(accent, 0.35) } else { t.invert_bg };
-                p.rect_filled(wide, CornerRadius::ZERO, fill);
-                p.text(wide.center(), Align2::CENTER_CENTER, label, mono(11.0), if busy_elsewhere { t.faint } else { t.invert_fg });
-                if r.hovered() && !busy_elsewhere {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                }
+                let _ = r;
+                let r = pill(ui, &p, t, wide, ui.scope_id().with(("install-pill", app.id)), &label, true, t.invert_fg, !busy_elsewhere);
                 act_install = !busy_elsewhere && r.clicked();
                 handled = true;
             } else {
-                p.rect(button, CornerRadius::ZERO, Color32::TRANSPARENT, egui::Stroke::new(1.0, t.line), StrokeKind::Inside);
-                p.text(button.center(), Align2::CENTER_CENTER, tr("hub.soon"), mono(11.0), t.faint);
+                pill(ui, &p, t, button, ui.scope_id().with(("row-soon", app.id)), &tr("hub.soon"), false, t.faint, false);
             }
             if act_remove {
                 self.confirm_remove = None;
@@ -1449,6 +1529,26 @@ fn clipped(text: &str, font: FontId, color: Color32, width: f32, rows: usize) ->
 fn main() -> eframe::Result {
     // The notes the DWG conversion reports come from its own app catalog.
     i18n::init(&[SHELL_CATALOG, include_str!("../../crates/app-dwg-to-pdf/assets/strings.tsv"), HUB_CATALOG]);
+    // 0.5: a hub that starts as voidflare.exe renames itself SwapCraft.exe (and the command line next to it),
+    // starts again under the new name and ends; the new process rewires the shortcut and the menus. Not when the
+    // right-click menu started it: Explorer starts one process per file, and they would race for the rename.
+    if !std::env::args().any(|a| a == "--run")
+        && let Ok(exe) = std::env::current_exe()
+        && let Ok(Some(new)) = update::rename_legacy(&exe)
+    {
+        if let Some(dir) = settings::data_dir() {
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::fs::write(dir.join(RENAMED_MARK), "voidflare.exe -> SwapCraft.exe\n");
+        }
+        let mut cmd = Command::new(&new);
+        cmd.args(std::env::args_os().skip(1));
+        if let Some(dir) = new.parent() {
+            cmd.current_dir(dir);
+        }
+        if cmd.spawn().is_ok() {
+            return Ok(());
+        }
+    }
     // Started by the right-click menu: a small progress window instead of the hub.
     if let Some(result) = menu::run_from_args() {
         return result;

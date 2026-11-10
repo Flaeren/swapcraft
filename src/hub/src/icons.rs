@@ -4,15 +4,20 @@
 use egui::{Color32, ColorImage, Context, CornerRadius, Painter, Rect, Stroke, StrokeKind, TextureHandle, TextureOptions, vec2};
 
 /// Size in pixels of the flame textures made by `tools/make_flame.py`.
+#[allow(dead_code)]
 const FLAME_W: usize = 52;
+#[allow(dead_code)]
 const FLAME_H: usize = 84;
 
-/// The voidflare mark (anti-aliased textures, one per appearance; the tkinter apps embed the same shape).
+/// The voidflare mark (anti-aliased textures, one per appearance; the tkinter apps embed the same shape). Out of the
+/// header since 0.5, until SwapCraft has a mark of its own.
+#[allow(dead_code)]
 pub struct Flame {
     dark: TextureHandle,
     light: TextureHandle,
 }
 
+#[allow(dead_code)]
 impl Flame {
     pub fn new(ctx: &Context) -> Self {
         let load = |name: &str, bytes: &[u8]| {
@@ -31,6 +36,22 @@ impl Flame {
         let texture = if dark { &self.dark } else { &self.light };
         p.image(texture.id(), rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
         width
+    }
+}
+
+/// The SwapCraft icon (the butterfly), made by `tools/make_swapcraft_icon.py`: the same picture as the exe's icon.
+pub struct Mark(TextureHandle);
+
+impl Mark {
+    pub fn new(ctx: &Context) -> Self {
+        Self(ctx.load_texture("swapcraft-mark", ColorImage::from_rgba_unmultiplied([256, 256], include_bytes!("../assets/app_icon.rgba")), TextureOptions::LINEAR))
+    }
+
+    /// Draws the icon `size` points square with its left edge at `left`, centred on `y`. Returns its width.
+    pub fn paint(&self, p: &Painter, left: f32, y: f32, size: f32) -> f32 {
+        let rect = Rect::from_min_size(egui::pos2(left, y - size / 2.0), vec2(size, size));
+        p.image(self.0.id(), rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
+        size
     }
 }
 

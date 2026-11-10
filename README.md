@@ -6,19 +6,26 @@
 
 <h3 align="center">Craft your conversion, always offline.</h3>
 
-<p align="center">Offline file converters for Windows. Drop a file, pick a format, done.</p>
+<p align="center"><b>Offline file converters for Windows: Office documents, PDF, DWG drawings, images, audio, video and e-books, converted on your own PC.</b><br>Drop a file, pick a format, done.</p>
+
+<p align="center"><sub>This repository and <a href="https://swapcraft.voidflare.app">swapcraft.voidflare.app</a> are SwapCraft's only official homes.</sub></p>
 
 <p align="center">
-  <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-6366f1.svg" alt="License: MIT OR Apache-2.0"></a>
-  <a href="https://github.com/Flaeren/swapcraft/releases"><img src="https://img.shields.io/github/downloads/Flaeren/swapcraft/total?label=downloads&color=6366f1" alt="Total downloads, all releases"></a>
+  <!-- The project -->
+  <a href="https://github.com/Flaeren/swapcraft/releases/latest"><img src="https://img.shields.io/github/v/release/Flaeren/swapcraft?sort=semver&color=6366f1" alt="Latest release"></a>
+  <a href="https://github.com/Flaeren/swapcraft/actions/workflows/build.yml"><img src="https://github.com/Flaeren/swapcraft/actions/workflows/build.yml/badge.svg?branch=main" alt="Build and tests"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1f2937.svg" alt="Platform: Windows 10 and 11">
-  <img src="https://img.shields.io/badge/status-early%20(v0.4.1)-b45309.svg" alt="Status: early">
   <img src="https://img.shields.io/badge/made%20with-Rust-1f2937.svg" alt="Made with Rust">
+  <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-6366f1.svg" alt="License: MIT OR Apache-2.0"></a>
+  <br>
+  <!-- What it promises -->
   <img src="https://img.shields.io/badge/works-100%25%20offline-0f766e.svg" alt="Works 100% offline">
+  <img src="https://img.shields.io/badge/telemetry-none-0f766e.svg" alt="No telemetry">
   <a href="CREDITS.md"><img src="https://img.shields.io/badge/built%20on-the%20ArtCraft%20suite-6366f1.svg" alt="Built on the ArtCraft suite"></a>
 </p>
 
 <p align="center">
+  <a href="#principles">Principles</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#what-it-converts">What it converts</a> ·
   <a href="#how-it-works">How it works</a> ·
@@ -29,12 +36,32 @@
 </p>
 
 <p align="center">
-  <a href="https://swapcraft.voidflare.app"><img src="docs/img/hub.png" alt="The SwapCraft hub with a PDF loaded and the formats it can become" width="720"></a>
+  <a href="https://swapcraft.voidflare.app"><img src="docs/img/hub.png" alt="The SwapCraft hub: the area to drop files on and the installed apps" width="720"></a>
 </p>
 
-**SwapCraft** (by voidflare) takes a file and offers the formats it can become. Your files never leave your PC, there is no account, and you need no Microsoft Office. It is a small hub plus nine apps, and you install only the ones you use: each app is a separate download, and it either comes with its own conversion engine or, if your PC already has a version of ArtCraft that we have tested, uses that one instead of downloading a second copy.
+**SwapCraft** (by voidflare) takes a file and offers the formats it can become. Your files never leave your PC, there is no account, and you need no Microsoft Office. It is a small hub plus nine apps, and you install only the ones you use: each app is a separate download, and it either comes with its own conversion engine or, if your PC already has a version of ArtCraft that we have tested, uses that one instead of downloading a second copy. It also works from where you already are: the right-click menu on a file, a right-button drag onto a folder, the command line, and AI assistants through MCP.
 
-> **Status:** early (v0.4.1). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
+SwapCraft is built the way the [ArtCraft](https://getartcraft.com) apps are: in Rust, with the same egui interface the Craft launchers use, and on top of the suite's own command-line engines (WordCraft, GridCraft, DeckCraft, PdfCraft, CADCraft, PhotoCraft, SoundCraft and FilmCraft), which do the converting.
+
+<p align="center">
+  <img src="docs/img/right-drag.gif" alt="Dragging three Word files with the right mouse button onto a folder in File Explorer, choosing Convert here with SwapCraft, then PDF: the three PDFs appear in that folder" width="720">
+</p>
+
+**Recipes: several steps, one click.** Line up converting, merging, shrinking and OCR once. Then run it from the hub, from the right-click menu on a file, or by dragging files with the right mouse button onto a folder: a DWG becomes PDF sheets, merged and shrunk; scans become a searchable PDF; a mixed folder becomes one single PDF.
+
+<p align="center">
+  <img src="docs/img/recipes.png" alt="The SwapCraft hub on the Recipes tab: a three-step recipe that converts, merges and shrinks" width="720">
+</p>
+
+> **Status:** early (v0.5.0). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
+
+## Principles
+
+- **Your files stay on your PC.** Every conversion runs locally. There is no account and no telemetry; the only request SwapCraft makes on its own is the update check, which you can turn off, and it never downloads anything without a click.
+- **The engines belong to their authors.** Everything but EPUB and Kindle books is converted by an ArtCraft engine, used under its licence and shipped with its licence files. The one change we make, to CADCraft, is published as a [patch](src/vendor/cadcraft-tilted-insert.patch).
+- **Only versions we have tried.** Each engine is pinned to an official release and checked by its SHA-256. An ArtCraft engine already on your PC is reused only if that exact version passed our engine test.
+- **Every download is checked.** Apps, engines and hub updates are compared with the release's `SHA256SUMS.txt` before they are installed; if a file does not match, nothing changes.
+- **Install only what you use.** The hub is a few megabytes; each converter is a separate download.
 
 ## Built on ArtCraft: credits and licences
 
@@ -59,16 +86,16 @@ SwapCraft's conversions are done by command-line engines of the **[ArtCraft](htt
 
 ## Quick start
 
-1. Download `voidflare-hub-<version>-windows.zip` from the [Releases](../../releases) page (about 7 MB).
-2. Unzip it to a short path, for example `C:\voidflare`, and run `voidflare.exe`.
+1. Download `swapcraft-hub-<version>-windows.zip` from the [Releases](../../releases) page (about 7 MB).
+2. Unzip it to a short path, for example `C:\SwapCraft`, and run `SwapCraft.exe`.
 3. Press **Install** on the converters you need. Each card says what it will download before you click: the app (about 6 MB) plus its engine (5 to 50 MB), or only the app when your PC's ArtCraft engine is a version we have tested. Every download is checked against the release's `SHA256SUMS.txt` before it is installed.
 4. Drop a file on the hub.
 
-**No network where you work?** Download `voidflare-<version>-windows.zip` instead (about 210 MB): the hub and all nine apps with their engines in one file, nothing else to fetch.
+**No network where you work?** Download `swapcraft-<version>-windows.zip` instead (about 210 MB): the hub and all nine apps with their engines in one file, nothing else to fetch.
 
 The programs are not code-signed yet, so Windows SmartScreen may warn on first run: choose *More info*, then *Run anyway*. Or unblock the ZIP (right click, Properties, *Unblock*) before extracting.
 
-You can also drop a file on `voidflare.exe` in Explorer, or send it there with *Open with*. Each app also runs on its own from `apps\<app>\`.
+You can also drop a file on `SwapCraft.exe` in Explorer, or send it there with *Open with*. Each app also runs on its own from `apps\<app>\`.
 
 ## What it converts
 
@@ -90,27 +117,27 @@ Available in English, Italiano, Español, Français and Deutsch.
 
 ## How it works
 
-- **The hub** (`voidflare.exe`) has a drop panel. It looks at the file type, shows the formats that file can become, and runs the matching engine with default settings. The converted file lands next to the original. The gear in its top right corner opens the settings: language of the apps (English unless you choose otherwise), the update check, and a Start menu shortcut (the first run offers it once).
+- **The hub** (`SwapCraft.exe`) has a drop panel. It looks at the file type, shows the formats that file can become, and runs the matching engine with default settings. The converted file lands next to the original. The gear in its top right corner opens the settings: language of the apps (English unless you choose otherwise), the update check, and a Start menu shortcut (the first run offers it once).
 - **The apps** have the full options: batches and folders, merging, page ranges, OCR, drawing sheets or the whole drawing.
 - **The engines** are separate command-line programs. An app uses the copy in its own folder first, then a regular ArtCraft installation. When you install an app, SwapCraft reuses the ArtCraft engine already on your PC only if that exact version is listed in [`src/engine-compat.json`](src/engine-compat.json), meaning we ran it against the real engine; any other version, including a newer one nobody has tried, gets our own tested copy. If ArtCraft later updates to a version we have not tested, the card says so and offers *Bundle engine*. DWG to PDF always brings its own CADCraft, because the official build still draws blocks with a tilted extrusion wrongly ([cadcraft#1158](https://github.com/storytold/cadcraft/issues/1158)).
 - **Nothing is sent anywhere.** Conversions run locally and there is no telemetry.
-- **Updates.** When the hub starts it asks `github.com/Flaeren/swapcraft` once for the latest release (one HTTPS request, no identifier, nothing about you). The *AUTO-CHECK* switch in the footer turns this off; the *CHECK FOR UPDATES* link does it on demand. The same request reads the release's list of apps. If there is a newer hub, *UPDATE NOW* downloads its small ZIP, checks its SHA-256 against the release's `SHA256SUMS.txt`, swaps it in place of the running hub (the old one is kept as `voidflare.old.exe` until the next start) and restarts it; if the new file does not check out, nothing changes. Only `voidflare.exe` is replaced: the apps you installed are left alone and update from their own cards (*Install*, *Update* and *Remove* install into `apps\` next to the hub, after the same checksum check). SwapCraft never downloads anything without a click.
+- **Updates.** When the hub starts it asks `github.com/Flaeren/swapcraft` once for the latest release (one HTTPS request, no identifier, nothing about you). The *Auto-check* switch in the footer turns this off; the *Check for updates* link does it on demand. The same request reads the release's list of apps. If there is a newer hub, *UPDATE NOW* downloads its small ZIP, checks its SHA-256 against the release's `SHA256SUMS.txt`, swaps it in place of the running hub (the old one is kept as `SwapCraft.old.exe` until the next start) and restarts it; if the new file does not check out, nothing changes. Only `SwapCraft.exe` is replaced: the apps you installed are left alone and update from their own cards (*Install*, *Update* and *Remove* install into `apps\` next to the hub, after the same checksum check). SwapCraft never downloads anything without a click.
 
 ## For AI assistants (MCP)
 
-`voidflare-cli.exe`, next to the hub, is a [Model Context Protocol](https://modelcontextprotocol.io) server, so an assistant can use every converter without opening a window. Add it to your client, for example in Claude Code:
+`swapcraft-cli.exe`, next to the hub, is a [Model Context Protocol](https://modelcontextprotocol.io) server, so an assistant can use every converter without opening a window. Add it to your client, for example in Claude Code:
 
 ```
-claude mcp add voidflare -- C:\voidflare\voidflare-cli.exe mcp --allow C:\Users\you\Documents
+claude mcp add swapcraft -- C:\SwapCraft\swapcraft-cli.exe mcp --allow C:\Users\you\Documents
 ```
 
 Or in any client's JSON configuration:
 
 ```json
-{ "mcpServers": { "voidflare": { "command": "C:\\voidflare\\voidflare-cli.exe", "args": ["mcp", "--allow", "C:\\Users\\you\\Documents"] } } }
+{ "mcpServers": { "swapcraft": { "command": "C:\\SwapCraft\\swapcraft-cli.exe", "args": ["mcp", "--allow", "C:\\Users\\you\\Documents"] } } }
 ```
 
-Tools: `voidflare_formats` (what converts to what), `voidflare_convert`, `voidflare_pdf_merge`, `voidflare_pdf_split`, `voidflare_pdf_extract`, `voidflare_pdf_ocr`, `voidflare_pdf_shrink`, `voidflare_info`, `voidflare_engines`. The server can only read and write inside the folder it was started in and each `--allow` folder you give it; `--allow-all` removes that limit. Nothing leaves your PC. The same engines are available from a terminal: `voidflare-cli formats`, `voidflare-cli convert book.epub --to pdf`.
+Tools: `voidflare_formats` (what converts to what), `voidflare_convert`, `voidflare_pdf_merge`, `voidflare_pdf_split`, `voidflare_pdf_extract`, `voidflare_pdf_ocr`, `voidflare_pdf_shrink`, `voidflare_info`, `voidflare_engines`. The server can only read and write inside the folder it was started in and each `--allow` folder you give it; `--allow-all` removes that limit. Nothing leaves your PC. The same engines are available from a terminal: `swapcraft-cli formats`, `swapcraft-cli convert book.epub --to pdf`.
 
 ## System requirements
 
@@ -125,7 +152,7 @@ You need Windows, the Rust toolchain and an internet connection for the first bu
 ```powershell
 cd src
 powershell -File fetch-engines.ps1 -BuildCadcraft   # engines, pinned and hash-checked (-BuildCadcraft needs git)
-powershell -File build-apps.ps1                     # writes ..\portable\voidflare.exe and ..\portable\apps\<app>\
+powershell -File build-apps.ps1                     # writes ..\portable\SwapCraft.exe and ..\portable\apps\<app>\
 powershell -File release.ps1                        # packs portable\ into ..\release\: full bundle, hub, one ZIP per app and engine, manifest.json, SHA256SUMS.txt
 cargo test --release -p vf-core                     # tests that need an engine skip themselves when it is missing
 ```

@@ -178,7 +178,7 @@ impl Runner {
         let by_steps = matches!(action, Some(Action::Recipe(_)));
         let (title, total) = match action {
             Some(Action::Route(id)) => {
-                let label = files.first().and_then(|f| routes::find_route(&routes::ext_of(f), &id)).map_or(id.to_uppercase(), |r| r.label.to_owned());
+                let label = files.first().and_then(|f| routes::find_route(&routes::ext_of(f), &id)).map_or(id.to_uppercase(), |r| routes::shown_label(r.label));
                 let items: Vec<Item> = files
                     .into_iter()
                     .map(|src| {

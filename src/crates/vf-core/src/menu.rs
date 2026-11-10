@@ -81,7 +81,7 @@ pub struct Entry {
 pub fn entries(ext: &str, recipes: &[Recipe], texts: &Texts, app_name: &dyn Fn(&str) -> Option<String>) -> Vec<Entry> {
     let mut out: Vec<Entry> = routes::targets(ext)
         .into_iter()
-        .map(|i| Entry { label: ROUTES[i].label.to_owned(), action: Action::Route(routes::route_id(&ROUTES[i])), separator: false })
+        .map(|i| Entry { label: routes::shown_label(ROUTES[i].label), action: Action::Route(routes::route_id(&ROUTES[i])), separator: false })
         .collect();
     let mut first = true;
     for r in recipes.iter().filter(|r| r.in_menu && r.accepts(ext)) {

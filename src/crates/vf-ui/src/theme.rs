@@ -1,14 +1,17 @@
-//! voidflare colours and widget look. Same family as the Craft launchers (hard edges, hairline
-//! rules, near-black surfaces, mono labels); the accent is our own indigo, the colour of the flame mark.
+//! SwapCraft colours, fonts and widget look. Since 0.5 the default is "Black": a black page, dark cards with
+//! rounded corners, pill buttons, Inter for text and IBM Plex Mono for the small technical print, the engine names
+//! in violet. "Same as Windows", the older dark grey and the light look stay in the settings.
 
-use egui::{Color32, CornerRadius, Stroke, Visuals};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, Visuals};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Tokens {
     pub dark: bool,
-    /// Page and card surface.
+    /// Page surface.
     pub bg: Color32,
-    /// Wells and hovers.
+    /// Wells.
     pub sunken: Color32,
     pub ink: Color32,
     pub ink_strong: Color32,
@@ -26,6 +29,12 @@ pub struct Tokens {
     pub invert_fg: Color32,
     pub good: Color32,
     pub bad: Color32,
+    /// Cards and panels on the page.
+    pub card: Color32,
+    /// Pills: chips, the selected tab, secondary buttons.
+    pub chip: Color32,
+    /// Engine names and links.
+    pub engine_ink: Color32,
 }
 
 const fn hex(rgb: u32) -> Color32 {
@@ -39,6 +48,7 @@ const fn ink_alpha(rgb: u32, alpha: u8) -> Color32 {
 }
 
 impl Tokens {
+    /// The dark grey look of 0.1 to 0.4.
     pub const DARK: Self = Self {
         dark: true,
         bg: hex(0x121316),
@@ -55,6 +65,31 @@ impl Tokens {
         invert_fg: hex(0x0b0b0c),
         good: hex(0x3fd6b8),
         bad: hex(0xff6259),
+        card: hex(0x1a1b20),
+        chip: hex(0x26272d),
+        engine_ink: hex(0xa5b4fc),
+    };
+
+    /// The default since 0.5: black page, #121212 cards, warm white text, violet engine names.
+    pub const BLACK: Self = Self {
+        dark: true,
+        bg: hex(0x000000),
+        sunken: hex(0x0a0a0a),
+        ink: hex(0xe3e2e0),
+        ink_strong: hex(0xfaf9f6),
+        muted: hex(0x868684),
+        faint: hex(0x6a6a68),
+        line: hex(0x1e1e1d),
+        line_strong: hex(0x333333),
+        accent: hex(0x6366f1),
+        accent_ink: hex(0xcbb0f7),
+        invert_bg: hex(0xfaf9f6),
+        invert_fg: hex(0x080808),
+        good: hex(0x3fd6b8),
+        bad: hex(0xff6259),
+        card: hex(0x121212),
+        chip: hex(0x1e1e1d),
+        engine_ink: hex(0xcbb0f7),
     };
 
     pub const LIGHT: Self = Self {
@@ -73,10 +108,17 @@ impl Tokens {
         invert_fg: hex(0xf2f1ee),
         good: hex(0x0a7563),
         bad: hex(0xb3261e),
+        card: hex(0xfbfaf8),
+        chip: hex(0xe4e3df),
+        engine_ink: hex(0x6d28d9),
     };
 
     pub fn get(ctx: &egui::Context) -> Self {
-        if ctx.theme() == egui::Theme::Dark { Self::DARK } else { Self::LIGHT }
+        match ctx.theme() {
+            egui::Theme::Dark if BLACK_ON.load(Ordering::Relaxed) => Self::BLACK,
+            egui::Theme::Dark => Self::DARK,
+            egui::Theme::Light => Self::LIGHT,
+        }
     }
 
     pub fn hairline(&self) -> Stroke {
@@ -88,21 +130,26 @@ pub fn rgb(c: [u8; 3]) -> Color32 {
     Color32::from_rgb(c[0], c[1], c[2])
 }
 
-/// The appearance the user picked in the hub's settings. Saved in `%APPDATA%\voidflare\theme.txt` (one word:
-/// `system`, `dark` or `light`), shared by the hub and every app, like the language. Without the file, or with
-/// anything else in it, voidflare follows Windows, as it did before the choice existed.
+/// The appearance the user picked in the hub's settings, shared by the hub and every app, like the language.
+/// Saved in `%APPDATA%\voidflare\appearance.txt` (one word). 0.5 moved to this file on purpose: a choice saved
+/// before in `theme.txt` is not read, so everyone starts on the new Black look and can switch back in the settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Appearance {
+    Black,
     System,
     Dark,
     Light,
 }
 
+/// Whether egui's dark slot holds the Black look (true) or the older dark grey.
+static BLACK_ON: AtomicBool = AtomicBool::new(true);
+
 impl Appearance {
-    pub const ALL: [Self; 3] = [Self::System, Self::Dark, Self::Light];
+    pub const ALL: [Self; 4] = [Self::Black, Self::System, Self::Dark, Self::Light];
 
     pub fn name(self) -> &'static str {
         match self {
+            Self::Black => "Black",
             Self::System => "Same as Windows",
             Self::Dark => "Dark",
             Self::Light => "Light",
@@ -111,6 +158,7 @@ impl Appearance {
 
     fn word(self) -> &'static str {
         match self {
+            Self::Black => "black",
             Self::System => "system",
             Self::Dark => "dark",
             Self::Light => "light",
@@ -120,26 +168,27 @@ impl Appearance {
     pub fn preference(self) -> egui::ThemePreference {
         match self {
             Self::System => egui::ThemePreference::System,
-            Self::Dark => egui::ThemePreference::Dark,
+            Self::Black | Self::Dark => egui::ThemePreference::Dark,
             Self::Light => egui::ThemePreference::Light,
         }
     }
 
     fn file() -> Option<std::path::PathBuf> {
-        std::env::var_os("APPDATA").map(|d| std::path::PathBuf::from(d).join("voidflare").join("theme.txt"))
+        std::env::var_os("APPDATA").map(|d| std::path::PathBuf::from(d).join("voidflare").join("appearance.txt"))
     }
 
     fn parse(text: &str) -> Self {
         match text.trim().to_ascii_lowercase().as_str() {
+            "system" => Self::System,
             "dark" => Self::Dark,
             "light" => Self::Light,
-            _ => Self::System,
+            _ => Self::Black,
         }
     }
 
-    /// The saved choice, `System` when there is none.
+    /// The saved choice, `Black` when there is none.
     pub fn load() -> Self {
-        Self::file().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| Self::parse(&t)).unwrap_or(Self::System)
+        Self::file().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| Self::parse(&t)).unwrap_or(Self::Black)
     }
 
     /// Remembers the choice for the next start of the hub and of every app. A failed write is not an error: the
@@ -152,13 +201,48 @@ impl Appearance {
             let _ = std::fs::write(path, self.word());
         }
     }
+
+    /// Shows this appearance in the running window. "Same as Windows" uses Black when Windows is dark.
+    pub fn apply(self, ctx: &egui::Context) {
+        let black = self != Self::Dark;
+        BLACK_ON.store(black, Ordering::Relaxed);
+        ctx.set_visuals_of(egui::Theme::Dark, visuals(if black { &Tokens::BLACK } else { &Tokens::DARK }));
+        ctx.set_theme(self.preference());
+    }
 }
 
-/// Installs both appearances and applies the saved choice (egui follows the system when it is `System`).
+/// The semibold Inter, for names and titles.
+pub const STRONG: &str = "inter-semibold";
+
+pub fn strong(size: f32) -> FontId {
+    FontId::new(size, FontFamily::Name(STRONG.into()))
+}
+
+/// Inter (two weights) and IBM Plex Mono, both under the SIL Open Font License 1.1, are built into the program:
+/// nothing is fetched from anywhere. egui's own fonts stay behind them for symbols and emoji.
+fn install_fonts(ctx: &egui::Context) {
+    let mut fonts = FontDefinitions::default();
+    fonts.font_data.insert("inter".into(), FontData::from_static(include_bytes!("../assets/fonts/Inter-Regular.ttf")).into());
+    fonts.font_data.insert(STRONG.into(), FontData::from_static(include_bytes!("../assets/fonts/Inter-SemiBold.ttf")).into());
+    fonts.font_data.insert("plex-mono".into(), FontData::from_static(include_bytes!("../assets/fonts/IBMPlexMono-Regular.ttf")).into());
+    fonts.families.entry(FontFamily::Proportional).or_default().insert(0, "inter".into());
+    fonts.families.entry(FontFamily::Monospace).or_default().insert(0, "plex-mono".into());
+    let mut bold = vec![STRONG.to_owned()];
+    bold.extend(fonts.families[&FontFamily::Proportional].iter().cloned());
+    fonts.families.insert(FontFamily::Name(STRONG.into()), bold);
+    ctx.set_fonts(fonts);
+}
+
+/// Installs the fonts and the looks and applies the saved choice (egui follows Windows when it is `System`).
 pub fn install(ctx: &egui::Context) {
-    ctx.set_visuals_of(egui::Theme::Dark, visuals(&Tokens::DARK));
+    install_fonts(ctx);
+    // roomier pills than egui's defaults
+    ctx.all_styles_mut(|s| {
+        s.spacing.button_padding = egui::vec2(12.0, 5.0);
+        s.spacing.interact_size.y = 26.0;
+    });
     ctx.set_visuals_of(egui::Theme::Light, visuals(&Tokens::LIGHT));
-    ctx.set_theme(Appearance::load().preference());
+    Appearance::load().apply(ctx);
 }
 
 #[cfg(test)]
@@ -166,41 +250,43 @@ mod tests {
     use super::Appearance;
 
     #[test]
-    fn appearance_words_round_trip_and_unknown_means_system() {
+    fn appearance_words_round_trip_and_unknown_means_black() {
         for a in Appearance::ALL {
             assert_eq!(Appearance::parse(a.word()), a);
         }
         assert_eq!(Appearance::parse(" Dark\r\n"), Appearance::Dark);
-        assert_eq!(Appearance::parse(""), Appearance::System);
-        assert_eq!(Appearance::parse("purple"), Appearance::System);
+        assert_eq!(Appearance::parse(""), Appearance::Black);
+        assert_eq!(Appearance::parse("purple"), Appearance::Black);
     }
 }
 
 fn visuals(t: &Tokens) -> Visuals {
     let mut v = if t.dark { Visuals::dark() } else { Visuals::light() };
     v.panel_fill = t.bg;
-    v.window_fill = t.bg;
+    v.window_fill = t.card;
     v.extreme_bg_color = t.sunken;
-    v.text_edit_bg_color = Some(t.sunken);
-    v.faint_bg_color = t.sunken;
+    v.text_edit_bg_color = Some(t.bg);
+    v.faint_bg_color = t.card;
     v.window_stroke = Stroke::new(1.0, t.line_strong);
-    v.window_corner_radius = CornerRadius::ZERO;
-    v.menu_corner_radius = CornerRadius::ZERO;
+    v.window_corner_radius = CornerRadius::same(12);
+    v.menu_corner_radius = CornerRadius::same(10);
     v.override_text_color = Some(t.ink);
-    v.hyperlink_color = t.accent_ink;
-    v.selection.bg_fill = t.accent;
-    v.selection.stroke = Stroke::new(1.0, Color32::WHITE);
+    v.hyperlink_color = t.engine_ink;
+    // selected toggles (Grid | List) and selected text: a grey pill, not the indigo of the flame
+    v.selection.bg_fill = t.line_strong;
+    v.selection.stroke = Stroke::new(1.0, t.ink_strong);
     for (w, fill, stroke, fg) in [
-        (&mut v.widgets.noninteractive, t.bg, t.line, t.muted),
-        (&mut v.widgets.inactive, t.bg, t.line, t.ink),
-        (&mut v.widgets.hovered, t.sunken, t.line_strong, t.ink_strong),
-        (&mut v.widgets.active, t.sunken, t.line_strong, t.ink_strong),
-        (&mut v.widgets.open, t.sunken, t.line_strong, t.ink_strong),
+        (&mut v.widgets.noninteractive, t.card, t.line, t.muted),
+        (&mut v.widgets.inactive, t.chip, t.line, t.ink),
+        (&mut v.widgets.hovered, t.chip, t.line_strong, t.ink_strong),
+        (&mut v.widgets.active, t.chip, t.line_strong, t.ink_strong),
+        (&mut v.widgets.open, t.chip, t.line_strong, t.ink_strong),
     ] {
         w.bg_fill = fill;
         w.weak_bg_fill = fill;
         w.bg_stroke = Stroke::new(1.0, stroke);
-        w.corner_radius = CornerRadius::ZERO;
+        // pills: buttons, chips, combo boxes and the search field
+        w.corner_radius = CornerRadius::same(16);
         w.fg_stroke = Stroke::new(1.0, fg);
         w.expansion = 0.0;
     }

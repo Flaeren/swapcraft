@@ -1,4 +1,4 @@
-//! `voidflare-cli mcp`: a Model Context Protocol server on stdin/stdout, so an LLM can use every
+//! `swapcraft-cli mcp`: a Model Context Protocol server on stdin/stdout, so an LLM can use every
 //! voidflare tool without a window. Newline-delimited JSON-RPC 2.0, protocol revision 2025-06-18 (older
 //! clients are answered with the revision they asked for when we know it).
 //!

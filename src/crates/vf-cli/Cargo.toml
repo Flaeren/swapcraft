@@ -8,7 +8,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [[bin]]
-name = "voidflare-cli"
+name = "swapcraft-cli"
 path = "src/main.rs"
 
 [dependencies]

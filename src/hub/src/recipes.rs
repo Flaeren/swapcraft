@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, mpsc};
 
-use eframe::egui::{self, Align, Align2, Layout, Rect, RichText, Sense, UiBuilder, pos2, vec2};
+use eframe::egui::{self, Align, Align2, FontId, Layout, Rect, RichText, Sense, UiBuilder, pos2, vec2};
 use vf_core::recipe::{self, Level, Out, Recipe, Step};
 use vf_core::routes::{self, ROUTES};
 use vf_ui::theme::Tokens;
@@ -90,12 +90,12 @@ impl RecipesTab {
 }
 
 /// The targets a convert step can name: one entry per route id, with the label of the first route that has it.
-fn convert_targets() -> Vec<(String, &'static str)> {
-    let mut seen: Vec<(String, &'static str)> = Vec::new();
+fn convert_targets() -> Vec<(String, String)> {
+    let mut seen: Vec<(String, String)> = Vec::new();
     for r in ROUTES {
         let id = routes::route_id(r);
         if !seen.iter().any(|(s, _)| *s == id) {
-            seen.push((id, r.label));
+            seen.push((id, routes::shown_label(r.label)));
         }
     }
     seen
@@ -121,7 +121,7 @@ fn outline(r: &Recipe) -> String {
     for s in &r.steps {
         parts.push(match s {
             Step::Convert(to) => to.to_uppercase(),
-            other => step_name(other.kind()).to_uppercase(),
+            other => step_name(other.kind()),
         });
     }
     parts.join(" → ")
@@ -150,8 +150,6 @@ impl Hub {
         let edit_rect = Rect::from_min_max(pos2(list_rect.right(), area.top()), area.max);
         {
             let p = ui.painter();
-            p.rect_filled(list_rect, 0.0, t.bg.gamma_multiply(0.86));
-            p.rect_filled(edit_rect, 0.0, t.bg.gamma_multiply(0.86));
             p.vline(list_rect.right() - 0.5, list_rect.y_range(), t.hairline());
         }
         let mut left = ui.new_child(UiBuilder::new().max_rect(list_rect).layout(Layout::top_down(Align::Min)));
@@ -167,25 +165,24 @@ impl Hub {
 
     fn recipe_list(&mut self, ui: &mut egui::Ui, t: &Tokens) {
         let (head, _) = ui.allocate_exact_size(vec2(ui.available_width(), 44.0), Sense::hover());
-        ui.painter().text(pos2(head.left() + 16.0, head.bottom() - 12.0), Align2::LEFT_BOTTOM, trf("rec.yours", &[("n", &self.recipes.list.len().to_string())]), mono(11.0), t.faint);
-        ui.painter().hline(head.x_range(), head.bottom() - 0.5, t.hairline());
+        ui.painter().text(pos2(head.left() + 24.0, head.bottom() - 12.0), Align2::LEFT_BOTTOM, trf("rec.yours", &[("n", &self.recipes.list.len().to_string())]), FontId::proportional(13.0), t.muted);
         egui::ScrollArea::vertical().id_salt("recipe-list").auto_shrink([false, false]).max_height(ui.available_height()).show(ui, |ui| {
             let mut chosen = None;
             for (i, r) in self.recipes.list.iter().enumerate() {
-                let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
+                let (slot, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H + 4.0), Sense::click());
+                let rect = Rect::from_min_max(slot.min + vec2(12.0, 0.0), slot.max - vec2(12.0, 4.0));
                 let on = i == self.recipes.selected;
                 let p = ui.painter();
                 if on {
-                    p.rect_filled(rect, 0.0, t.sunken);
-                    p.rect_filled(Rect::from_min_size(rect.min, vec2(2.0, rect.height())), 0.0, t.accent);
+                    p.rect(rect, egui::CornerRadius::same(10), t.card, egui::Stroke::new(1.0, t.line_strong), egui::StrokeKind::Inside);
                 } else if resp.hovered() {
-                    p.rect_filled(rect, 0.0, t.sunken.gamma_multiply(0.6));
+                    p.rect_filled(rect, egui::CornerRadius::same(10), t.card);
                 }
                 let name = if r.name.trim().is_empty() { tr("rec.untitled") } else { r.name.clone() };
                 let w = rect.width() - 32.0;
-                p.text(pos2(rect.left() + 16.0, rect.top() + 19.0), Align2::LEFT_CENTER, crate::fit(ui, &name, egui::FontId::proportional(14.0), w), egui::FontId::proportional(14.0), if on { t.ink_strong } else { t.ink });
-                p.text(pos2(rect.left() + 16.0, rect.top() + 39.0), Align2::LEFT_CENTER, crate::fit(ui, &outline(r), mono(10.5), w), mono(10.5), t.faint);
-                p.hline(rect.x_range(), rect.bottom() - 0.5, t.hairline());
+                let name_font = if on { vf_ui::theme::strong(14.0) } else { FontId::proportional(14.0) };
+                p.text(pos2(rect.left() + 12.0, rect.top() + 19.0), Align2::LEFT_CENTER, crate::fit(ui, &name, name_font.clone(), w), name_font, if on { t.ink_strong } else { t.ink });
+                p.text(pos2(rect.left() + 12.0, rect.top() + 39.0), Align2::LEFT_CENTER, crate::fit(ui, &outline(r), mono(11.0), w), mono(11.0), t.muted);
                 if resp.clicked() {
                     chosen = Some(i);
                 }
@@ -198,8 +195,8 @@ impl Hub {
                 self.recipes.confirm_delete = false;
             }
             let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 44.0), Sense::click());
-            let color = if resp.hovered() { t.ink_strong } else { t.accent_ink };
-            ui.painter().text(pos2(rect.left() + 16.0, rect.center().y), Align2::LEFT_CENTER, format!("+ {}", tr("rec.new")), mono(11.5), color);
+            let color = if resp.hovered() { t.ink_strong } else { t.engine_ink };
+            ui.painter().text(pos2(rect.left() + 24.0, rect.center().y), Align2::LEFT_CENTER, format!("+ {}", tr("rec.new")), FontId::proportional(13.5), color);
             if resp.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
@@ -218,7 +215,7 @@ impl Hub {
 
     fn recipe_editor(&mut self, ui: &mut egui::Ui, t: &Tokens) {
         if let Some(e) = &self.recipes.error {
-            ui.label(RichText::new(trf("rec.file_error", &[("err", e)])).font(mono(11.5)).color(t.bad));
+            ui.label(RichText::new(trf("rec.file_error", &[("err", e)])).font(FontId::proportional(13.0)).color(t.bad));
             ui.add_space(10.0);
         }
         let n = self.recipes.list.len();
@@ -245,24 +242,24 @@ impl Hub {
                 let shown: Vec<String> = takes.iter().take(6).map(|e| format!(".{}", e.to_uppercase())).collect();
                 let more = if takes.len() > 6 { format!(" +{}", takes.len() - 6) } else { String::new() };
                 ui.label(RichText::new(format!("{}{more}", shown.join(" "))).font(mono(11.0)).color(if takes.is_empty() { t.bad } else { t.ink }));
-                ui.label(RichText::new(tr("rec.takes")).font(mono(11.0)).color(t.faint));
+                ui.label(RichText::new(tr("rec.takes")).font(FontId::proportional(12.5)).color(t.muted));
             };
             if wide {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        ui.label(RichText::new(tr("rec.recipe")).font(mono(11.0)).color(t.faint));
+                        ui.label(RichText::new(tr("rec.recipe")).font(FontId::proportional(12.5)).color(t.muted));
                         ui.add(egui::TextEdit::singleline(&mut r.name).font(egui::FontId::proportional(20.0)).desired_width((ui.available_width() - 200.0).max(160.0)).frame(egui::Frame::NONE));
                     });
                     ui.with_layout(Layout::right_to_left(Align::Max), |ui| takes_line(ui, r));
                 });
             } else {
-                ui.label(RichText::new(tr("rec.recipe")).font(mono(11.0)).color(t.faint));
+                ui.label(RichText::new(tr("rec.recipe")).font(FontId::proportional(12.5)).color(t.muted));
                 ui.add(egui::TextEdit::singleline(&mut r.name).font(egui::FontId::proportional(20.0)).desired_width(ui.available_width()).frame(egui::Frame::NONE));
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
                     let takes = r.takes();
-                    ui.label(RichText::new(tr("rec.takes")).font(mono(11.0)).color(t.faint));
+                    ui.label(RichText::new(tr("rec.takes")).font(FontId::proportional(12.5)).color(t.muted));
                     let shown: Vec<String> = takes.iter().take(4).map(|e| format!(".{}", e.to_uppercase())).collect();
                     let more = if takes.len() > 4 { format!(" +{}", takes.len() - 4) } else { String::new() };
                     ui.label(RichText::new(format!("{}{more}", shown.join(" "))).font(mono(11.0)).color(if takes.is_empty() { t.bad } else { t.ink }));
@@ -276,12 +273,12 @@ impl Hub {
             let mut action: Option<(usize, i32)> = None; // (step, -1 up / +1 down / 0 delete)
             let count = r.steps.len();
             for (i, step) in r.steps.iter_mut().enumerate() {
-                egui::Frame::new().fill(t.bg).stroke(t.hairline()).inner_margin(egui::Margin::symmetric(14, 10)).show(ui, |ui| {
+                egui::Frame::new().fill(t.card).stroke(t.hairline()).corner_radius(12).inner_margin(egui::Margin::symmetric(16, 12)).show(ui, |ui| {
                     ui.set_min_width(ui.available_width());
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 12.0;
                         ui.label(RichText::new(format!("{:02}", i + 1)).font(mono(18.0)).color(t.faint));
-                        ui.add_sized(vec2(96.0, 20.0), egui::Label::new(RichText::new(step_name(step.kind()).to_uppercase()).font(mono(11.5)).color(t.accent_ink)));
+                        ui.add_sized(vec2(96.0, 20.0), egui::Label::new(RichText::new(step_name(step.kind())).font(vf_ui::theme::strong(13.5)).color(t.engine_ink)));
                         if wide {
                             step_options(ui, t, step, &targets, i);
                         }
@@ -318,11 +315,11 @@ impl Hub {
                 None => {}
             }
             // Add a step.
-            egui::Frame::new().stroke(egui::Stroke::new(1.0, t.line_strong)).inner_margin(egui::Margin::symmetric(14, 8)).show(ui, |ui| {
+            egui::Frame::new().stroke(egui::Stroke::new(1.0, t.line_strong)).corner_radius(12).inner_margin(egui::Margin::symmetric(16, 10)).show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = vec2(8.0, 6.0);
-                    ui.label(RichText::new(format!("+ {}", tr("rec.add_step"))).font(mono(11.0)).color(t.muted));
+                    ui.label(RichText::new(format!("+ {}", tr("rec.add_step"))).font(FontId::proportional(13.0)).color(t.muted));
                     for kind in Step::KINDS {
                         if widgets::button(ui, &step_name(kind)).clicked()
                             && let Some(s) = Step::new_of(kind)
@@ -336,15 +333,15 @@ impl Hub {
                 // The reason in detail (in English, from the core) on hover: which step cannot follow which.
                 let why = ["pdf", "docx", "dwg", "png", "mp4", "wav", "epub"].iter().filter_map(|e| r.chain(e).err()).next().unwrap_or_default();
                 ui.add_space(8.0);
-                ui.label(RichText::new(tr("rec.takes_nothing")).font(mono(11.5)).color(t.bad)).on_hover_text(why);
+                ui.label(RichText::new(tr("rec.takes_nothing")).font(FontId::proportional(13.0)).color(t.bad)).on_hover_text(why);
             }
 
             // Where the results go, and the right-click menu.
             ui.add_space(16.0);
             let save_box = |ui: &mut egui::Ui, r: &mut Recipe| {
-                egui::Frame::new().fill(t.bg).stroke(t.hairline()).inner_margin(egui::Margin::symmetric(14, 10)).show(ui, |ui| {
+                egui::Frame::new().fill(t.card).stroke(t.hairline()).corner_radius(12).inner_margin(egui::Margin::symmetric(16, 12)).show(ui, |ui| {
                     ui.set_min_width(ui.available_width());
-                    ui.label(RichText::new(tr("rec.save_to")).font(mono(11.0)).color(t.faint));
+                    ui.label(RichText::new(tr("rec.save_to")).font(FontId::proportional(12.5)).color(t.muted));
                     let mut beside = r.out == Out::Beside;
                     if ui.radio_value(&mut beside, true, tr("rec.beside")).clicked() {
                         r.out = Out::Beside;
@@ -359,15 +356,15 @@ impl Hub {
                         r.out = Out::Folder(f);
                     }
                     ui.add_space(6.0);
-                    ui.label(RichText::new(tr("rec.file_name")).font(mono(11.0)).color(t.faint));
+                    ui.label(RichText::new(tr("rec.file_name")).font(FontId::proportional(12.5)).color(t.muted));
                     ui.add(egui::TextEdit::singleline(&mut r.file_name).hint_text("{name}").font(mono(12.0)).desired_width(f32::INFINITY))
                         .on_hover_text(tr("rec.file_name_hint"));
                 });
             };
             let run_box = |ui: &mut egui::Ui, r: &mut Recipe| {
-                egui::Frame::new().fill(t.bg).stroke(t.hairline()).inner_margin(egui::Margin::symmetric(14, 10)).show(ui, |ui| {
+                egui::Frame::new().fill(t.card).stroke(t.hairline()).corner_radius(12).inner_margin(egui::Margin::symmetric(16, 12)).show(ui, |ui| {
                     ui.set_min_width(ui.available_width());
-                    ui.label(RichText::new(tr("rec.run_from")).font(mono(11.0)).color(t.faint));
+                    ui.label(RichText::new(tr("rec.run_from")).font(FontId::proportional(12.5)).color(t.muted));
                     ui.checkbox(&mut r.in_menu, tr("rec.in_menu")).on_hover_text(tr("rec.in_menu_hint"));
                     if !crate::menu::installed() {
                         ui.label(RichText::new(tr("rec.menu_off")).font(mono(10.5)).color(t.faint));
@@ -375,9 +372,14 @@ impl Hub {
                 });
             };
             if wide {
-                ui.columns(2, |cols| {
-                    save_box(&mut cols[0], r);
-                    run_box(&mut cols[1], r);
+                // the gap between the two boxes is the item spacing; the theme's is too tight for two framed cards.
+                // 8 px, the same as between the step rows above.
+                ui.scope(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    ui.columns(2, |cols| {
+                        save_box(&mut cols[0], r);
+                        run_box(&mut cols[1], r);
+                    });
                 });
             } else {
                 save_box(ui, r);
@@ -399,7 +401,7 @@ impl Hub {
                     duplicate = true;
                 }
                 if self.recipes.confirm_delete {
-                    let b = egui::Button::new(RichText::new(tr("rec.delete_sure").to_uppercase()).font(mono(11.5)).color(t.bad));
+                    let b = egui::Button::new(RichText::new(tr("rec.delete_sure")).font(FontId::proportional(13.0)).color(t.bad));
                     if ui.add(b).clicked() {
                         delete = true;
                     }
@@ -408,13 +410,13 @@ impl Hub {
                 }
             });
             ui.add_space(8.0);
-            let cli = format!("voidflare-cli recipe \"{}\" <files>", self.recipes.list[sel].name);
+            let cli = format!("swapcraft-cli recipe \"{}\" <files>", self.recipes.list[sel].name);
             ui.label(RichText::new(trf("rec.cli", &[("cmd", &cli)])).font(mono(10.5)).color(t.faint));
         });
 
         if let Some(p) = self.recipes.problem() {
             ui.add_space(8.0);
-            ui.label(RichText::new(p).font(mono(11.5)).color(t.bad));
+            ui.label(RichText::new(p).font(FontId::proportional(13.0)).color(t.bad));
         }
         if !self.log.is_empty() {
             ui.add_space(14.0);
@@ -459,7 +461,7 @@ fn hairline(ui: &mut egui::Ui, t: &Tokens) {
 }
 
 fn small(ui: &mut egui::Ui, text: &str) -> egui::Response {
-    ui.add(egui::Button::new(RichText::new(text).font(mono(12.0))))
+    ui.add(egui::Button::new(RichText::new(text).font(FontId::proportional(13.0))))
 }
 
 /// A step's one-line explanation, cut with an ellipsis (full text on hover) so it never runs under the step's buttons.
@@ -471,11 +473,11 @@ fn hint(ui: &mut egui::Ui, t: &Tokens, text: &str) {
 }
 
 /// The settings of one step, inline in its box.
-fn step_options(ui: &mut egui::Ui, t: &Tokens, step: &mut Step, targets: &[(String, &'static str)], i: usize) {
+fn step_options(ui: &mut egui::Ui, t: &Tokens, step: &mut Step, targets: &[(String, String)], i: usize) {
     match step {
         Step::Convert(to) => {
-            let shown = targets.iter().find(|(id, _)| id == to).map_or(to.to_uppercase(), |(_, l)| (*l).to_owned());
-            egui::ComboBox::from_id_salt(("convert-to", i)).selected_text(RichText::new(shown).font(mono(12.0))).width(220f32.min(ui.available_width() - 120.0).max(120.0)).show_ui(ui, |ui| {
+            let shown = targets.iter().find(|(id, _)| id == to).map_or(to.to_uppercase(), |(_, l)| l.clone());
+            egui::ComboBox::from_id_salt(("convert-to", i)).selected_text(RichText::new(shown).font(FontId::proportional(13.0))).width(220f32.min(ui.available_width() - 120.0).max(120.0)).show_ui(ui, |ui| {
                 for (id, label) in targets {
                     ui.selectable_value(to, id.clone(), format!("{label}  ·  {id}"));
                 }
@@ -485,7 +487,7 @@ fn step_options(ui: &mut egui::Ui, t: &Tokens, step: &mut Step, targets: &[(Stri
             hint(ui, t, &tr("rec.merge_hint"));
         }
         Step::Shrink(level) => {
-            egui::ComboBox::from_id_salt(("shrink", i)).selected_text(RichText::new(level_name(*level)).font(mono(12.0))).show_ui(ui, |ui| {
+            egui::ComboBox::from_id_salt(("shrink", i)).selected_text(RichText::new(level_name(*level)).font(FontId::proportional(13.0))).show_ui(ui, |ui| {
                 for l in Level::ALL {
                     ui.selectable_value(level, l, level_name(l));
                 }

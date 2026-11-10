@@ -1,10 +1,10 @@
 {
   "_comment": "ArtCraft engine versions voidflare has tested its apps against with the real engine (cargo test --release -p vf-core --test engine_compat -- --nocapture). A pack reuses the engine installed on the PC only if its exact version is listed here; anything else gets our bundled copy. 'Tested' means one small real conversion per engine (see tests/engine_compat.rs), not every document type: real office files still need a trial before a version is trusted for them. CADCraft is deliberately absent: the official build still draws tilted blocks wrongly (storytold/cadcraft#1158). Add a version only after it PASSES in the matrix, and keep the pinned one from engines.json.",
-  "wordcraft": ["0.12.0", "0.13.2", "0.15.0", "0.15.2", "0.16.0"],
-  "gridcraft": ["0.13.0", "0.14.2", "0.16.0", "0.16.1", "0.17.0"],
-  "deckcraft": ["0.12.0", "0.13.1", "0.15.0", "0.15.1", "0.16.0"],
-  "pdfcraft": ["0.15.0", "0.16.1", "0.18.0", "0.18.2", "0.19.0"],
-  "photocraft": ["0.19.0", "0.20.1", "0.20.2", "0.21.0"],
-  "soundcraft": ["0.16.0", "0.17.0", "0.17.1", "0.18.0"],
-  "filmcraft": ["0.16.0", "0.17.0", "0.17.1", "0.18.0"]
+  "wordcraft": ["0.12.0", "0.13.2", "0.15.0", "0.15.2", "0.16.0", "0.17.0"],
+  "gridcraft": ["0.13.0", "0.14.2", "0.16.0", "0.16.1", "0.17.0", "0.18.0"],
+  "deckcraft": ["0.12.0", "0.13.1", "0.15.0", "0.15.1", "0.16.0", "0.17.0"],
+  "pdfcraft": ["0.15.0", "0.16.1", "0.18.0", "0.18.2", "0.19.0", "0.20.0"],
+  "photocraft": ["0.19.0", "0.20.1", "0.20.2", "0.21.0", "0.22.0"],
+  "soundcraft": ["0.16.0", "0.17.0", "0.17.1", "0.18.0", "0.19.0"],
+  "filmcraft": ["0.16.0", "0.17.0", "0.17.1", "0.18.0", "0.19.0"]
 }

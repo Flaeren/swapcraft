@@ -1,6 +1,6 @@
 # Builds the hub and the Rust apps in release and puts the products in ..\portable, the only folder
-# that needs zipping to try voidflare on another PC:
-#   ..\portable\voidflare.exe          the hub
+# that needs zipping to try SwapCraft on another PC:
+#   ..\portable\SwapCraft.exe          the hub (and swapcraft-cli.exe, voidflare_dragdrop.dll)
 #   ..\portable\apps\<id>\<id>.exe     each app, with its engine next to it
 # Usage: powershell -File build-apps.ps1
 $ErrorActionPreference = "Stop"
@@ -12,20 +12,22 @@ Push-Location $src
 try {
     & $cargo build --release --workspace
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
-    $hub = Join-Path $out "voidflare.exe"
-    $old = Join-Path $out "voidflare.old.exe"
-    if (Test-Path $old) { Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue }
-    # a running exe cannot be overwritten but can be renamed
-    if (Test-Path $hub) { try { Remove-Item -LiteralPath $hub -Force -ErrorAction Stop } catch { Move-Item -LiteralPath $hub -Destination $old -Force } }
-    Copy-Item (Join-Path $src "target\release\voidflare-hub.exe") $hub -Force
-    Write-Host "voidflare.exe"
+    # a running exe cannot be overwritten but can be renamed: put $file in place of $dest, parking the old one
+    function Put([string]$file, [string]$dest) {
+        $old = [System.IO.Path]::ChangeExtension($dest, ".old" + [System.IO.Path]::GetExtension($dest))
+        if (Test-Path $old) { Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $dest) { try { Remove-Item -LiteralPath $dest -Force -ErrorAction Stop } catch { Move-Item -LiteralPath $dest -Destination $old -Force } }
+        Copy-Item $file $dest -Force
+        Write-Host (Split-Path -Leaf $dest)
+    }
+    # since 0.5 the hub is SwapCraft.exe and the command line swapcraft-cli.exe; the 0.4 names go
+    foreach ($legacy in @("voidflare.exe", "voidflare-cli.exe")) {
+        $p = Join-Path $out $legacy
+        if (Test-Path $p) { try { Remove-Item -LiteralPath $p -Force -ErrorAction Stop } catch { Move-Item -LiteralPath $p -Destination ([System.IO.Path]::ChangeExtension($p, ".old.exe")) -Force } }
+    }
+    Put (Join-Path $src "target\release\voidflare-hub.exe") (Join-Path $out "SwapCraft.exe")
     # the command line and MCP server (no window) sits beside the hub and updates with it
-    $cli = Join-Path $out "voidflare-cli.exe"
-    $oldCli = Join-Path $out "voidflare-cli.old.exe"
-    if (Test-Path $oldCli) { Remove-Item -LiteralPath $oldCli -Force -ErrorAction SilentlyContinue }
-    if (Test-Path $cli) { try { Remove-Item -LiteralPath $cli -Force -ErrorAction Stop } catch { Move-Item -LiteralPath $cli -Destination $oldCli -Force } }
-    Copy-Item (Join-Path $src "target\release\voidflare-cli.exe") $cli -Force
-    Write-Host "voidflare-cli.exe"
+    Put (Join-Path $src "target\release\swapcraft-cli.exe") (Join-Path $out "swapcraft-cli.exe")
     # the drag-and-drop menu handler: File Explorer loads it, so it may be in use; like an exe, it can be renamed
     $dll = Join-Path $out "voidflare_dragdrop.dll"
     $oldDll = Join-Path $out "voidflare_dragdrop.old.dll"

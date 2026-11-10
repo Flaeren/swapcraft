@@ -1,10 +1,12 @@
 # Packs ..\portable into the files a GitHub release carries, in ..\release\ :
-#   voidflare-<ver>-windows.zip              the FULL bundle (hub + every app + its engine). Keeps the name 0.1.0 hubs look
-#                                            for, and is the download for a PC without a network
-#   voidflare-hub-<ver>-windows.zip          the hub alone: pick what you need from its cards
+#   swapcraft-<ver>-windows.zip              the FULL bundle (hub + every app + its engine), the download for a PC
+#                                            without a network
+#   swapcraft-hub-<ver>-windows.zip          the hub alone (SwapCraft.exe): pick what you need from its cards
+#   voidflare-hub-<ver>-windows.zip          the same hub as voidflare.exe and voidflare-cli.exe, for hubs up to 0.4: they
+#                                            update from this name and take voidflare.exe out of it; the new hub then
+#                                            renames itself SwapCraft.exe at its first start
 #   voidflare-app-<id>-<ver>-windows-x64.zip     one app (its exe), no engine
 #   voidflare-engine-<name>-<engine ver>-windows-x64.zip   one trimmed engine (cli, models, notices, licences)
-#   (every name starts with "voidflare-" and the full bundle sorts first: a 0.1.0 hub takes the first ZIP of a release)
 #   manifest.json                            what the hub reads: packs, their assets, which PC engines are tested-compatible
 #   SHA256SUMS.txt                           "<hash>  <file name>" for every file above, the format the hub checks against
 # It does NOT publish anything. To publish (after trying it): see the "Release" part of CLAUDE.md.
@@ -16,7 +18,7 @@ $src = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $src
 $portable = Join-Path $root "portable"
 $out = Join-Path $root "release"
-if (-not (Test-Path (Join-Path $portable "voidflare.exe"))) { throw "portable\voidflare.exe is missing: run build-apps.ps1 first" }
+if (-not (Test-Path (Join-Path $portable "SwapCraft.exe"))) { throw "portable\SwapCraft.exe is missing: run build-apps.ps1 first" }
 $version = (Select-String -Path (Join-Path $src "Cargo.toml") -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
 # Version guard: the hub and every app must carry the release version in their own file properties, and the
 # CHANGELOG must have a section for it. (In 0.2.0 the hub's Cargo.toml was left at 0.1.0: it shipped saying "v0.1.0" and
@@ -51,15 +53,24 @@ function New-Zip([string]$Zip, [string]$Dir, [scriptblock]$Skip) {
 function Size-Mb([string]$p) { "{0:N1} MB" -f ((Get-Item $p).Length / 1MB) }
 
 # Leftovers of a hub replaced while it ran (*.old.exe) and the install record the hub writes into a pack it installed.
-$leftovers = { param($rel) $rel -like "*.old.exe" -or $rel -like "*.old.dll" -or $rel -eq "pack.json" -or $rel -like "*/pack.json" }
+$leftovers = { param($rel) $rel -like "*.old.exe" -or $rel -like "*.old.dll" -or $rel -eq "pack.json" -or $rel -like "*/pack.json" -or $rel -in @("voidflare.exe", "voidflare-cli.exe") }
 
 # 1. full bundle, 2. hub alone
-$full = Join-Path $out "voidflare-$version-windows.zip"
+$full = Join-Path $out "swapcraft-$version-windows.zip"
 New-Zip $full $portable $leftovers
 Write-Host ("{0,-52} {1}" -f (Split-Path -Leaf $full), (Size-Mb $full))
-$hubOnly = Join-Path $out "voidflare-hub-$version-windows.zip"
-New-Zip $hubOnly $portable { param($rel) $rel -notin @("voidflare.exe", "voidflare-cli.exe", "voidflare_dragdrop.dll") }
+$hubOnly = Join-Path $out "swapcraft-hub-$version-windows.zip"
+New-Zip $hubOnly $portable { param($rel) $rel -notin @("SwapCraft.exe", "swapcraft-cli.exe", "voidflare_dragdrop.dll") }
 Write-Host ("{0,-52} {1}" -f (Split-Path -Leaf $hubOnly), (Size-Mb $hubOnly))
+# the same three files under the 0.4 names, for the hubs that update from voidflare-hub-*
+$legacyHub = Join-Path $out "voidflare-hub-$version-windows.zip"
+$archive = [System.IO.Compression.ZipFile]::Open($legacyHub, [System.IO.Compression.ZipArchiveMode]::Create)
+try {
+    foreach ($pair in @(@("SwapCraft.exe", "voidflare.exe"), @("swapcraft-cli.exe", "voidflare-cli.exe"), @("voidflare_dragdrop.dll", "voidflare_dragdrop.dll"))) {
+        [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, (Join-Path $portable $pair[0]), $pair[1], [System.IO.Compression.CompressionLevel]::Optimal)
+    }
+} finally { $archive.Dispose() }
+Write-Host ("{0,-52} {1}" -f (Split-Path -Leaf $legacyHub), (Size-Mb $legacyHub))
 
 # 3. one app zip (+ 4. one engine zip) per app in portable\apps\
 $packs = @()

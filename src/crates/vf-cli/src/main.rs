@@ -1,9 +1,9 @@
-//! `voidflare-cli`: voidflare without a window.
+//! `swapcraft-cli`: voidflare without a window.
 //!
-//!   voidflare-cli formats                          what converts to what
-//!   voidflare-cli convert <file> --to <format>     one conversion; --out-dir DIR, --json
-//!   voidflare-cli engines                          which engines were found
-//!   voidflare-cli mcp [--allow DIR]... [--allow-all]   MCP server on stdin/stdout, for LLMs
+//!   swapcraft-cli formats                          what converts to what
+//!   swapcraft-cli convert <file> --to <format>     one conversion; --out-dir DIR, --json
+//!   swapcraft-cli engines                          which engines were found
+//!   swapcraft-cli mcp [--allow DIR]... [--allow-all]   MCP server on stdin/stdout, for LLMs
 //!
 //! Output is JSON when `--json` is given (or always for `formats` and `engines`); the exit code is 0 on
 //! success and 1 on failure, with `{"error": "..."}` on stdout in JSON mode.
@@ -14,19 +14,19 @@ mod mcp;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const HELP: &str = "voidflare-cli: convert files offline, no window.
+const HELP: &str = "swapcraft-cli: convert files offline, no window.
 
 USAGE:
-  voidflare-cli formats                           what converts to what (JSON)
-  voidflare-cli convert <file> --to <format> [--out-dir DIR] [--json]
-  voidflare-cli engines                           which engines were found (JSON)
-  voidflare-cli recipes                           the recipes saved in the hub (JSON)
-  voidflare-cli recipe <name> <file|folder>... [--json]
+  swapcraft-cli formats                           what converts to what (JSON)
+  swapcraft-cli convert <file> --to <format> [--out-dir DIR] [--json]
+  swapcraft-cli engines                           which engines were found (JSON)
+  swapcraft-cli recipes                           the recipes saved in the hub (JSON)
+  swapcraft-cli recipe <name> <file|folder>... [--json]
                                                   run a saved recipe on files
-  voidflare-cli mcp [--allow DIR]... [--allow-all]
+  swapcraft-cli mcp [--allow DIR]... [--allow-all]
                                                   MCP server on stdin/stdout. It may only touch the folder
                                                   it was started in plus each --allow DIR (--allow-all: anywhere).
-  voidflare-cli --version
+  swapcraft-cli --version
 ";
 
 fn main() -> ExitCode {
@@ -45,7 +45,7 @@ fn main() -> ExitCode {
         Some("recipe") => run_recipe(&args[1..]),
         Some("mcp") => serve_mcp(&args[1..]),
         Some("--version" | "-V") => {
-            println!("voidflare-cli {}", env!("CARGO_PKG_VERSION"));
+            println!("swapcraft-cli {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
         Some("--help" | "-h") | None => {
