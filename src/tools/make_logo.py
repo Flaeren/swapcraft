@@ -1,13 +1,17 @@
-"""Writes the SwapCraft logo for the README (docs/img/logo.svg): the flame, "Swap" in white, "Craft" in a gradient
-of the voidflare indigos, and "by voidflare" underneath.
+"""Writes the SwapCraft logo for the README (docs/img/logo.svg): the butterfly, "Swap" in white, "Craft" in a
+gradient of the voidflare indigos, and "by voidflare" underneath, on black.
 
     python tools/make_logo.py
 
-The mark is the flame of tools/make_flame.py (same two paths). The wordmark is set in Michroma (SIL Open
+The mark is the butterfly alone, the art of the icon's small sizes (make_swapcraft_icon.small_master), embedded
+as a PNG in the SVG: an SVG shown as an image may only carry its pictures inside it. The wordmark is set in Michroma (SIL Open
 Font License 1.1, (c) 2011 The Michroma Project Authors) and turned into outlines, because an SVG shown by
 GitHub cannot load web fonts. The font file is downloaded on first use and is not kept in the repository.
-Needs: pip install fonttools
+Needs: pip install fonttools pillow numpy
 """
+import base64
+import io
+import sys
 import urllib.request
 from pathlib import Path
 
@@ -50,15 +54,28 @@ def flame(x: float, y: float, height: float, tag: str = "") -> str:
             f'<path d="{CORE}" fill="{GLOW}" transform="{CORE_TRANSFORM}"/></g>')
 
 
+def butterfly(x: float, y: float, size: float) -> str:
+    """The butterfly as an <image> of `size` px, drawn at twice that for sharp screens."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from PIL import Image
+    from make_swapcraft_icon import MASTER, small_master
+
+    art = small_master(Image.open(MASTER).convert("RGB")).resize((round(size * 2),) * 2, Image.LANCZOS)
+    buf = io.BytesIO()
+    art.save(buf, "PNG", optimize=True)
+    data = base64.b64encode(buf.getvalue()).decode()
+    return f'<image x="{x}" y="{y}" width="{size}" height="{size}" href="data:image/png;base64,{data}"/>'
+
+
 def main() -> None:
     if not FONT.exists():
         urllib.request.urlretrieve(FONT_URL, FONT)
     swap, swap_w = wordmark("Swap", size=30, tracking=1.5)
     craft, craft_w = wordmark("Craft", size=30, tracking=1.5)
     by, by_w = wordmark("by voidflare", size=9.5, tracking=1.2)
-    h, pad, mark_h = 96, 28, 60
-    mark_w = mark_h * 64 / 96
-    text_x = pad + mark_w + 22
+    h, pad, mark_h = 96, 22, 80
+    mark_w = mark_h
+    text_x = pad + mark_w + 10
     craft_x = text_x + swap_w + 1.5
     width = max(craft_x + craft_w, text_x + by_w) - text_x
     total = text_x + width + pad
@@ -68,8 +85,8 @@ def main() -> None:
             f'  <defs><linearGradient id="craft" gradientUnits="userSpaceOnUse" x1="{craft_x:.2f}" y1="0" '
             f'x2="{craft_x + craft_w:.2f}" y2="0"><stop offset="0" stop-color="#818cf8"/>'
             f'<stop offset="1" stop-color="#c7d2fe"/></linearGradient></defs>\n'
-            f'  <rect width="{total:.0f}" height="{h}" fill="#121316"/>\n'
-            f'  {flame(pad, (h - mark_h) / 2, mark_h)}\n'
+            f'  <rect width="{total:.0f}" height="{h}" fill="#000000"/>\n'
+            f'  {butterfly(pad, (h - mark_h) / 2, mark_h)}\n'
             f'  <path transform="translate({text_x:.2f} {base})" fill="#ffffff" d="{swap}"/>\n'
             f'  <path transform="translate({craft_x:.2f} {base})" fill="url(#craft)" d="{craft}"/>\n'
             f'  <path transform="translate({text_x + 1:.2f} {base + 20})" fill="#8b8f98" d="{by}"/>\n'
