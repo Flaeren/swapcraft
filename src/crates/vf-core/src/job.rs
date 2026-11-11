@@ -168,7 +168,50 @@ pub fn deliver(file: &Path, out_dir: &Path, name: &str) -> Result<PathBuf, Strin
         // Another drive: rename cannot cross volumes.
         fs::copy(file, &out).map_err(|e| e.to_string())?;
     }
+    normalize_modes(&out);
     Ok(out)
+}
+
+/// The permissions a new file and a new folder get from this process's umask (`None` off Unix).
+#[cfg(unix)]
+fn new_modes() -> Option<(u32, u32)> {
+    use std::os::unix::fs::PermissionsExt;
+    static MODES: std::sync::OnceLock<Option<(u32, u32)>> = std::sync::OnceLock::new();
+    *MODES.get_or_init(|| {
+        let probe = std::env::temp_dir().join(format!("voidflare_umask_{}", std::process::id()));
+        let _ = fs::remove_file(&probe);
+        let _ = fs::remove_dir(&probe);
+        let file = File::create(&probe).ok().and_then(|_| fs::metadata(&probe).ok()).map(|m| m.permissions().mode() & 0o777);
+        let _ = fs::remove_file(&probe);
+        let dir = fs::create_dir(&probe).ok().and_then(|()| fs::metadata(&probe).ok()).map(|m| m.permissions().mode() & 0o777);
+        let _ = fs::remove_dir(&probe);
+        file.zip(dir)
+    })
+}
+
+/// Some engines write their results private to the user (mode 0600, as a temporary file would be): a result is
+/// handed over with the permissions any file made by the user would have, so the group, a shared folder and a
+/// network share see it as they see the user's other files. A no-op on Windows. Folders and what is in them too.
+fn normalize_modes(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let Some((file_mode, dir_mode)) = new_modes() else { return };
+        fn apply(p: &Path, file_mode: u32, dir_mode: u32) {
+            let Ok(meta) = fs::symlink_metadata(p) else { return };
+            if meta.is_dir() {
+                let _ = fs::set_permissions(p, fs::Permissions::from_mode(dir_mode));
+                for entry in fs::read_dir(p).into_iter().flatten().flatten() {
+                    apply(&entry.path(), file_mode, dir_mode);
+                }
+            } else if meta.is_file() {
+                let _ = fs::set_permissions(p, fs::Permissions::from_mode(file_mode));
+            }
+        }
+        apply(path, file_mode, dir_mode);
+    }
+    #[cfg(not(unix))]
+    let _ = path;
 }
 
 thread_local! {
@@ -352,6 +395,23 @@ mod tests {
         assert_eq!(unique_path(&a), dir.join("a (2).pdf"));
         fs::write(dir.join("a (2).pdf"), b"x").unwrap();
         assert_eq!(unique_path(&a), dir.join("a (3).pdf"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_private_result_is_handed_over_with_the_users_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("vf_modes_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("in")).unwrap();
+        let made = dir.join("in").join("made.pdf");
+        fs::write(&made, b"x").unwrap();
+        fs::set_permissions(&made, fs::Permissions::from_mode(0o600)).unwrap();
+        let out = deliver(&made, &dir.join("out"), "made.pdf").unwrap();
+        let (file_mode, _) = new_modes().unwrap();
+        assert_eq!(fs::metadata(&out).unwrap().permissions().mode() & 0o777, file_mode);
+        assert_ne!(file_mode, 0o600, "the test needs a umask that lets the group read");
         let _ = fs::remove_dir_all(&dir);
     }
 

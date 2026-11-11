@@ -197,7 +197,10 @@ impl Recipe {
                     Some(route) => output_ext(route).map_or(Shape::Folder, |e| Shape::File(e.to_owned())),
                     None => return fail(format!("a .{cur} file cannot be converted to {to}")),
                 },
-                _ if cur != "pdf" => return fail(format!("{} works on PDF files, and here the file is .{cur}", step.summary())),
+                // a picture meets a PDF step as a PDF made from it (a scan is a picture): see `to_pdf_first`
+                _ if cur != "pdf" && !routes::IMAGE_EXTS.contains(&cur.as_str()) => {
+                    return fail(format!("{} works on PDF files, and here the file is .{cur}", step.summary()));
+                }
                 Step::Split(_) => Shape::Folder,
                 _ => Shape::File("pdf".into()),
             };
@@ -352,6 +355,31 @@ pub fn run(recipe: &Recipe, files: &[PathBuf], tx: &mpsc::Sender<Event>, cancel:
         let note = |text: String| {
             let _ = tx.send(Event::Note(text));
         };
+        if !matches!(step, Step::Convert(_)) {
+            // pictures reaching a step that works on PDFs are made PDFs first, one page each
+            let mut ready = Vec::new();
+            for mut t in tracks.drain(..) {
+                if !routes::IMAGE_EXTS.contains(&ext_of(&t.current).as_str()) {
+                    ready.push(t);
+                    continue;
+                }
+                match to_pdf_first(&t.current, &work.join(format!("pictures{}", i + 1)), &note) {
+                    Ok(pdf) => {
+                        t.current = pdf;
+                        ready.push(t);
+                    }
+                    Err(e) if e == crate::job::CANCELLED => {
+                        cancelled = true;
+                        break 'steps;
+                    }
+                    Err(e) => outcomes.push(Outcome { source: t.source, result: Err(format!("{}: {e}", step.shown())) }),
+                }
+            }
+            tracks = ready;
+            if tracks.is_empty() {
+                break;
+            }
+        }
         if let Step::Merge = step {
             let parts: Vec<(String, &Path)> = tracks.iter().map(|t| (t.source.file_stem().unwrap_or_default().to_string_lossy().into_owned(), t.current.as_path())).collect();
             let merged = dir.join("merged.pdf");
@@ -414,6 +442,12 @@ pub fn spawn(recipe: Recipe, files: Vec<PathBuf>, tx: mpsc::Sender<Event>, cance
         crate::job::watch_cancel(&cancel);
         run(&recipe, &files, &tx, &cancel);
     });
+}
+
+/// A picture as a one-page PDF in `dir`, for the steps that work on PDFs.
+fn to_pdf_first(picture: &Path, dir: &Path, note: &dyn Fn(String)) -> Result<PathBuf, String> {
+    let route = find_route(&ext_of(picture), "pdf").ok_or_else(|| format!("a .{} file cannot be made a PDF", ext_of(picture)))?;
+    routes::run_route(route, picture, dir, note)
 }
 
 fn run_step(step: &Step, input: &Path, dir: &Path, note: &dyn Fn(String)) -> Result<PathBuf, String> {

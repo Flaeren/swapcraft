@@ -153,7 +153,11 @@ pub fn recipe_run(recipe: &vf_core::recipe::Recipe, inputs: &[PathBuf]) -> Resul
     let made: Vec<&PathBuf> = outcomes.iter().filter_map(|o| o.result.as_ref().ok()).collect();
     let failed: Vec<Value> = outcomes.iter().filter_map(|o| o.result.as_ref().err().map(|e| json!({ "input": o.source, "error": e }))).collect();
     let v = json!({ "recipe": recipe.name, "outputs": made, "failed": failed, "notes": notes });
-    if made.is_empty() { Err(serde_json::to_string_pretty(&v).unwrap_or_default()) } else { Ok(v) }
+    if made.is_empty() {
+        let why: Vec<String> = outcomes.iter().filter_map(|o| o.result.as_ref().err().map(|e| format!("{}: {e}", o.source.display()))).collect();
+        return Err(format!("the recipe '{}' made nothing: {}", recipe.name, why.join("; ")));
+    }
+    Ok(v)
 }
 
 /// Size, type and what the file can become. For a PDF also PdfCraft's own summary (pages, title...).
