@@ -30,8 +30,10 @@ pub fn convert(input: &Path, to: &str, out_dir: Option<&Path>) -> Result<Value, 
     let ext = routes::ext_of(input);
     let Some(route) = routes::find_route(&ext, to) else {
         let known: Vec<String> = routes::targets(&ext).into_iter().map(|i| routes::route_id(&ROUTES[i])).collect();
-        return Err(if known.is_empty() {
-            format!("voidflare does not convert .{ext} files (try the formats command)")
+        return Err(if ext.is_empty() {
+            "this file has no extension, so SwapCraft can't tell what kind of file it is".to_owned()
+        } else if known.is_empty() {
+            format!("SwapCraft does not convert .{ext} files (try the formats command)")
         } else {
             format!("a .{ext} file can become: {} (not '{to}')", known.join(", "))
         });

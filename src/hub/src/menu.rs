@@ -130,7 +130,7 @@ pub fn run_from_args() -> Option<eframe::Result> {
             .with_inner_size([540.0, 340.0])
             .with_min_inner_size([420.0, 260.0])
             .with_title("SwapCraft")
-            .with_icon(egui::IconData { rgba: include_bytes!("../assets/app_icon.rgba").to_vec(), width: 256, height: 256 }),
+            .with_icon(vf_ui::shell::window_icon(include_bytes!("../assets/app_icon.rgba"))),
         wgpu_options: vf_ui::shell::wgpu_config(),
         ..Default::default()
     };

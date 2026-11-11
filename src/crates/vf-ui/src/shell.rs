@@ -472,6 +472,35 @@ pub fn fit_to_screen(ctx: &egui::Context) {
     }
 }
 
+/// The window icon from the 256x256 RGBA picture. Under X11 a 256x256 icon is 65,538 numbers, a request over the
+/// 256 KB an X server takes without extensions: the server refuses it, winit ignores the error, and the window has
+/// no icon at all (docks then show a blurry guess). So on Linux it is halved to 128x128 (16,386 numbers), each
+/// pixel the alpha-weighted mean of four. Windows keeps 256.
+pub fn window_icon(rgba_256: &[u8]) -> egui::IconData {
+    if cfg!(windows) || rgba_256.len() != 256 * 256 * 4 {
+        return egui::IconData { rgba: rgba_256.to_vec(), width: 256, height: 256 };
+    }
+    let mut out = Vec::with_capacity(128 * 128 * 4);
+    for y in 0..128 {
+        for x in 0..128 {
+            let (mut rgb, mut alpha) = ([0u32; 3], 0u32);
+            for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                let i = ((2 * y + dy) * 256 + 2 * x + dx) * 4;
+                let a = u32::from(rgba_256[i + 3]);
+                for c in 0..3 {
+                    rgb[c] += u32::from(rgba_256[i + c]) * a;
+                }
+                alpha += a;
+            }
+            for c in rgb {
+                out.push(if alpha == 0 { 0 } else { (c / alpha) as u8 });
+            }
+            out.push((alpha / 4) as u8);
+        }
+    }
+    egui::IconData { rgba: out, width: 128, height: 128 }
+}
+
 /// How the windows are drawn. On Windows only Direct3D 12, not Vulkan: wgpu's default also loads the Vulkan driver,
 /// and Intel's (igvk64.dll 31.0.101.2135, UHD 620, seen on a Dell Latitude 5500 on 11/11/2026) crashes in it before
 /// the first frame, so the program "did not start". Direct3D 12 is on every Windows 10 and 11, with Microsoft's
@@ -495,7 +524,7 @@ pub fn native_options(title: &str, icon_256: &[u8], size: [f32; 2]) -> eframe::N
             .with_min_inner_size([640.0, 600.0])
             .with_title(title)
             .with_drag_and_drop(true)
-            .with_icon(egui::IconData { rgba: icon_256.to_vec(), width: 256, height: 256 }),
+            .with_icon(window_icon(icon_256)),
         wgpu_options: wgpu_config(),
         ..Default::default()
     }

@@ -113,7 +113,14 @@ pub fn convert(spec: &Spec, src: &Path, out_dir: &Path) -> Result<PathBuf, Strin
 }
 
 fn run_in(tmp: &Path, kind: Kind, spec: &Spec, src: &Path, out_dir: &Path) -> Result<PathBuf, String> {
-    let book = load(src, &spec.cli, tmp)?;
+    // text, web pages and Markdown made into a PDF or a Word file are documents, not books
+    let document = matches!(kind, Kind::Pdf | Kind::Docx) && matches!(lower_ext(src).as_str(), "txt" | "html" | "htm" | "xhtml" | "md");
+    let book = if document && lower_ext(src) == "txt" {
+        let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("Document");
+        epub::from_text_lines(&text_from_bytes(&fs::read(src).map_err(|e| format!("{}: {e}", src.display()))?), stem)
+    } else {
+        load(src, &spec.cli, tmp)?
+    };
     let target = tmp.join(format!("out.{}", kind.ext()));
     let io = |e: std::io::Error| e.to_string();
     match kind {
@@ -125,7 +132,7 @@ fn run_in(tmp: &Path, kind: Kind, spec: &Spec, src: &Path, out_dir: &Path) -> Re
                 return Err("The WordCraft engine is needed to make this, and it was not found.".to_owned());
             }
             let page = tmp.join("book.html");
-            fs::write(&page, book.to_html()).map_err(io)?;
+            fs::write(&page, if document { book.to_document_html() } else { book.to_html() }).map_err(io)?;
             let mut cmd = Command::new(&spec.cli);
             cmd.arg("convert").arg(&page).arg(&target);
             job::run_command(&mut cmd, tmp)?;

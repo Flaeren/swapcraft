@@ -325,6 +325,19 @@ pub fn read_epub(bytes: &[u8]) -> Result<Book, String> {
 // ---------------------------------------------------------------- other sources
 
 /// A book from plain text: blank lines separate paragraphs, line breaks inside one are joined.
+/// Plain text as a document: paragraphs at blank lines, and every line break kept (a list, an address, a poem
+/// stay as written). [`from_text`] joins the lines instead, for e-books whose text was wrapped by hand.
+pub fn from_text_lines(text: &str, title: &str) -> Book {
+    let text = text.trim_start_matches('\u{feff}').replace("\r\n", "\n");
+    let body: String = text
+        .split("\n\n")
+        .map(|p| p.trim_matches('\n'))
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| format!("<p>{}</p>", p.lines().map(|l| markup::escape_text(l.trim_end())).collect::<Vec<_>>().join("<br/>")))
+        .collect();
+    Book { title: title.to_owned(), language: "en".into(), chapters: vec![Chapter { title: title.to_owned(), body }], ..Book::default() }
+}
+
 pub fn from_text(text: &str, title: &str) -> Book {
     let text = text.trim_start_matches('\u{feff}').replace("\r\n", "\n");
     let body: String = text
@@ -402,10 +415,20 @@ impl Book {
 
     /// One HTML page with the images inside it, so it opens anywhere and can be handed to a converter.
     pub fn to_html(&self) -> String {
+        self.html(true)
+    }
+
+    /// The page as a document, not a book: no title page in front (a note or a web page made into a PDF starts
+    /// with its own first line, not with its file name alone on page one).
+    pub fn to_document_html(&self) -> String {
+        self.html(false)
+    }
+
+    fn html(&self, title_page: bool) -> String {
         let mut body = String::new();
         // a book that opens with its own title page does not need the title said twice
         let opening: String = self.chapters.first().map(|c| markup::to_text(&tokenize(&c.body))).unwrap_or_default().chars().take(200).collect();
-        if !opening.to_lowercase().contains(&self.title.to_lowercase()) {
+        if title_page && !opening.to_lowercase().contains(&self.title.to_lowercase()) {
             body.push_str(&format!("<h1 class=\"book-title\">{}</h1>", markup::escape_text(&self.title)));
             if !self.authors.is_empty() {
                 body.push_str(&format!("<p class=\"book-author\">{}</p>", markup::escape_text(&self.authors.join(", "))));

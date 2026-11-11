@@ -1676,7 +1676,7 @@ fn main() -> eframe::Result {
             .with_min_inner_size([640.0, 560.0])
             .with_title("SwapCraft")
             .with_drag_and_drop(true)
-            .with_icon(egui::IconData { rgba: include_bytes!("../assets/app_icon.rgba").to_vec(), width: 256, height: 256 }),
+            .with_icon(vf_ui::shell::window_icon(include_bytes!("../assets/app_icon.rgba"))),
         wgpu_options: vf_ui::shell::wgpu_config(),
         ..Default::default()
     };

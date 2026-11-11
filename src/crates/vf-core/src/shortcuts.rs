@@ -198,7 +198,9 @@ mod linux {
         if icon.is_file() {
             text.push_str(&format!("Icon={}\n", icon.display()));
         }
-        text.push_str("Terminal=false\nCategories=Utility;\nStartupWMClass=swapcraft\n");
+        // the hub's X11 window class is "voidflare" (eframe's app name, kept like the settings folder): docks match
+        // the window to this launcher, and to its icon, by that class
+        text.push_str("Terminal=false\nCategories=Utility;\nStartupWMClass=voidflare\n");
         text
     }
 
