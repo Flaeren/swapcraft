@@ -79,15 +79,35 @@ pub fn collect(paths: &[PathBuf], exts: &[&str], recursive: bool) -> Vec<PathBuf
     found
 }
 
-/// `name.pdf`, or `name (2).pdf` and so on if it exists.
-pub fn unique_path(path: &Path) -> PathBuf {
-    if !path.exists() {
-        return path.to_path_buf();
+/// The longest file name a folder takes: 255 bytes on Linux (and 255 characters on Windows, counted here in bytes
+/// as well, the stricter of the two).
+const MAX_NAME: usize = 255;
+
+/// `stem` and `suffix` (an " (2)" and the extension) as one name of at most [`MAX_NAME`] bytes: when it is longer,
+/// the stem is cut (on a character boundary) and the suffix kept, so a name near the limit still gets its " (2)"
+/// and a long name still keeps its extension.
+fn fitted_name(stem: &str, suffix: &str) -> String {
+    let room = MAX_NAME.saturating_sub(suffix.len());
+    if stem.len() <= room {
+        return format!("{stem}{suffix}");
     }
+    let mut end = room;
+    while end > 0 && !stem.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{suffix}", &stem[..end])
+}
+
+/// `name.pdf`, or `name (2).pdf` and so on if it exists. A name too long for the file system is shortened first.
+pub fn unique_path(path: &Path) -> PathBuf {
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("out");
     let ext = path.extension().and_then(|s| s.to_str()).map(|e| format!(".{e}")).unwrap_or_default();
+    let first = path.with_file_name(fitted_name(stem, &ext));
+    if !first.exists() {
+        return first;
+    }
     (2..)
-        .map(|n| path.with_file_name(format!("{stem} ({n}){ext}")))
+        .map(|n| path.with_file_name(fitted_name(stem, &format!(" ({n}){ext}"))))
         .find(|c| !c.exists())
         .expect("an unused name exists")
 }
@@ -332,6 +352,31 @@ mod tests {
         assert_eq!(unique_path(&a), dir.join("a (2).pdf"));
         fs::write(dir.join("a (2).pdf"), b"x").unwrap();
         assert_eq!(unique_path(&a), dir.join("a (3).pdf"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_name_at_the_limit_still_gets_its_number() {
+        // 251 letters and ".txt" make 255 bytes; its PDF twin needs " (2)" on top of that
+        let stem = "M".repeat(251);
+        assert_eq!(fitted_name(&stem, ".epub").len(), 255, "a longer extension cuts the stem, not the extension");
+        assert!(fitted_name(&stem, ".epub").ends_with(".epub"));
+        let two = fitted_name(&stem, " (2).pdf");
+        assert_eq!(two.len(), 255);
+        assert!(two.ends_with(" (2).pdf"));
+        // never in the middle of a character: 100 times "\u{e8}" is 200 bytes, "\u{4e2d}" is 3 bytes each
+        let accents = "\u{e8}".repeat(130);
+        let cut = fitted_name(&accents, " (10).docx");
+        assert!(cut.len() <= 255 && cut.ends_with(" (10).docx"));
+        assert!(cut.starts_with('\u{e8}'));
+        let dir = std::env::temp_dir().join(format!("vf_long_names_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let long = dir.join(format!("{}.pdf", "M".repeat(251)));
+        fs::write(&long, b"x").unwrap();
+        let next = unique_path(&long);
+        fs::write(&next, b"x").expect("the second name is one the file system takes");
+        assert_ne!(next, long);
         let _ = fs::remove_dir_all(&dir);
     }
 

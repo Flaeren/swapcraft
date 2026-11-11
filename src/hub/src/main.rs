@@ -781,7 +781,10 @@ impl Hub {
             ui.vertical(|ui| {
                 let name = |f: &PathBuf| f.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                 if n == 1 {
-                    ui.label(RichText::new(name(&self.files[0])).font(strong(17.0)).color(t.ink_strong));
+                    // one line, cut with "..." when it is too long (a very long name used to wrap over four lines and push
+                    // the format buttons down); the whole name is in the tooltip
+                    let full = name(&self.files[0]);
+                    ui.add(egui::Label::new(RichText::new(&full).font(strong(17.0)).color(t.ink_strong)).truncate()).on_hover_text(full);
                     let dir = self.files[0].parent().map(|p| p.display().to_string()).unwrap_or_default();
                     ui.label(RichText::new(format!("{} · {}", human_size(self.bytes), dir.trim_start_matches(r"\\?\"))).font(mono(11.0)).color(t.faint));
                 } else {
