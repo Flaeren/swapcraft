@@ -34,13 +34,13 @@
       "name": "deckcraft",
       "app": "slides-to-pdf",
       "repo": "storytold/deckcraft",
-      "tag": "v0.17.0",
-      "asset": "deckcraft-0.17.0-windows-x64-portable.zip",
-      "sha256": "53f1fd1bd669c9f3fc6ecb704a749b679325b5ea27f7e86e7a51bafe9ff768d3",
+      "tag": "v0.18.0",
+      "asset": "deckcraft-0.18.0-windows-x64-portable.zip",
+      "sha256": "ededed1f9056c726fe88dfced16bb3328f0aeccf8189a0c83ac2e2342df1ad72",
       "license": "MIT OR Apache-2.0",
       "linux": {
-        "asset": "deckcraft-0.17.0-linux-x86_64.tar.gz",
-        "sha256": "a61a05095a52a80990aa8990b447100553e99c8fa6edc8754aa52740a1a6f9b0"
+        "asset": "deckcraft-0.18.0-linux-x86_64.tar.gz",
+        "sha256": "d1f129af8c12f1250bcc17dbcdbaac380900c91381c84a4ada6ee7b480a4db06"
       }
     },
     {
@@ -86,13 +86,13 @@
       "name": "filmcraft",
       "app": "video-converter",
       "repo": "storytold/filmcraft",
-      "tag": "v0.19.0",
-      "asset": "filmcraft-0.19.0-windows-x64-portable.zip",
-      "sha256": "b31f362b4767da4336f14b025ae92618b48e0a37b84e55905a6afc9fe51a5aae",
+      "tag": "v0.20.0",
+      "asset": "filmcraft-0.20.0-windows-x64-portable.zip",
+      "sha256": "41c758e08646e488f2693747ed39b6e20ff4ae54c78497a87882c4f3aec74fad",
       "license": "MIT OR Apache-2.0",
       "linux": {
-        "asset": "filmcraft-0.19.0-linux-x86_64.tar.gz",
-        "sha256": "76149343c19700ba6ac905fde8a019e0917d06507f426a5938396d97a1ca2124"
+        "asset": "filmcraft-0.20.0-linux-x86_64.tar.gz",
+        "sha256": "35465d71bde189f50cacaf3e4fd89c4ca6377faf8eb48eaa2f065b8e54593236"
       }
     }
   ],
