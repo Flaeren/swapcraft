@@ -103,7 +103,7 @@ You can also drop a file on `SwapCraft.exe` in Explorer, or send it there with *
 2. Unzip it to a folder of your own, for example `~/SwapCraft`, and run `swapcraft` (double click it, or `./swapcraft` in a terminal).
 3. Install the converters you need from their cards, as on Windows. In Settings you can add SwapCraft to your applications menu and to the desktop.
 
-Settings and recipes are kept in `~/.config/voidflare`. The right-click menu and *Convert here* when dragging with the right mouse button are Windows File Explorer features and are not on Linux yet. The Linux programs are built on Ubuntu 22.04, so they need a system at least that recent (Linux Mint 21 or newer, for example), 64-bit x86.
+Settings and recipes are kept in `~/.config/voidflare`. On Linux Mint, Settings > *Right-click menu* adds *Convert with SwapCraft* to Nemo's menu (right-click one or more files), and *Convert here with SwapCraft* to the empty space of a folder (copy the files with Ctrl+C, open the destination folder, right-click). Dragging with the right mouse button is a Windows File Explorer feature and is not on Linux. The Linux programs are built on Ubuntu 22.04, so they need a system at least that recent (Linux Mint 21 or newer, for example), 64-bit x86.
 
 ## What it converts
 

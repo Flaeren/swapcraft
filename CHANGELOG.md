@@ -2,15 +2,34 @@
 
 All notable changes to SwapCraft (formerly voidflare) are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.6.0] - 2026-11-10
+## [0.6.0] - 2026-11-11
 
 ### Added
 
-- **SwapCraft for Linux** (64-bit, x86_64). The hub and all nine apps run on Linux, with the official Linux builds of the ArtCraft engines at the same versions as on Windows (CADCraft built from source with our patch, as on Windows). Download `swapcraft-hub-<version>-linux-x86_64.zip`, unzip it and run `swapcraft`, then install the converters you need from their cards; or take `swapcraft-<version>-linux-x86_64.zip`, which has everything in one file. Settings can put SwapCraft in your applications menu and on the desktop. Your settings and recipes are kept in `~/.config/voidflare`. The command line (`swapcraft-cli`) and the MCP server work as on Windows. Not on Linux yet: the right-click menu and *Convert here* when dragging with the right mouse button, which belong to Windows File Explorer. Built on Ubuntu 22.04, so it needs a system at least that recent (Linux Mint 21 or newer, for example).
+- **SwapCraft for Linux** (64-bit, x86_64). The hub and all nine apps run on Linux, with the official Linux builds of the ArtCraft engines at the same versions as on Windows (CADCraft built from source with our patch, as on Windows). Download `swapcraft-hub-<version>-linux-x86_64.zip`, unzip it and run `swapcraft`, then install the converters you need from their cards; or take `swapcraft-<version>-linux-x86_64.zip`, which has everything in one file. Settings can put SwapCraft in your applications menu and on the desktop. Your settings and recipes are kept in `~/.config/voidflare`. The command line (`swapcraft-cli`) and the MCP server work as on Windows. Built on Ubuntu 22.04, so it needs a system at least that recent (Linux Mint 21 or newer, for example).
+- **Convert with SwapCraft in Nemo**, Linux Mint's file manager. In Settings, *Right-click menu* adds the entry: right-click one or more files, choose Convert with SwapCraft, then pick a format, a recipe or an app. *Convert here with SwapCraft* sits on the empty space of a folder: copy files with Ctrl+C, open the destination folder, right-click its empty space and choose it, and the results land there. The names are in all five languages. Nemo has no way to add to the menu of a drag with the right mouse button, so that stays a Windows File Explorer feature.
+- **A picture can become a PDF.** PNG, JPG, TIFF, BMP, GIF, WebP and the other picture types become a PDF with one page the size of the picture, from the hub, the right-click menus, Convert here, the command line and recipes. A recipe that starts with OCR, shrink, merge, split or extract now takes pictures too: *Scans to searchable PDF* works on a photo of a page, and *Report pack* on a folder of pictures makes one PDF with a page for each.
+- **Text, web pages and Markdown can become PDF and Word** (before, only EPUB) from the hub, the menus and the command line. Plain text keeps its line breaks and has no title page.
+- **A file with no extension is recognised by its content** (text, PDF, Office files, EPUB, pictures, audio, video, DWG), which matters on Linux, where editors save a note as `notes`. When it cannot tell, it says so instead of "nothing to convert".
+- **A progress card** for what you start from the right-click menu, in the bottom right corner: the butterfly, *Converting 3 files to PDF…*, a thin bar, then *Done: 3 PDF in Exports* with *Open folder*. It closes by itself after a few seconds; if a file failed it stays, with *Details*.
+- **Cancel stops the engine at once**, also in the middle of a long video, and leaves no half-made file.
+- **One SwapCraft at a time.** Starting it again brings the open window forward, and files dropped on the program or sent with *Open with* arrive in it.
 
 ### Changed
 
-- **On Windows nothing changes:** the release simply carries the Linux files next to the Windows ones, and a Windows hub only ever looks at its own.
+- **SwapCraft 0.5.0 did not start on some Windows PCs.** With certain Intel graphics drivers (seen with an Intel UHD 620, driver 31.0.101.2135), it crashed inside the driver's Vulkan code before showing a window. It now draws with Direct3D 12 only, which every Windows 10 and 11 has. The `WGPU_BACKEND` environment variable still overrides it.
+- **Audio keeps the quality of the file it comes from** when converted from the hub, the menus and the command line: 16-bit files and MP3 or OGG stay 16-bit instead of becoming 24-bit.
+- **Language and appearance are chosen with buttons** in Settings, not drop-downs, and the change shows at once. A message already on screen follows a change of language, and the File Explorer menu is written again in the new language.
+- **Windows open centred and inside the screen.** In the apps, the log is above the Convert and Cancel buttons, which no longer jump when a run starts. The format offered first is no longer the one the file already is (PNG to PNG, EPUB to EPUB). *Add files* now says when every picked file was refused, as dropping did.
+- **Smaller things:** *Check for updates* shows *Checking…* long enough to be seen; Grid or List and the sort order are remembered; a long message in the footer is cut with … instead of covering the update controls; a very long file name is shown on one line; a result next to a name near the 255-byte limit gets its number without failing; a file that is not a DWG says so instead of "unsupported file type"; an error from an engine no longer starts with a second "error:"; `swapcraft-cli <command> --help` prints the help and `swapcraft-cli engines` lists all eight engines.
+- **On Linux, results are created with the permissions of your other files**, not readable by you alone, so a shared folder or a network share shows them to the group.
+- **The ArtCraft engines:** DeckCraft 0.18.0 and FilmCraft 0.20.0 (both released on 11 November 2026, mostly hardening against damaged files), the others unchanged.
+
+### Known limits
+
+- On Linux, the menu entries are for Nemo only; other file managers do not show them, and there is no right-mouse-button drag.
+- When only the sound of a video is taken, FilmCraft 0.20 writes stereo even if the source sound is mono.
+- Not yet checked on a real File Explorer after these changes: the right-click menu and the drag with the right mouse button on Windows (they were last checked with 0.5.0), and on one test PC, apps opened from the hub were seen to start minimized, with the cause not confirmed; if it happens, use the taskbar button.
 
 ## [0.5.0] - 2026-11-10
 
