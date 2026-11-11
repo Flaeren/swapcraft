@@ -150,7 +150,9 @@ pub fn parse_manifest(json: &str) -> Result<Manifest, String> {
 
 /// Reads the manifest of a release, checking it against the release's `SHA256SUMS.txt` first.
 pub fn fetch_manifest(release: &Release) -> Result<Manifest, String> {
-    let asset = release.find_asset(MANIFEST_NAME).ok_or("This release has no pack list; use the full download instead.")?;
+    let asset = release
+        .find_asset(MANIFEST_NAME)
+        .ok_or(if cfg!(windows) { "This release has no pack list; use the full download instead." } else { "This release has no packs for Linux yet; use the full download instead." })?;
     let sums = update::sums_text(release)?;
     let expected = update::checksum_for(&sums, MANIFEST_NAME).ok_or("The checksum file does not list the pack list.")?;
     let body = update::fetch_text(&asset.url)?;

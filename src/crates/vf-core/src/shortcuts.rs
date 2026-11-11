@@ -198,7 +198,7 @@ mod linux {
         if icon.is_file() {
             text.push_str(&format!("Icon={}\n", icon.display()));
         }
-        text.push_str("Terminal=false\nCategories=Utility;Office;\nStartupWMClass=swapcraft\n");
+        text.push_str("Terminal=false\nCategories=Utility;\nStartupWMClass=swapcraft\n");
         text
     }
 

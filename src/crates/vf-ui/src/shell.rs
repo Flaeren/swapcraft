@@ -79,6 +79,8 @@ struct ConverterApp {
     options: Vec<bool>,
     /// Index into `cfg.formats`.
     format: usize,
+    /// The user picked the format: adding files no longer changes it.
+    format_chosen: bool,
     quality: u32,
     password: String,
     recursive: bool,
@@ -108,6 +110,7 @@ impl ConverterApp {
             selected: BTreeSet::new(),
             options: cfg.options.iter().map(|o| o.default).collect(),
             format: 0,
+            format_chosen: false,
             quality: cfg.quality.as_ref().map_or(0, |q| q.default),
             password: String::new(),
             recursive: true,
@@ -132,6 +135,32 @@ impl ConverterApp {
             if !known.contains(&f.to_string_lossy().to_lowercase()) {
                 self.files.push(f);
             }
+        }
+        self.avoid_same_format();
+    }
+
+    /// The first format in the menu is the default, but converting a PNG to PNG or an EPUB to EPUB only ends in "this
+    /// is already a .png file": when every file already is the format chosen, the first other one is taken instead.
+    /// Not once the user has picked a format.
+    fn avoid_same_format(&mut self) {
+        let same = |a: &str, b: &str| {
+            let canon = |e: &str| match e {
+                "jpeg" => "jpg".to_owned(),
+                "tiff" => "tif".to_owned(),
+                "aif" => "aiff".to_owned(),
+                other => other.to_owned(),
+            };
+            canon(a) == canon(b)
+        };
+        if self.format_chosen || self.files.is_empty() || self.cfg.formats.is_empty() {
+            return;
+        }
+        let exts: Vec<String> = self.files.iter().map(|f| vf_core::sniff::ext_or_kind(f)).collect();
+        let current = self.cfg.formats[self.format].ext;
+        if exts.iter().all(|e| same(e, current))
+            && let Some(i) = self.cfg.formats.iter().position(|f| !same(f.ext, current))
+        {
+            self.format = i;
         }
     }
 
@@ -279,6 +308,7 @@ pub fn drop_feedback(dropped: &[PathBuf], before: usize, after: usize, notice: &
 
 impl eframe::App for ConverterApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        fit_to_screen(ui.ctx());
         let ctx = ui.ctx().clone();
         let tk = Tokens::get(&ctx);
         self.poll();
@@ -293,6 +323,11 @@ impl eframe::App for ConverterApp {
         }
         egui::CentralPanel::default().frame(egui::Frame::new().fill(tk.bg)).show(ui, |ui| {
             widgets::header(ui, &tk, &self.icon, self.cfg.title);
+            egui::Panel::bottom("actions")
+                .resizable(false)
+                .show_separator_line(true)
+                .frame(egui::Frame::new().fill(tk.bg).inner_margin(egui::Margin { left: PAD as i8, right: PAD as i8, top: 14, bottom: 16 }))
+                .show(ui, |ui| self.actions(ui, &tk));
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 egui::Frame::new().inner_margin(egui::Margin::symmetric(PAD as i8, 0)).show(ui, |ui| self.body(ui, &tk));
             });
@@ -341,7 +376,9 @@ impl ConverterApp {
                 .width(260.0)
                 .show_ui(ui, |ui| {
                     for (i, f) in self.cfg.formats.iter().enumerate() {
-                        ui.selectable_value(&mut self.format, i, f.label);
+                        if ui.selectable_value(&mut self.format, i, f.label).clicked() {
+                            self.format_chosen = true;
+                        }
                     }
                 });
             if let Some(q) = &self.cfg.quality
@@ -366,7 +403,12 @@ impl ConverterApp {
 
         destination(ui, tk, &mut self.beside, &mut self.out_dir);
 
-        ui.add_space(20.0);
+        ui.add_space(PAD);
+    }
+
+    /// The Convert button, the progress and the log: in a bar along the bottom of the window, always in view
+    /// whatever the height of the screen (on a 1280x800 laptop they used to sit below the fold).
+    fn actions(&mut self, ui: &mut egui::Ui, tk: &Tokens) {
         ui.horizontal(|ui| {
             if widgets::primary(ui, tk, &t("app.convert"), !self.running && self.cli.is_some()).clicked() {
                 self.start();
@@ -378,11 +420,13 @@ impl ConverterApp {
                 ui.checkbox(&mut self.open_when_done, t("ui.open_when_done"));
             });
         });
-        ui.add_space(14.0);
-        widgets::progress(ui, self.progress.0, self.progress.1);
         ui.add_space(10.0);
-        widgets::log_view(ui, tk, &self.log);
-        ui.add_space(PAD);
+        widgets::progress(ui, self.progress.0, self.progress.1);
+        // the log takes room only once there is something in it, so the options keep the most space
+        if !self.log.is_empty() || self.running {
+            ui.add_space(10.0);
+            widgets::log_view(ui, tk, &self.log);
+        }
     }
 }
 
@@ -404,6 +448,45 @@ pub fn destination(ui: &mut egui::Ui, tk: &Tokens, beside: &mut bool, out_dir: &
     });
 }
 
+/// Once, as soon as the system tells the screen's size: a window taller than the screen (the hub asks for 820
+/// px, the apps for 860, and many laptops are 768 or 800 px high) is made shorter, so its bottom (the Convert bar,
+/// the hub's footer) is not under the edge of the screen or the taskbar. 110 px stay for the title bar and a
+/// panel. Call it at the start of every frame; it does nothing after the first fit.
+pub fn fit_to_screen(ctx: &egui::Context) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static DONE: AtomicBool = AtomicBool::new(false);
+    if DONE.load(Ordering::Relaxed) {
+        return;
+    }
+    let (monitor, inner) = ctx.input(|i| (i.viewport().monitor_size, i.viewport().inner_rect));
+    let (Some(monitor), Some(inner)) = (monitor, inner) else { return };
+    DONE.store(true, Ordering::Relaxed);
+    let max_h = (monitor.y - 110.0).max(480.0);
+    let max_w = (monitor.x - 40.0).max(640.0);
+    if inner.height() > max_h || inner.width() > max_w {
+        let size = egui::vec2(inner.width().min(max_w), inner.height().min(max_h));
+        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+        // and back inside the screen, below where a top panel would be
+        let pos = egui::pos2(((monitor.x - size.x) / 2.0).max(0.0), 40.0);
+        ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
+    }
+}
+
+/// How the windows are drawn. On Windows only Direct3D 12, not Vulkan: wgpu's default also loads the Vulkan driver,
+/// and Intel's (igvk64.dll 31.0.101.2135, UHD 620, seen on a Dell Latitude 5500 on 11/11/2026) crashes in it before
+/// the first frame, so the program "did not start". Direct3D 12 is on every Windows 10 and 11, with Microsoft's
+/// software renderer when there is no usable GPU. `WGPU_BACKEND` still overrides it, for tests.
+pub fn wgpu_config() -> eframe::egui_wgpu::WgpuConfiguration {
+    let mut config = eframe::egui_wgpu::WgpuConfiguration::default();
+    if cfg!(windows)
+        && std::env::var_os("WGPU_BACKEND").is_none()
+        && let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut config.wgpu_setup
+    {
+        setup.instance_descriptor.backends = eframe::wgpu::Backends::DX12;
+    }
+    config
+}
+
 /// The native window options shared by the apps.
 pub fn native_options(title: &str, icon_256: &[u8], size: [f32; 2]) -> eframe::NativeOptions {
     eframe::NativeOptions {
@@ -413,6 +496,7 @@ pub fn native_options(title: &str, icon_256: &[u8], size: [f32; 2]) -> eframe::N
             .with_title(title)
             .with_drag_and_drop(true)
             .with_icon(egui::IconData { rgba: icon_256.to_vec(), width: 256, height: 256 }),
+        wgpu_options: wgpu_config(),
         ..Default::default()
     }
 }

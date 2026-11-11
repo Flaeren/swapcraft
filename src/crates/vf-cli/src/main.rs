@@ -30,6 +30,8 @@ USAGE:
 ";
 
 fn main() -> ExitCode {
+    // the DWG conversion words its notes and errors from its app's catalog (otherwise the key would show)
+    vf_core::i18n::init(&[include_str!("../../app-dwg-to-pdf/assets/strings.tsv")]);
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("formats") => print_json(&api::formats()),

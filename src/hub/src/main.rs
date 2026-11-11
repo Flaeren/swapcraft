@@ -6,6 +6,7 @@ mod icons;
 mod menu;
 mod recipes;
 mod settings;
+mod single;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -30,6 +31,33 @@ fn tr(key: &str) -> String {
 }
 
 /// [`tr`] with each `{name}` replaced.
+/// A message kept as its catalog key and arguments, so it follows a change of language while it is on screen.
+/// `key` empty: `args[0]` is already text (an engine's or the system's own words).
+#[derive(Clone, Default)]
+struct Said {
+    key: &'static str,
+    args: Vec<(&'static str, String)>,
+}
+
+impl Said {
+    fn key(key: &'static str) -> Self {
+        Said { key, args: vec![] }
+    }
+    fn with(key: &'static str, args: &[(&'static str, &str)]) -> Self {
+        Said { key, args: args.iter().map(|(k, v)| (*k, (*v).to_owned())).collect() }
+    }
+    fn raw(text: String) -> Self {
+        Said { key: "", args: vec![("", text)] }
+    }
+    fn text(&self) -> String {
+        if self.key.is_empty() {
+            return self.args.first().map(|a| a.1.clone()).unwrap_or_default();
+        }
+        let args: Vec<(&str, &str)> = self.args.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        trf(self.key, &args)
+    }
+}
+
 fn trf(key: &str, args: &[(&str, &str)]) -> String {
     i18n::tf(key, args)
 }
@@ -54,6 +82,22 @@ const FOOTER_H: f32 = 40.0;
 enum View {
     Grid,
     List,
+}
+
+/// The cards' view and order are remembered between runs, in `view.txt` beside the other choices ("list za").
+fn load_view() -> (View, Sort) {
+    let text = vf_core::platform::data_dir().and_then(|d| std::fs::read_to_string(d.join("view.txt")).ok()).unwrap_or_default();
+    let view = if text.split_whitespace().any(|w| w == "list") { View::List } else { View::Grid };
+    let sort = if text.split_whitespace().any(|w| w == "za") { Sort::NameDesc } else { Sort::NameAsc };
+    (view, sort)
+}
+
+fn save_view(view: View, sort: Sort) {
+    if let Some(dir) = vf_core::platform::data_dir() {
+        let words = format!("{} {}\n", if view == View::List { "list" } else { "grid" }, if sort == Sort::NameDesc { "za" } else { "az" });
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(dir.join("view.txt"), words);
+    }
 }
 
 /// The two tabs under the header.
@@ -150,7 +194,9 @@ struct Hub {
     sort: Sort,
     /// Where each app's portable build was found, same order as `APPS`.
     found: Vec<Option<PathBuf>>,
-    notice: Option<String>,
+    notice: Option<Said>,
+    /// Files from later starts of the program (see `single`).
+    later_starts: Option<mpsc::Receiver<Vec<PathBuf>>>,
     /// The drop panel: the files waiting for a target format, and the run that converts them.
     files: Vec<PathBuf>,
     /// Combined size of `files`, read once when they arrive.
@@ -226,10 +272,11 @@ impl Hub {
             auto_on: update::auto_enabled(),
             quiet: false,
             query: String::new(),
-            view: View::Grid,
-            sort: Sort::NameAsc,
+            view: load_view().0,
+            sort: load_view().1,
             found: APPS.iter().map(catalog::locate).collect(),
             notice: None,
+            later_starts: None,
             files: Vec::new(),
             bytes: 0,
             running: false,
@@ -263,7 +310,7 @@ impl Hub {
         }
         self.notice = match cmd.spawn() {
             Ok(_) => None,
-            Err(e) => Some(trf("hub.err_start", &[("name", APPS[i].name), ("err", &e.to_string())])),
+            Err(e) => Some(Said::with("hub.err_start", &[("name", APPS[i].name), ("err", &e.to_string())])),
         };
     }
 
@@ -291,12 +338,19 @@ impl Hub {
 
 impl eframe::App for Hub {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        vf_ui::shell::fit_to_screen(ui.ctx());
         let t = Tokens::get(ui.ctx());
         self.poll();
         self.poll_update();
         self.poll_packs(ui.ctx());
         let ctx = ui.ctx().clone();
         self.poll_job(&ctx);
+        let handed: Vec<Vec<PathBuf>> = self.later_starts.as_ref().map(|rx| rx.try_iter().collect()).unwrap_or_default();
+        if let Some(files) = handed.into_iter().rev().find(|f| !f.is_empty())
+            && !self.running
+        {
+            self.set_files(&files);
+        }
         if self.running {
             ui.ctx().request_repaint_after(Duration::from_millis(60));
         }
@@ -371,11 +425,11 @@ impl Hub {
             let ext = paths.first().map(|p| routes::ext_of(p)).unwrap_or_default();
             let unnamed_file = paths.first().is_some_and(|p| p.is_file() && p.extension().is_none());
             Some(if unnamed_file {
-                tr("hub.no_extension")
+                Said::key("hub.no_extension")
             } else if ext.is_empty() {
-                tr("hub.nothing_convertible")
+                Said::key("hub.nothing_convertible")
             } else {
-                trf("hub.no_converter", &[("ext", &ext)])
+                Said::with("hub.no_converter", &[("ext", &ext)])
             })
         } else {
             None
@@ -395,8 +449,15 @@ impl Hub {
         let ctx = ctx.clone();
         std::thread::spawn(move || {
             // One request to GitHub answers both questions: is there a newer voidflare, and which packs does it carry.
+            let started = std::time::Instant::now();
             let latest = update::latest();
             let loaded = latest.as_ref().map_err(Clone::clone).and_then(load_packs);
+            // GitHub often answers in a fraction of a second: after a click, "Checking…" stays long enough to be
+            // seen, or the click looks like it did nothing
+            let shown = std::time::Duration::from_millis(800);
+            if !quiet && started.elapsed() < shown {
+                std::thread::sleep(shown - started.elapsed());
+            }
             let _ = tx.send(UpdMsg::Checked(latest));
             let _ = ptx.send(loaded);
             ctx.request_repaint();
@@ -435,7 +496,7 @@ impl Hub {
             Err(e) => {
                 self.packs = Packs::Failed(e.clone());
                 if self.pending_install.take().is_some() {
-                    self.notice = Some(trf("hub.cannot_install", &[("err", &e)]));
+                    self.notice = Some(Said::with("hub.cannot_install", &[("err", &e)]));
                 }
             }
         }
@@ -460,7 +521,7 @@ impl Hub {
             return;
         }
         let Some(pack) = l.manifest.packs.iter().find(|p| p.id == APPS[i].id).cloned() else {
-            self.notice = Some(trf("hub.not_in_release", &[("app", APPS[i].name)]));
+            self.notice = Some(Said::with("hub.not_in_release", &[("app", APPS[i].name)]));
             return;
         };
         let (release, sums, apps_dir) = (l.release.clone(), l.sums.clone(), self.apps_dir.clone());
@@ -534,7 +595,7 @@ impl Hub {
             self.notice = match result {
                 Ok(()) => None,
                 Err(e) if e.contains("ancel") => None,
-                Err(e) => Some(format!("{}: {e}", APPS[app].name)),
+                Err(e) => Some(Said::raw(format!("{}: {e}", APPS[app].name))),
             };
             let _ = removed;
             self.refresh_packs();
@@ -671,9 +732,11 @@ impl Hub {
             let c = rect.center();
             p.text(pos2(c.x, c.y - 26.0), Align2::CENTER_CENTER, tr("hub.drop_title"), strong(21.0), t.ink_strong);
             p.text(pos2(c.x, c.y + 6.0), Align2::CENTER_CENTER, tr("hub.drop_sub"), FontId::proportional(14.0), t.muted);
-            p.text(pos2(c.x, c.y + 44.0), Align2::CENTER_CENTER, "DOCX · XLSX · PPTX · PDF · DWG · CSV · RTF · ODT", mono(11.0), t.faint);
-            if let Some(msg) = &self.notice {
-                p.text(pos2(c.x, rect.bottom() - 18.0), Align2::CENTER_CENTER, msg, FontId::proportional(12.5), t.bad);
+            p.text(pos2(c.x, c.y + 44.0), Align2::CENTER_CENTER, "DOCX · XLSX · PPTX · PDF · DWG · PNG · MP3 · MP4 · EPUB", mono(11.0), t.faint);
+            if let Some(msg) = self.notice.as_ref().map(Said::text) {
+                let galley = one_line(ui, msg, FontId::proportional(12.5), t.bad, rect.width() - 32.0);
+                let at = pos2(c.x - galley.size().x / 2.0, rect.bottom() - 18.0 - galley.size().y / 2.0);
+                ui.painter().galley(at, galley, t.bad);
             }
         } else {
             let mut inner = ui.new_child(UiBuilder::new().max_rect(rect.shrink(18.0)).layout(Layout::top_down(Align::Min)));
@@ -773,6 +836,13 @@ impl Hub {
             }
         }
     }
+}
+
+/// `text` on one line no wider than `max_w`, ending in "…" when it had to be cut (`elided` says so).
+fn one_line(ui: &egui::Ui, text: String, font: FontId, color: Color32, max_w: f32) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
+    job.wrap = egui::text::TextWrapping { max_width: max_w.max(10.0), max_rows: 1, break_anywhere: true, overflow_character: Some('…') };
+    ui.fonts_mut(|f| f.layout_job(job))
 }
 
 fn mono(size: f32) -> FontId {
@@ -973,6 +1043,7 @@ impl Hub {
         let n_update = self.updatable().len();
         let queued = !self.queue.is_empty() || self.job.as_ref().is_some_and(|j| !j.removing && self.status[j.app] == Some(Status::UpdateAvailable));
         let mut go_update_all = false;
+        let before = (self.view, self.sort);
         bar.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
             ui.selectable_value(&mut self.view, View::List, RichText::new(tr("hub.list")).font(FontId::proportional(13.0)));
@@ -993,6 +1064,9 @@ impl Hub {
                 }
             }
         });
+        if (self.view, self.sort) != before {
+            save_view(self.view, self.sort);
+        }
         if go_update_all {
             let ctx = ui.ctx().clone();
             self.update_all(&ctx);
@@ -1069,10 +1143,20 @@ impl Hub {
             update::set_auto(self.auto_on);
         }
 
-        let p = ui.painter();
-        match &self.notice {
+        match self.notice.as_ref().map(Said::text) {
             Some(msg) => {
-                p.text(pos2(rect.right() - PAD, rect.center().y), Align2::RIGHT_CENTER, msg, FOOT(), t.bad);
+                // in the room left of the update controls: cut with "…" when the window is narrow, whole on hover
+                let room = rect.right() - PAD - (auto_x + auto_w) - 24.0;
+                if room > 40.0 {
+                    let galley = one_line(ui, msg.clone(), FOOT(), t.bad, room);
+                    let at = pos2(rect.right() - PAD - galley.size().x, rect.center().y - galley.size().y / 2.0);
+                    let cut = galley.elided;
+                    let area = Rect::from_min_size(at, galley.size());
+                    ui.painter().galley(at, galley, t.bad);
+                    if cut {
+                        ui.interact(area, ui.scope_id().with("footer-notice"), Sense::hover()).on_hover_text(msg);
+                    }
+                }
             }
             None => {
                 // Right to left: the link to ArtCraft, then the version. In a narrow window they give way to the update
@@ -1505,6 +1589,8 @@ impl Hub {
 /// Starts the hub at `exe` (the new one, same path as this one) and ends this process.
 fn restart_into(exe: &std::path::Path) {
     let mut cmd = Command::new(exe);
+    // this hub is still listening for later starts until it exits: the new one must not hand itself over to it
+    cmd.env("VOIDFLARE_MULTI", "1");
     if let Some(dir) = exe.parent() {
         cmd.current_dir(dir);
     }
@@ -1578,6 +1664,12 @@ fn main() -> eframe::Result {
     if let Some(result) = menu::run_from_args() {
         return result;
     }
+    // Files dragged onto the program, or sent to it with "Open with".
+    let args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).filter(|p| p.exists()).collect();
+    // A hub is already open: it takes the files and comes to the front, and this start ends here.
+    if std::env::var_os("VOIDFLARE_MULTI").is_none() && single::hand_over(&args) {
+        return Ok(());
+    }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1040.0, 820.0])
@@ -1585,6 +1677,7 @@ fn main() -> eframe::Result {
             .with_title("SwapCraft")
             .with_drag_and_drop(true)
             .with_icon(egui::IconData { rgba: include_bytes!("../assets/app_icon.rgba").to_vec(), width: 256, height: 256 }),
+        wgpu_options: vf_ui::shell::wgpu_config(),
         ..Default::default()
     };
     eframe::run_native(
@@ -1593,8 +1686,13 @@ fn main() -> eframe::Result {
         Box::new(|cc| {
             theme::install(&cc.egui_ctx);
             let mut hub = Hub::new(&cc.egui_ctx);
+            let ctx = cc.egui_ctx.clone();
+            hub.later_starts = single::listen(move || {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                ctx.request_repaint();
+            });
             // Files dragged onto the exe, or sent to it, wait in the drop panel.
-            let args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).filter(|p| p.exists()).collect();
             if !args.is_empty() {
                 hub.set_files(&args);
             }

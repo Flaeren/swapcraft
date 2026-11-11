@@ -196,7 +196,12 @@ impl DwgApp {
 
         shell::destination(ui, tk, &mut self.beside, &mut self.out_dir);
 
-        ui.add_space(20.0);
+        ui.add_space(PAD);
+    }
+
+    /// The Convert button, the progress and the log: in a bar along the bottom of the window, always in view
+    /// whatever the height of the screen (on a 1280x800 laptop they used to sit below the fold).
+    fn actions(&mut self, ui: &mut egui::Ui, tk: &Tokens) {
         ui.horizontal(|ui| {
             if widgets::primary(ui, tk, &t("app.convert"), !self.running && self.cli.is_some()).clicked() {
                 self.start();
@@ -208,16 +213,19 @@ impl DwgApp {
                 ui.checkbox(&mut self.open_when_done, t("ui.open_when_done"));
             });
         });
-        ui.add_space(14.0);
-        widgets::progress(ui, self.progress.0, self.progress.1);
         ui.add_space(10.0);
-        widgets::log_view(ui, tk, &self.log);
-        ui.add_space(PAD);
+        widgets::progress(ui, self.progress.0, self.progress.1);
+        // the log takes room only once there is something in it, so the options keep the most space
+        if !self.log.is_empty() || self.running {
+            ui.add_space(10.0);
+            widgets::log_view(ui, tk, &self.log);
+        }
     }
 }
 
 impl eframe::App for DwgApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        vf_ui::shell::fit_to_screen(ui.ctx());
         let ctx = ui.ctx().clone();
         let tk = Tokens::get(&ctx);
         self.poll();
@@ -232,6 +240,11 @@ impl eframe::App for DwgApp {
         }
         egui::CentralPanel::default().frame(egui::Frame::new().fill(tk.bg)).show(ui, |ui| {
             widgets::header(ui, &tk, &self.icon, "DWG to PDF");
+            egui::Panel::bottom("actions")
+                .resizable(false)
+                .show_separator_line(true)
+                .frame(egui::Frame::new().fill(tk.bg).inner_margin(egui::Margin { left: PAD as i8, right: PAD as i8, top: 14, bottom: 16 }))
+                .show(ui, |ui| self.actions(ui, &tk));
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 egui::Frame::new().inner_margin(egui::Margin::symmetric(PAD as i8, 0)).show(ui, |ui| self.body(ui, &tk));
             });

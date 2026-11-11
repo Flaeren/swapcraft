@@ -190,6 +190,8 @@ pub fn run_command_for(cmd: &mut Command, tmp: &Path, limit: Duration) -> Result
         if msg.is_empty() {
             msg = format!("exit code {}", status.code().unwrap_or(-1));
         }
+        // the engines start their messages with "error: ", and the log already says it failed
+        let msg = msg.strip_prefix("error: ").unwrap_or(&msg).to_owned();
         let mut msg: String = msg.chars().take(300).collect();
         if msg.to_lowercase().contains("password") {
             msg.push_str(&crate::t("job.password_hint"));

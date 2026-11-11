@@ -61,6 +61,14 @@ fn forward(p: &Path) -> String {
     p.to_string_lossy().replace('\\', "/")
 }
 
+/// A DWG file starts with its version, `AC1012` to `AC1032`. Anything else (a damaged file, another format named
+/// .dwg) is said plainly here: the engine would answer "unsupported file type `dwg`", as if DWG were not supported.
+fn is_drawing(dwg: &Path) -> Result<(), String> {
+    let mut head = [0u8; 6];
+    let ok = fs::File::open(dwg).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head)).is_ok() && head.starts_with(b"AC10");
+    if ok { Ok(()) } else { Err(crate::t("dwg.not_a_drawing")) }
+}
+
 fn publish(cli: &Path, dwg: &Path, tmp: &Path) -> Result<Vec<Sheet>, String> {
     let target = forward(&tmp.join("sheet.pdf"));
     let mut cmd = cadcraft(cli, dwg, &[format!("publish {}", json!({ "path": target }))]);
@@ -78,6 +86,7 @@ fn publish(cli: &Path, dwg: &Path, tmp: &Path) -> Result<Vec<Sheet>, String> {
 
 /// The drawing's sheets as PDF. Returns the new file, or the folder holding one file per sheet.
 pub fn convert_sheets(cli: &Path, dwg: &Path, out_dir: &Path, opts: SheetOptions, notify: &dyn Fn(String)) -> Result<PathBuf, String> {
+    is_drawing(dwg)?;
     let tmp = scratch_dir().map_err(|e| e.to_string())?;
     let result = sheets_in(&tmp, cli, dwg, out_dir, opts, notify);
     let _ = fs::remove_dir_all(&tmp);
@@ -205,6 +214,7 @@ fn content_window(cli: &Path, dwg: &Path, tmp: &Path, ext: Extents) -> Result<Op
 pub fn convert_whole(
     cli: &Path, dwg: &Path, out_dir: &Path, long_side_mm: f64, crop: bool, paper_label: &str, notify: &dyn Fn(String),
 ) -> Result<PathBuf, String> {
+    is_drawing(dwg)?;
     let tmp = scratch_dir().map_err(|e| e.to_string())?;
     let result = whole_in(&tmp, cli, dwg, out_dir, long_side_mm, crop, paper_label, notify);
     let _ = fs::remove_dir_all(&tmp);

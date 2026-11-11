@@ -176,14 +176,15 @@ impl Settings {
             egui::ScrollArea::vertical().max_height(max_h).auto_shrink([false, true]).show(ui, |ui| {
 
                 section(ui, t, &i18n::t("hub.sec_language"));
-                ui.horizontal(|ui| {
-                    egui::ComboBox::from_id_salt("language").selected_text(self.lang.name()).show_ui(ui, |ui| {
-                        for l in Lang::ALL {
-                            if ui.selectable_value(&mut self.lang, l, l.name()).clicked() {
-                                i18n::set_language(l, true);
-                            }
+                // Choices shown side by side, not in a drop-down: a drop-down inside this window stopped opening after a
+                // click whose press and release came in the same instant (a touchpad tap), until the next restart.
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+                    for l in Lang::ALL {
+                        if ui.selectable_value(&mut self.lang, l, RichText::new(l.name()).font(FontId::proportional(13.0))).clicked() {
+                            i18n::set_language(l, true);
                         }
-                    });
+                    }
                 });
                 ui.label(RichText::new(i18n::t("hub.language_note")).size(12.0).color(t.faint));
 
@@ -196,9 +197,10 @@ impl Settings {
                         Appearance::Light => "hub.appearance_light",
                     })
                 };
-                egui::ComboBox::from_id_salt("appearance").selected_text(appearance_name(self.appearance)).show_ui(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
                     for a in Appearance::ALL {
-                        if ui.selectable_value(&mut self.appearance, a, appearance_name(a)).clicked() {
+                        if ui.selectable_value(&mut self.appearance, a, RichText::new(appearance_name(a)).font(FontId::proportional(13.0))).clicked() {
                             a.save();
                             a.apply(ctx);
                         }
