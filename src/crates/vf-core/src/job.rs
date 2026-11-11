@@ -48,7 +48,8 @@ pub enum Destination {
 /// (lower case, without the dot). Office lock files (`~$name.docx`) are not documents.
 pub fn collect(paths: &[PathBuf], exts: &[&str], recursive: bool) -> Vec<PathBuf> {
     fn is_doc(p: &Path, exts: &[&str]) -> bool {
-        let ext = p.extension().and_then(|e| e.to_str()).map(str::to_lowercase).unwrap_or_default();
+        // a file with no extension counts by its content (Linux text editors save "notes", not "notes.txt")
+        let ext = crate::sniff::ext_or_kind(p);
         let lock = p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("~$"));
         p.is_file() && !lock && exts.contains(&ext.as_str())
     }
@@ -252,7 +253,7 @@ pub fn spawn_batch(spec: Spec, files: Vec<PathBuf>, dest: Destination, tx: mpsc:
         .map(|src| {
             let label = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             let (spec, out_dir, source) = (spec.clone(), out_dir_for(&dest, &src), src.clone());
-            Item { label, source: src, run: Box::new(move |note| convert_one_noted(&spec, &source, &out_dir, note)) }
+            Item { label, source: src, run: Box::new(move |note| crate::sniff::with_extension(&source, |s| convert_one_noted(&spec, s, &out_dir, note))) }
         })
         .collect();
     spawn_tasks(items, tx, cancel);

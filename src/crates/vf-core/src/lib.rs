@@ -19,6 +19,7 @@ pub mod platform;
 pub mod recipe;
 pub mod routes;
 pub mod shortcuts;
+pub mod sniff;
 pub mod update;
 
 pub use i18n::{t, tf};

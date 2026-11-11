@@ -369,7 +369,14 @@ impl Hub {
         self.bytes = self.files.iter().filter_map(|f| std::fs::metadata(f).ok()).map(|m| m.len()).sum();
         self.notice = if self.files.is_empty() {
             let ext = paths.first().map(|p| routes::ext_of(p)).unwrap_or_default();
-            Some(if ext.is_empty() { tr("hub.nothing_convertible") } else { trf("hub.no_converter", &[("ext", &ext)]) })
+            let unnamed_file = paths.first().is_some_and(|p| p.is_file() && p.extension().is_none());
+            Some(if unnamed_file {
+                tr("hub.no_extension")
+            } else if ext.is_empty() {
+                tr("hub.nothing_convertible")
+            } else {
+                trf("hub.no_converter", &[("ext", &ext)])
+            })
         } else {
             None
         };
@@ -630,8 +637,9 @@ impl Hub {
         let hovering = ui.ctx().input(|i| !i.raw.hovered_files.is_empty());
         let has_files = !self.files.is_empty();
         // Room for a second row of format chips when the file has many targets (a PDF has seven).
-        let chips_w: f32 = self.files.first().map_or(0.0, |f| routes::targets(&routes::ext_of(f)).iter().map(|&i| routes::shown_label(routes::ROUTES[i].label).chars().count() as f32 * 9.0 + 36.0).sum());
-        let rows = (chips_w / (ui.available_width() - 4.0 * PAD)).ceil().max(1.0) as usize;
+        let labels: Vec<String> = self.files.first().map_or(vec![], |f| routes::targets(&routes::ext_of(f)).iter().map(|&i| routes::shown_label(routes::ROUTES[i].label)).collect());
+        // the chips wrap inside the card less its 18 px inner margin on each side
+        let rows = chip_rows(ui, &labels, ui.available_width() - 2.0 * PAD - 36.0);
         let recipe_rows = match self.files.first() {
             Some(f) if !self.recipes.accepting(&routes::ext_of(f)).is_empty() => 66.0,
             _ => 0.0,
@@ -753,7 +761,7 @@ impl Hub {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
                 for r in &recipes {
-                    let label = RichText::new(format!("▸ {}", r.name)).font(FontId::proportional(13.0)).color(t.engine_ink);
+                    let label = RichText::new(format!("▶ {}", r.name)).font(FontId::proportional(13.0)).color(t.engine_ink);
                     if ui.add_enabled(!self.running, egui::Button::new(label)).on_hover_text(r.steps.iter().map(|s| s.summary()).collect::<Vec<_>>().join(" → ")).clicked() {
                         run = Some(r.clone());
                     }
@@ -769,6 +777,23 @@ impl Hub {
 
 fn mono(size: f32) -> FontId {
     FontId::monospace(size)
+}
+
+/// How many rows the format chips take in `width`: each chip is its text (13 px) plus the button padding, 8 px
+/// apart, filled left to right as `horizontal_wrapped` does. Measured with the real font, so a long label in any
+/// language or a narrow window still gets the room it needs.
+fn chip_rows(ui: &egui::Ui, labels: &[String], width: f32) -> usize {
+    let pad = 2.0 * ui.spacing().button_padding.x;
+    let (mut rows, mut x) = (1, 0.0);
+    for label in labels {
+        let w = ui.fonts_mut(|f| f.layout_no_wrap(label.clone(), FontId::proportional(13.0), Color32::WHITE).size().x) + pad;
+        if x > 0.0 && x + w > width {
+            rows += 1;
+            x = 0.0;
+        }
+        x += w + 8.0;
+    }
+    rows
 }
 
 /// A format chip in the drop panel: a grey pill that turns warm white under the pointer.

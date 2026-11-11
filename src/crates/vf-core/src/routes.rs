@@ -16,6 +16,8 @@ use crate::pdf::{self, Export};
 pub enum Job {
     /// `<engine> convert in out`.
     Engine(Engine, &'static str),
+    /// SoundCraft writing this format at the source's bit depth (16-bit stays 16-bit; see [`audio_depth`]).
+    Audio(&'static str),
     /// `ebook::convert`: Rust reads and writes EPUB, Kindle, text and HTML; WordCraft makes PDF and DOCX and reads
     /// word processor files. WordCraft is optional for the formats Rust handles alone.
     Ebook(Kind),
@@ -43,6 +45,9 @@ const KINDLE: &[&str] = &["azw3", "azw", "mobi", "prc", "kf8"];
 const BOOKS: &[&str] = &["epub", "azw3", "azw", "mobi", "prc", "kf8"];
 /// What becomes an EPUB: text, web pages, Markdown and word processor files.
 const TO_EPUB: &[&str] = &["txt", "html", "htm", "xhtml", "md", "docx", "doc", "odt", "rtf"];
+/// Text, web pages and Markdown: the e-book converter lays them out as a PDF or a Word file too (word processor
+/// files already have their own PDF route through WordCraft).
+const PLAIN: &[&str] = &["txt", "html", "htm", "xhtml", "md"];
 /// What FilmCraft decodes (its README): MP4/MOV, Matroska/WebM, AVI, MPEG program and transport streams, MXF, Ogg.
 pub const VIDEO_EXTS: &[&str] = &["mp4", "m4v", "mov", "mkv", "webm", "avi", "mpg", "mpeg", "ts", "mts", "m2ts", "mxf", "ogv"];
 /// What SoundCraft reads (its `convert --help`). Video containers (mp4, mkv, webm) are left to the video converter.
@@ -68,9 +73,9 @@ pub const ROUTES: &[Route] = &[
     Route { from: IMAGE_EXTS, label: "BMP", app: "image-converter", job: Job::Engine(PHOTOCRAFT, "bmp") },
     Route { from: IMAGE_EXTS, label: "GIF", app: "image-converter", job: Job::Engine(PHOTOCRAFT, "gif") },
     Route { from: IMAGE_EXTS, label: "ICO", app: "image-converter", job: Job::Engine(PHOTOCRAFT, "ico") },
-    Route { from: AUDIO_EXTS, label: "WAV", app: "audio-converter", job: Job::Engine(SOUNDCRAFT, "wav") },
-    Route { from: AUDIO_EXTS, label: "FLAC", app: "audio-converter", job: Job::Engine(SOUNDCRAFT, "flac") },
-    Route { from: AUDIO_EXTS, label: "AIFF", app: "audio-converter", job: Job::Engine(SOUNDCRAFT, "aiff") },
+    Route { from: AUDIO_EXTS, label: "WAV", app: "audio-converter", job: Job::Audio("wav") },
+    Route { from: AUDIO_EXTS, label: "FLAC", app: "audio-converter", job: Job::Audio("flac") },
+    Route { from: AUDIO_EXTS, label: "AIFF", app: "audio-converter", job: Job::Audio("aiff") },
     Route { from: VIDEO_EXTS, label: "MP4 (H.264)", app: "video-converter", job: Job::Film("mp4", &["format=h264", "bitrateMode=crf", "crf=23"]) },
     Route { from: VIDEO_EXTS, label: "MOV (ProRes)", app: "video-converter", job: Job::Film("mov", &["format=prores"]) },
     Route { from: VIDEO_EXTS, label: "GIF", app: "video-converter", job: Job::Film("gif", &["format=gif", "audio=false"]) },
@@ -81,12 +86,15 @@ pub const ROUTES: &[Route] = &[
     Route { from: BOOKS, label: "Word (DOCX)", app: "ebook-converter", job: Job::Ebook(Kind::Docx) },
     Route { from: KINDLE, label: "EPUB", app: "ebook-converter", job: Job::Ebook(Kind::Epub) },
     Route { from: TO_EPUB, label: "EPUB", app: "ebook-converter", job: Job::Ebook(Kind::Epub) },
+    Route { from: PLAIN, label: "PDF", app: "ebook-converter", job: Job::Ebook(Kind::Pdf) },
+    Route { from: PLAIN, label: "Word (DOCX)", app: "ebook-converter", job: Job::Ebook(Kind::Docx) },
     Route { from: &["dwg"], label: "PDF · sheets, merged", app: "dwg-to-pdf", job: Job::DwgMerged },
     Route { from: &["dwg"], label: "PDF · whole drawing", app: "dwg-to-pdf", job: Job::DwgWhole },
 ];
 
+/// The file's extension in lower case or, when it has none, the kind its content shows (see [`crate::sniff`]).
 pub fn ext_of(path: &Path) -> String {
-    path.extension().and_then(|e| e.to_str()).map(str::to_lowercase).unwrap_or_default()
+    crate::sniff::ext_or_kind(path)
 }
 
 /// Indices of the routes that take files of this extension.
@@ -110,7 +118,7 @@ fn canonical(ext: &str) -> &str {
 /// A route that would write the format the file already is (a PNG "converted" to PNG) is not offered.
 fn is_same_format(route: &Route, source: &str) -> bool {
     match route.job {
-        Job::Engine(_, out) | Job::Film(out, _) => out == source,
+        Job::Engine(_, out) | Job::Film(out, _) | Job::Audio(out) => out == source,
         Job::Ebook(kind) => kind.ext() == source,
         _ => false,
     }
@@ -129,6 +137,7 @@ impl Job {
         match self {
             Job::Ebook(_) => WORDCRAFT,
             Job::Engine(e, _) => e,
+            Job::Audio(_) => SOUNDCRAFT,
             Job::Film(..) => FILMCRAFT,
             Job::PdfExport(_) => PDFCRAFT,
             Job::DwgMerged | Job::DwgWhole => CADCRAFT,
@@ -140,7 +149,7 @@ impl Job {
 /// command line and the MCP server alike, so all three do exactly the same thing.
 pub fn run_route(route: &Route, src: &Path, out_dir: &Path, note: &dyn Fn(String)) -> Result<PathBuf, String> {
     let cli = engine_for(route.job)?;
-    run_with(route.job, cli, src, out_dir, note)
+    crate::sniff::with_extension(src, |s| run_with(route.job, cli, s, out_dir, note))
 }
 
 /// The engine program a job drives. An e-book job can do much without WordCraft, so for it a missing engine is
@@ -160,6 +169,11 @@ fn run_with(job: Job, cli: PathBuf, source: &Path, out_dir: &Path, note: &dyn Fn
             let spec = Spec { cli, out_ext: out_ext.to_owned(), extra_args: vec![], env: vec![] };
             job::convert_one_noted(&spec, source, out_dir, note)
         }
+        Job::Audio(out_ext) => {
+            let depth = audio_depth(&cli, source, out_ext);
+            let spec = Spec { cli, out_ext: out_ext.to_owned(), extra_args: vec!["--bit-depth".into(), depth.into()], env: vec![] };
+            job::convert_one_noted(&spec, source, out_dir, note)
+        }
         Job::Ebook(kind) => {
             let spec = Spec { cli, out_ext: kind.ext().to_owned(), extra_args: vec![], env: vec![] };
             ebook::convert(&spec, source, out_dir)
@@ -174,6 +188,37 @@ fn run_with(job: Job, cli: PathBuf, source: &Path, out_dir: &Path, note: &dyn Fn
     }
 }
 
+/// The bit depth to write so a conversion keeps the source's resolution: SoundCraft alone writes 24-bit
+/// whatever it reads, which makes a 16-bit file half again as big for nothing. 8 and 16-bit sources stay 16-bit,
+/// compressed audio (MP3, OGG, AAC) 16-bit, a float WAV becomes a float WAV, anything else (24, 32-bit) 24-bit. When `info` cannot read
+/// the file the engine's default stands and the conversion itself reports the problem.
+fn audio_depth(cli: &Path, source: &Path, out_ext: &str) -> &'static str {
+    let mut cmd = std::process::Command::new(cli);
+    cmd.arg("info").arg("--compact").arg(source);
+    cmd.stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let format = cmd
+        .output()
+        .ok()
+        .and_then(|o| serde_json::from_slice::<serde_json::Value>(&o.stdout).ok())
+        .and_then(|v| v["sample_format"].as_str().map(str::to_owned))
+        .unwrap_or_default();
+    depth_for(&format, out_ext)
+}
+
+fn depth_for(sample_format: &str, out_ext: &str) -> &'static str {
+    match sample_format {
+        // MP3, OGG, AAC... say "Compressed": they never held more than CD resolution worth keeping
+        "Int8" | "UInt8" | "Int16" | "Compressed" => "16",
+        f if f.starts_with("Float") && matches!(out_ext, "wav" | "wave") => "32f",
+        _ => "24",
+    }
+}
+
 /// Starts converting `files` (beside each source) on a worker thread. Fails at once when the route's
 /// engine cannot be found.
 pub fn start(route: &Route, files: Vec<PathBuf>, tx: mpsc::Sender<Event>, cancel: Arc<AtomicBool>) -> Result<(), String> {
@@ -185,7 +230,7 @@ pub fn start(route: &Route, files: Vec<PathBuf>, tx: mpsc::Sender<Event>, cancel
             let label = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             let out_dir = job::out_dir_for(&job::Destination::Beside, &src);
             let (cli, source) = (cli.clone(), src.clone());
-            let run: Task = Box::new(move |note| run_with(job, cli, &source, &out_dir, note));
+            let run: Task = Box::new(move |note| crate::sniff::with_extension(&source, |s| run_with(job, cli, s, &out_dir, note)));
             Item { label, source: src, run }
         })
         .collect();
@@ -220,7 +265,7 @@ pub fn shown_label(label: &str) -> String {
 /// `dwg-pdf-sheets`...). Two routes of one source never share an id.
 pub fn route_id(route: &Route) -> String {
     match route.job {
-        Job::Engine(_, ext) | Job::Film(ext, _) => ext.to_owned(),
+        Job::Engine(_, ext) | Job::Film(ext, _) | Job::Audio(ext) => ext.to_owned(),
         Job::Ebook(kind) => kind.ext().to_owned(),
         Job::PdfExport(Export::Docx) => "docx".into(),
         Job::PdfExport(Export::Pptx) => "pptx".into(),
@@ -237,7 +282,7 @@ pub fn route_id(route: &Route) -> String {
 /// The extension of the file a route writes, or `None` when it writes a folder (one picture per PDF page).
 pub fn output_ext(route: &Route) -> Option<&'static str> {
     match route.job {
-        Job::Engine(_, ext) | Job::Film(ext, _) => Some(ext),
+        Job::Engine(_, ext) | Job::Film(ext, _) | Job::Audio(ext) => Some(ext),
         Job::Ebook(kind) => Some(kind.ext()),
         Job::PdfExport(Export::Png { .. } | Export::Jpeg { .. }) => None,
         Job::PdfExport(what) => Some(what.ext()),
@@ -270,11 +315,24 @@ mod tests {
         assert_eq!(targets("aif").len(), 2);
         assert_eq!(targets("epub").len(), 4, "txt, html, pdf, docx");
         assert_eq!(targets("azw3").len(), 5, "and an epub");
-        assert_eq!(targets("txt").len(), 1);
+        assert_eq!(targets("txt").len(), 3, "epub, pdf and docx");
+        assert_eq!(targets("html").len(), 3);
+        assert!(find_route("md", "pdf").is_some());
         assert_eq!(targets("mkv").len(), 4, "mp4, mov, gif and the sound");
         assert_eq!(targets("mp4").len(), 3, "an mp4 is already an mp4");
         assert!(!targets("jpeg").iter().any(|&i| route_id(&ROUTES[i]) == "jpg"), "a .jpeg is already a jpg");
         assert!(targets("xyz").is_empty());
+    }
+
+    #[test]
+    fn audio_keeps_the_source_bit_depth() {
+        assert_eq!(depth_for("Int16", "flac"), "16");
+        assert_eq!(depth_for("UInt8", "wav"), "16");
+        assert_eq!(depth_for("Compressed", "wav"), "16", "an mp3 (sample_format seen on a real file)");
+        assert_eq!(depth_for("Int24", "flac"), "24");
+        assert_eq!(depth_for("Float32", "wav"), "32f");
+        assert_eq!(depth_for("Float32", "flac"), "24", "FLAC has no float samples");
+        assert_eq!(depth_for("", "aiff"), "24", "unreadable: the engine's own default");
     }
 
     #[test]

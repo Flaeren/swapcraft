@@ -179,7 +179,7 @@ impl ConverterApp {
                     .map(|src| {
                         let label = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                         let (spec, out_dir, source) = (spec.clone(), job::out_dir_for(&dest, src), src.clone());
-                        job::Item { label, source: src.clone(), run: Box::new(move |_| run(&spec, &source, &out_dir)) }
+                        job::Item { label, source: src.clone(), run: Box::new(move |_| vf_core::sniff::with_extension(&source, |s| run(&spec, s, &out_dir))) }
                     })
                     .collect();
                 job::spawn_tasks(items, tx, self.cancel.clone());
