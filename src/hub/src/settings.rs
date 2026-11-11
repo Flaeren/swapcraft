@@ -281,7 +281,7 @@ impl Settings {
                 }
                 ui.label(RichText::new(i18n::t("hub.pin_note")).size(12.0).color(t.faint));
 
-                // File Explorer's right-click menu: Windows only.
+                // The right-click menu: File Explorer on Windows, Nemo on Linux.
                 if vf_core::menu::SUPPORTED {
                 section(ui, t, &i18n::t("menu.sec"));
                 let on = crate::menu::installed();
@@ -310,7 +310,10 @@ impl Settings {
                 if let Some((msg, bad)) = &self.menu_msg {
                     ui.label(RichText::new(msg).size(12.0).color(if *bad { t.bad } else { t.good }));
                 }
-                ui.label(RichText::new(i18n::t("menu.drag_note")).size(12.0).color(t.faint));
+                // the right-button drag menu is File Explorer's; Nemo has no such hook
+                if cfg!(windows) {
+                    ui.label(RichText::new(i18n::t("menu.drag_note")).size(12.0).color(t.faint));
+                }
                 ui.label(RichText::new(i18n::t("menu.note")).size(12.0).color(t.faint));
                 }
 

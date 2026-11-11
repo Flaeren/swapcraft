@@ -92,6 +92,14 @@ pub fn run_from_args() -> Option<eframe::Result> {
         Some("--add-menu") => std::process::exit(if install().is_ok() { 0 } else { 1 }),
         Some("--remove-menu") => std::process::exit(if uninstall().is_ok() { 0 } else { 1 }),
         Some("--run") => {}
+        // Nemo's action: `--choose <files...>`, all the selected files at once; the window asks what to make
+        Some("--choose") => {
+            let files: Vec<PathBuf> = args[1..].iter().map(PathBuf::from).filter(|p| p.is_file()).collect();
+            if files.is_empty() {
+                return Some(Ok(()));
+            }
+            return Some(run_window(Runner::choosing(files)));
+        }
         _ => return None,
     }
     let Some(raw) = args.get(1) else { return Some(Ok(())) };
@@ -114,17 +122,25 @@ pub fn run_from_args() -> Option<eframe::Result> {
     }
     let action = Action::parse(raw);
     if let Some(Action::Open(app)) = &action {
-        // "Open in": the app itself shows the files, no window of ours.
-        if let Some(exe) = APPS.iter().find(|a| a.id == app).and_then(catalog::locate) {
-            let mut cmd = std::process::Command::new(&exe);
-            cmd.args(&files);
-            if let Some(dir) = exe.parent() {
-                cmd.current_dir(dir);
-            }
-            let _ = cmd.spawn();
-        }
+        open_in(app, &files);
         return Some(Ok(()));
     }
+    Some(run_window(Runner::start(action, files, to)))
+}
+
+/// "Open in": the app itself shows the files, no window of ours.
+fn open_in(app: &str, files: &[PathBuf]) {
+    if let Some(exe) = APPS.iter().find(|a| a.id == app).and_then(catalog::locate) {
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.args(files);
+        if let Some(dir) = exe.parent() {
+            cmd.current_dir(dir);
+        }
+        let _ = cmd.spawn();
+    }
+}
+
+fn run_window(runner: Runner) -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([540.0, 340.0])
@@ -134,14 +150,53 @@ pub fn run_from_args() -> Option<eframe::Result> {
         wgpu_options: vf_ui::shell::wgpu_config(),
         ..Default::default()
     };
-    Some(eframe::run_native(
+    eframe::run_native(
         "voidflare-run",
         options,
         Box::new(move |cc| {
             theme::install(&cc.egui_ctx);
-            Ok(Box::new(Runner::start(action, files, to)))
+            Ok(Box::new(runner))
         }),
-    ))
+    )
+}
+
+impl Runner {
+    fn choose_ui(&mut self, ui: &mut egui::Ui, t: &Tokens, files: Vec<PathBuf>) {
+        let entries = Self::choices(&files);
+        let mut picked = None;
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(t.bg).inner_margin(18.0)).show(ui, |ui| {
+            ui.label(RichText::new(&self.title).size(17.0).color(t.ink_strong));
+            ui.add_space(4.0);
+            let names: Vec<String> = files.iter().take(3).map(|f| f.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()).collect();
+            let more = if files.len() > 3 { format!("  {}", trf("hub.more", &[("n", &(files.len() - 3).to_string())])) } else { String::new() };
+            ui.label(RichText::new(format!("{}{more}", names.join("  ·  "))).font(mono(11.5)).color(t.faint));
+            ui.add_space(12.0);
+            if entries.is_empty() {
+                ui.label(RichText::new(tr("hub.nothing_convertible")).color(t.bad));
+            }
+            egui::ScrollArea::vertical().auto_shrink([false, true]).show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
+                    for e in &entries {
+                        if e.separator {
+                            ui.end_row();
+                        }
+                        if ui.add(egui::Button::new(RichText::new(&e.label).size(13.0)).min_size(vec2(0.0, 30.0))).clicked() {
+                            picked = Some(e.action.clone());
+                        }
+                    }
+                });
+            });
+        });
+        match picked {
+            Some(Action::Open(app)) => {
+                open_in(&app, &files);
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Some(action) => *self = Runner::start(Some(action), files, None),
+            None => {}
+        }
+    }
 }
 
 /// The files of a drag-and-drop click: one path per line, written by the DLL in `%TEMP%\voidflare-menu`. The list
@@ -167,6 +222,8 @@ struct Runner {
     /// A recipe: progress counts steps, not files.
     by_steps: bool,
     started: usize,
+    /// From Nemo: the files waiting for a choice of format, recipe or app (nothing runs yet).
+    choosing: Option<Vec<PathBuf>>,
 }
 
 impl Runner {
@@ -220,13 +277,41 @@ impl Runner {
             }
         };
         let running = total > 0;
-        Runner { title, rx: running.then_some(rx), log, progress: (0, total), done: !running, last_dir: None, _cancel: cancel, by_steps, started: 0 }
+        Runner { title, rx: running.then_some(rx), log, progress: (0, total), done: !running, last_dir: None, _cancel: cancel, by_steps, started: 0, choosing: None }
+    }
+
+    fn choosing(files: Vec<PathBuf>) -> Self {
+        let mut r = Runner::start(None, Vec::new(), None);
+        r.log.clear();
+        r.title = tr("menu.title");
+        r.choosing = Some(files);
+        r
+    }
+
+    /// What every one of `files` can become, the recipes that take them all, and the apps for them: the same
+    /// entries as the Windows menu, kept to those that suit the whole selection.
+    fn choices(files: &[PathBuf]) -> Vec<menu::Entry> {
+        let recipes = recipe::load().unwrap_or_default();
+        let mut exts: Vec<String> = files.iter().map(|f| routes::ext_of(f)).collect();
+        exts.sort();
+        exts.dedup();
+        let all = |ext: &str| menu::entries(ext, &recipes, &texts(), &app_name);
+        let mut entries = all(&exts[0]);
+        for ext in &exts[1..] {
+            let other = all(ext);
+            entries.retain(|e| other.iter().any(|o| o.action == e.action));
+        }
+        entries
     }
 }
 
 impl eframe::App for Runner {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let t = Tokens::get(ui.ctx());
+        if let Some(files) = self.choosing.clone() {
+            self.choose_ui(ui, &t, files);
+            return;
+        }
         if let Some(rx) = &self.rx {
             // A recipe reports a start per step and its results at the end: count the steps as progress.
             let before = self.log.len();

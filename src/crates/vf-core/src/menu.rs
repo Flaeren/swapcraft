@@ -226,12 +226,44 @@ fn state_file() -> Option<PathBuf> {
     crate::platform::data_file("menu.txt")
 }
 
-/// Whether this system has the menu at all: it lives in File Explorer, so only Windows. (Linux file managers
-/// each have their own way, not done yet.)
-pub const SUPPORTED: bool = cfg!(windows);
+/// Whether this system has the menu at all: File Explorer on Windows; on Linux, Nemo (Linux Mint's file manager),
+/// through its "actions". Other Linux file managers have their own ways, not done.
+pub const SUPPORTED: bool = cfg!(windows) || cfg!(target_os = "linux");
+
+/// Nemo's action file: `$XDG_DATA_HOME/nemo/actions/swapcraft.nemo_action` (normally `~/.local/share/...`).
+pub fn nemo_action_path() -> Option<PathBuf> {
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").filter(|v| !v.is_empty()).map(|h| PathBuf::from(h).join(".local").join("share")))?;
+    Some(base.join("nemo").join("actions").join("swapcraft.nemo_action"))
+}
+
+/// The Nemo action: one entry, "Convert with SwapCraft", on files of every type SwapCraft converts; it starts the
+/// hub with `--choose` and the selected files, which opens the small window to pick the format, a recipe or an
+/// app. (One entry per format would put ten lines in the menu of a PDF: Nemo actions have no submenus.)
+pub fn nemo_action(exe: &Path, title: &str, exts: &[&str]) -> String {
+    let icon = exe.with_file_name("swapcraft.png");
+    let title = title.replace('\n', " ");
+    let mut text = String::from("[Nemo Action]\n");
+    text += &format!("Name={title}\n");
+    text += &format!("Comment={title}\n");
+    // the program's path in double quotes (it may hold spaces); each file quoted by Nemo itself
+    text += &format!("Exec=\"{}\" --choose %F\n", exe.display());
+    if icon.is_file() {
+        text += &format!("Icon-Name={}\n", icon.display());
+    }
+    text += "Selection=notnone\n";
+    text += &format!("Extensions={};\n", exts.join(";"));
+    text += "Quote=double\n";
+    text
+}
 
 /// Whether the menu was added (and not removed since).
 pub fn installed() -> bool {
+    if !cfg!(windows) {
+        return nemo_action_path().is_some_and(|p| p.is_file());
+    }
     SUPPORTED
         && state_file().and_then(|p| fs::read_to_string(p).ok()).is_some_and(|t| t.lines().any(|l| !l.trim().is_empty()))
 }
@@ -280,6 +312,22 @@ pub fn install(exe: &Path, recipes: &[Recipe], texts: &Texts, app_name: &dyn Fn(
     if !SUPPORTED {
         return Err("The right-click menu exists only in Windows File Explorer.".to_owned());
     }
+    if !cfg!(windows) {
+        let _ = (recipes, app_name);
+        let exts: Vec<&str> = routes::known_exts();
+        let path = nemo_action_path().ok_or("Cannot find your home folder.")?;
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        fs::write(&path, nemo_action(exe, &texts.title, &exts)).map_err(|e| e.to_string())?;
+        if let Some(p) = state_file() {
+            if let Some(dir) = p.parent() {
+                let _ = fs::create_dir_all(dir);
+            }
+            fs::write(p, exts.join("\n")).map_err(|e| e.to_string())?;
+        }
+        return Ok(exts.len());
+    }
     // Types from an older version that this one no longer converts go first.
     let now: Vec<String> = routes::known_exts().into_iter().map(str::to_owned).collect();
     let stale: Vec<String> = remembered_exts().into_iter().filter(|e| !now.contains(e)).collect();
@@ -300,6 +348,19 @@ pub fn install(exe: &Path, recipes: &[Recipe], texts: &Texts, app_name: &dyn Fn(
 
 /// Removes the menu from every type it was added to.
 pub fn uninstall() -> Result<(), String> {
+    if !cfg!(windows) {
+        if let Some(p) = nemo_action_path() {
+            match fs::remove_file(&p) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+        if let Some(p) = state_file() {
+            let _ = fs::remove_file(p);
+        }
+        return Ok(());
+    }
     let mut exts = remembered_exts();
     for e in routes::known_exts() {
         if !exts.iter().any(|x| x == e) {
