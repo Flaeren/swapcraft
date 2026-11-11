@@ -183,6 +183,9 @@ impl Settings {
                     for l in Lang::ALL {
                         if ui.selectable_value(&mut self.lang, l, RichText::new(l.name()).font(FontId::proportional(13.0))).clicked() {
                             i18n::set_language(l, true);
+                            ui.ctx().request_repaint();
+                            // the File Explorer menu is written in the language of its time: write it again in the new one
+                            crate::menu::refresh(&vf_core::recipe::load().unwrap_or_default());
                         }
                     }
                 });

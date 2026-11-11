@@ -208,6 +208,9 @@ impl Appearance {
         BLACK_ON.store(black, Ordering::Relaxed);
         ctx.set_visuals_of(egui::Theme::Dark, visuals(if black { &Tokens::BLACK } else { &Tokens::DARK }));
         ctx.set_theme(self.preference());
+        // the frame that applied it was drawn in the old colours: draw again now, not at the next mouse move
+        // (on a test PC the hub stayed dark for 1 to 3 s after choosing Light)
+        ctx.request_repaint();
     }
 }
 
