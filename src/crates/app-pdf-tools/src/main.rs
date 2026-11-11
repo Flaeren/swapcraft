@@ -344,6 +344,14 @@ impl PdfTools {
     /// The Convert button, the progress and the log: in a bar along the bottom of the window, always in view
     /// whatever the height of the screen (on a 1280x800 laptop they used to sit below the fold).
     fn actions(&mut self, ui: &mut egui::Ui, tk: &Tokens) {
+        // the log above, the buttons always at the bottom: they must not move when a run starts and the log
+        // appears (a click aimed at Cancel would land on nothing)
+        if !self.log.is_empty() || self.running {
+            widgets::log_view(ui, tk, &self.log);
+            ui.add_space(10.0);
+        }
+        widgets::progress(ui, self.progress.0, self.progress.1);
+        ui.add_space(10.0);
         ui.horizontal(|ui| {
             let go = t(&format!("app.go.{}", self.mode.key()));
             if widgets::primary(ui, tk, &go, !self.running && self.cli.is_some()).clicked() {
@@ -356,13 +364,6 @@ impl PdfTools {
                 ui.checkbox(&mut self.open_when_done, t("ui.open_when_done"));
             });
         });
-        ui.add_space(10.0);
-        widgets::progress(ui, self.progress.0, self.progress.1);
-        // the log takes room only once there is something in it, so the options keep the most space
-        if !self.log.is_empty() || self.running {
-            ui.add_space(10.0);
-            widgets::log_view(ui, tk, &self.log);
-        }
     }
 }
 

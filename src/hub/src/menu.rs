@@ -201,9 +201,9 @@ fn run_window(runner: Runner) -> eframe::Result {
         .with_inner_size(if card { CARD } else { [540.0, 340.0] })
         .with_min_inner_size(if card { CARD } else { [420.0, 260.0] })
         .with_decorations(!card);
-    let viewport = if card { viewport.with_always_on_top() } else { viewport };
+    let viewport = if card { viewport.with_always_on_top().with_taskbar(false) } else { viewport };
     // the choice has a title of its own, not the hub's, to tell the two apart in the window list
-    let title = if card { "SwapCraft".to_owned() } else { tr("menu.title") };
+    let title = if card { "SwapCraft".to_owned() } else { runner.title.clone() };
     let options = eframe::NativeOptions {
         viewport: viewport
             .with_title(title)
@@ -414,6 +414,9 @@ impl Runner {
         let mut exts: Vec<String> = files.iter().map(|f| routes::ext_of(f)).collect();
         exts.sort();
         exts.dedup();
+        if exts.is_empty() {
+            return Vec::new();
+        }
         let all = |ext: &str| menu::entries(ext, &recipes, &texts(), &app_name);
         let mut entries = all(&exts[0]);
         for ext in &exts[1..] {
@@ -514,6 +517,7 @@ impl Runner {
         let size = if self.details { CARD_DETAILS } else { CARD };
         ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(false));
         ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(egui::WindowLevel::AlwaysOnTop));
+        ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(vec2(CARD[0], CARD[1])));
         ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(vec2(size[0], size[1])));
         ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(monitor.x - size[0] - 24.0, monitor.y - size[1] - 72.0)));
         round_corners(frame);

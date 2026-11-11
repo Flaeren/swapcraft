@@ -244,7 +244,7 @@ pub fn nemo_here_action(exe: &Path, title: &str) -> String {
     text += &format!("Name={}\n", english.replace('\n', " "));
     for lang in crate::i18n::Lang::ALL {
         if let Some(name) = crate::i18n::t_in(lang, "menu.here") {
-            text += &format!("Name[{}]={}\n", lang.code(), name.replace('\n', " "));
+            text += &format!("Name[{0}]={1}\nComment[{0}]={1}\n", lang.code(), name.replace('\n', " "));
         }
     }
     text += &format!("Comment={}\n", english.replace('\n', " "));
@@ -288,7 +288,7 @@ pub fn nemo_action(exe: &Path, title: &str, exts: &[&str]) -> String {
     text += &format!("Name={}\n", english.replace('\n', " "));
     for lang in crate::i18n::Lang::ALL {
         if let Some(name) = crate::i18n::t_in(lang, "menu.title") {
-            text += &format!("Name[{}]={}\n", lang.code(), name.replace('\n', " "));
+            text += &format!("Name[{0}]={1}\nComment[{0}]={1}\n", lang.code(), name.replace('\n', " "));
         }
     }
     text += &format!("Comment={title}\n");

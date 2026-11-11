@@ -253,7 +253,8 @@ pub fn finish(all: &[Outcome], log: &mut Vec<(String, Kind)>, open_folder: bool)
     let ok: Vec<&Outcome> = all.iter().filter(|o| o.result.is_ok()).collect();
     let bad = all.len() - ok.len();
     let line = tf("ui.finished", &[("ok", &ok.len().to_string()), ("bad", &bad.to_string())]);
-    log.push((line, if bad > 0 { Kind::Bad } else { Kind::Good }));
+    let cancelled = log.last().is_some_and(|(l, _)| *l == t("ui.cancelled"));
+    log.push((line, if bad > 0 { Kind::Bad } else if cancelled { Kind::Plain } else { Kind::Good }));
     if open_folder
         && let Some(Ok(path)) = ok.last().map(|o| &o.result)
         && let Some(dir) = if path.is_dir() { Some(path.as_path()) } else { path.parent() }
@@ -414,6 +415,14 @@ impl ConverterApp {
     /// The Convert button, the progress and the log: in a bar along the bottom of the window, always in view
     /// whatever the height of the screen (on a 1280x800 laptop they used to sit below the fold).
     fn actions(&mut self, ui: &mut egui::Ui, tk: &Tokens) {
+        // the log above, the buttons always at the bottom: they must not move when a run starts and the log
+        // appears (a click aimed at Cancel would land on nothing)
+        if !self.log.is_empty() || self.running {
+            widgets::log_view(ui, tk, &self.log);
+            ui.add_space(10.0);
+        }
+        widgets::progress(ui, self.progress.0, self.progress.1);
+        ui.add_space(10.0);
         ui.horizontal(|ui| {
             if widgets::primary(ui, tk, &t("app.convert"), !self.running && self.cli.is_some()).clicked() {
                 self.start();
@@ -425,13 +434,6 @@ impl ConverterApp {
                 ui.checkbox(&mut self.open_when_done, t("ui.open_when_done"));
             });
         });
-        ui.add_space(10.0);
-        widgets::progress(ui, self.progress.0, self.progress.1);
-        // the log takes room only once there is something in it, so the options keep the most space
-        if !self.log.is_empty() || self.running {
-            ui.add_space(10.0);
-            widgets::log_view(ui, tk, &self.log);
-        }
     }
 }
 
@@ -474,7 +476,7 @@ pub fn fit_to_screen(ctx: &egui::Context) {
         let size = egui::vec2(inner.width().min(max_w), inner.height().min(max_h));
         ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
         // and back inside the screen, below where a top panel would be
-        let pos = egui::pos2(((monitor.x - size.x) / 2.0).max(0.0), 40.0);
+        let pos = egui::pos2(((monitor.x - size.x) / 2.0).max(0.0), ((monitor.y - size.y) / 2.0 - 20.0).max(40.0));
         ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
     }
 }
