@@ -381,6 +381,8 @@ pub fn run(recipe: &Recipe, files: &[PathBuf], tx: &mpsc::Sender<Event>, cancel:
             }
             match run_step(step, &t.current, &dir, &note) {
                 Ok(out) => next.push(Track { source: t.source, current: out }),
+                // stopped by Cancel in the middle of the step: not a failure of this file
+                Err(e) if e == crate::job::CANCELLED => {}
                 Err(e) => outcomes.push(Outcome { source: t.source, result: Err(format!("{}: {e}", step.shown())) }),
             }
         }
@@ -408,7 +410,10 @@ pub fn run(recipe: &Recipe, files: &[PathBuf], tx: &mpsc::Sender<Event>, cancel:
 
 /// [`run`] on a new thread.
 pub fn spawn(recipe: Recipe, files: Vec<PathBuf>, tx: mpsc::Sender<Event>, cancel: Arc<AtomicBool>) {
-    std::thread::spawn(move || run(&recipe, &files, &tx, &cancel));
+    std::thread::spawn(move || {
+        crate::job::watch_cancel(&cancel);
+        run(&recipe, &files, &tx, &cancel);
+    });
 }
 
 fn run_step(step: &Step, input: &Path, dir: &Path, note: &dyn Fn(String)) -> Result<PathBuf, String> {

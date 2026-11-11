@@ -98,7 +98,13 @@ pub fn run_from_args() -> Option<eframe::Result> {
             if files.is_empty() {
                 return Some(Ok(()));
             }
-            return Some(run_window(Runner::choosing(files)));
+            return Some(run_window(Runner::choosing(files, None)));
+        }
+        // Nemo's "Convert here": `--here <folder>`, the files copied with Ctrl+C go there
+        Some("--here") => {
+            let Some(dir) = args.get(1).map(PathBuf::from).filter(|d| d.is_dir()) else { return Some(Ok(())) };
+            let files = copied_files();
+            return Some(run_window(Runner::choosing(files, Some(dir))));
         }
         _ => return None,
     }
@@ -128,6 +134,54 @@ pub fn run_from_args() -> Option<eframe::Result> {
     Some(run_window(Runner::start(action, files, to)))
 }
 
+/// The files copied (or cut) with Ctrl+C in the file manager: the clipboard's list of files, else its text when every
+/// line is a file. Folders are left out (the conversions take files). Empty when there is none.
+fn copied_files() -> Vec<PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        let Ok(mut clip) = arboard::Clipboard::new() else { return Vec::new() };
+        let listed = clip.get().file_list().unwrap_or_default();
+        let files: Vec<PathBuf> = if listed.is_empty() {
+            let text = clip.get_text().unwrap_or_default();
+            let lines: Vec<PathBuf> = text
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty() && *l != "copy" && *l != "cut")
+                .map(|l| PathBuf::from(l.strip_prefix("file://").map_or_else(|| l.to_owned(), percent_decode)))
+                .collect();
+            if !lines.is_empty() && lines.iter().all(|p| p.is_absolute() && p.exists()) { lines } else { Vec::new() }
+        } else {
+            listed
+        };
+        files.into_iter().filter(|p| p.is_file()).collect()
+    }
+    #[cfg(not(target_os = "linux"))]
+    Vec::new()
+}
+
+/// `%20` and the like in a `file://` address back to the characters (UTF-8).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && b[i + 1].is_ascii_hexdigit()
+            && b[i + 2].is_ascii_hexdigit()
+            && let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16)
+        {
+            out.push(v);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// "Open in": the app itself shows the files, no window of ours.
 fn open_in(app: &str, files: &[PathBuf]) {
     if let Some(exe) = APPS.iter().find(|a| a.id == app).and_then(catalog::locate) {
@@ -148,9 +202,11 @@ fn run_window(runner: Runner) -> eframe::Result {
         .with_min_inner_size(if card { CARD } else { [420.0, 260.0] })
         .with_decorations(!card);
     let viewport = if card { viewport.with_always_on_top() } else { viewport };
+    // the choice has a title of its own, not the hub's, to tell the two apart in the window list
+    let title = if card { "SwapCraft".to_owned() } else { tr("menu.title") };
     let options = eframe::NativeOptions {
         viewport: viewport
-            .with_title("SwapCraft")
+            .with_title(title)
             .with_icon(vf_ui::shell::window_icon(include_bytes!("../assets/app_icon.rgba"))),
         wgpu_options: vf_ui::shell::wgpu_config(),
         centered: !card,
@@ -168,8 +224,10 @@ fn run_window(runner: Runner) -> eframe::Result {
 
 impl Runner {
     fn choose_ui(&mut self, ui: &mut egui::Ui, t: &Tokens, files: Vec<PathBuf>) {
+        vf_ui::shell::fit_to_screen(ui.ctx());
         let entries = Self::choices(&files);
         let mut picked = None;
+        let mut close = false;
         egui::CentralPanel::default().frame(egui::Frame::new().fill(t.bg).inner_margin(18.0)).show(ui, |ui| {
             ui.label(RichText::new(&self.title).size(17.0).color(t.ink_strong));
             ui.add_space(4.0);
@@ -177,8 +235,20 @@ impl Runner {
             let more = if files.len() > 3 { format!("  {}", trf("hub.more", &[("n", &(files.len() - 3).to_string())])) } else { String::new() };
             ui.label(RichText::new(format!("{}{more}", names.join("  ·  "))).font(mono(11.5)).color(t.faint));
             ui.add_space(12.0);
-            if entries.is_empty() {
-                ui.label(RichText::new(tr("hub.nothing_convertible")).color(t.bad));
+            if files.is_empty() {
+                ui.label(RichText::new(tr("menu.here_empty")).color(t.bad));
+                ui.add_space(12.0);
+                if widgets::button(ui, &tr("hub.close")).clicked() {
+                    close = true;
+                }
+            } else if entries.is_empty() {
+                // each file may convert on its own: they only have no format in common
+                let said = if files.len() > 1 { tr("menu.no_common") } else { tr("hub.nothing_convertible") };
+                ui.label(RichText::new(said).color(t.bad));
+                ui.add_space(12.0);
+                if widgets::button(ui, &tr("hub.close")).clicked() {
+                    close = true;
+                }
             }
             egui::ScrollArea::vertical().auto_shrink([false, true]).show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
@@ -194,12 +264,15 @@ impl Runner {
                 });
             });
         });
+        if close {
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+        }
         match picked {
             Some(Action::Open(app)) => {
                 open_in(&app, &files);
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
             }
-            Some(action) => *self = Runner::start(Some(action), files, None),
+            Some(action) => *self = Runner::start(Some(action), files, self.here.clone()),
             None => {}
         }
     }
@@ -241,6 +314,10 @@ struct Runner {
     /// The window has become the card (no title bar, bottom right).
     placed: bool,
     icon: Option<egui::TextureHandle>,
+    /// × was pressed while it ran: the engine is being stopped, and the window closes when it has.
+    closing: bool,
+    /// Nemo's "Convert here": the folder the results go to.
+    here: Option<PathBuf>,
 }
 
 impl Runner {
@@ -314,15 +391,19 @@ impl Runner {
             done_at: None,
             placed: false,
             icon: None,
+            closing: false,
+            here: None,
         }
     }
 
-    fn choosing(files: Vec<PathBuf>) -> Self {
+    /// `to`: the folder the results go to (Nemo's "Convert here"); None = beside each file.
+    fn choosing(files: Vec<PathBuf>, to: Option<PathBuf>) -> Self {
         let mut r = Runner::start(None, Vec::new(), None);
         r.log.clear();
         r.done = false;
-        r.title = tr("menu.title");
+        r.title = tr(if to.is_some() { "menu.here" } else { "menu.title" });
         r.choosing = Some(files);
+        r.here = to;
         r
     }
 
@@ -361,6 +442,8 @@ impl eframe::App for Runner {
         self.poll();
         if !self.done {
             ctx.request_repaint_after(Duration::from_millis(80));
+        } else if self.closing {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         let hovered = ctx.input(|i| i.pointer.hover_pos().is_some());
         if let Some(at) = self.done_at
@@ -455,7 +538,13 @@ impl Runner {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let close = ui.add(egui::Button::new(RichText::new("×").size(16.0).color(t.muted)).frame(false));
                         if close.on_hover_text(tr("hub.close")).clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            if self.done {
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            } else {
+                                // closing at once would leave the engine working on with nobody waiting for it
+                                self._cancel.store(true, Ordering::Relaxed);
+                                self.closing = true;
+                            }
                         }
                     });
                 });

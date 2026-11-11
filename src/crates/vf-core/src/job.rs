@@ -151,6 +151,24 @@ pub fn deliver(file: &Path, out_dir: &Path, name: &str) -> Result<PathBuf, Strin
     Ok(out)
 }
 
+thread_local! {
+    /// The Cancel switch of the work this thread runs ([`spawn_tasks`], a recipe): an engine running when it is
+    /// pressed is stopped at once, not at the end of its file.
+    static CANCEL: std::cell::RefCell<Option<Arc<AtomicBool>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// What a stopped engine returns: never shown, the caller reports "Cancelled" instead.
+pub const CANCELLED: &str = "\u{1}cancelled";
+
+/// Ties the engines run on this thread to `flag` (see [`CANCEL`]).
+pub fn watch_cancel(flag: &Arc<AtomicBool>) {
+    CANCEL.with(|c| *c.borrow_mut() = Some(Arc::clone(flag)));
+}
+
+fn cancel_pressed() -> bool {
+    CANCEL.with(|c| c.borrow().as_ref().is_some_and(|f| f.load(Ordering::Relaxed)))
+}
+
 /// Runs `cmd` with `tmp` as its folder, no console window and a time limit; stdout and stderr go to
 /// files in `tmp` so a chatty engine can never fill a pipe. A failure returns the engine's last line.
 pub fn run_command(cmd: &mut Command, tmp: &Path) -> Result<(), String> {
@@ -178,6 +196,11 @@ pub fn run_command_for(cmd: &mut Command, tmp: &Path, limit: Duration) -> Result
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err(crate::tf("job.timeout", &[("m", &(limit.as_secs() / 60).to_string())]));
+            }
+            None if cancel_pressed() => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(CANCELLED.to_owned());
             }
             None => std::thread::sleep(Duration::from_millis(20)),
         }
@@ -221,6 +244,7 @@ pub type Task = Box<dyn FnOnce(&dyn Fn(String)) -> Result<PathBuf, String> + Sen
 /// Runs the items in turn on a new thread, reporting through `tx`. `cancel` stops it between items.
 pub fn spawn_tasks(items: Vec<Item>, tx: mpsc::Sender<Event>, cancel: Arc<AtomicBool>) {
     std::thread::spawn(move || {
+        watch_cancel(&cancel);
         let total = items.len();
         let mut all = Vec::new();
         for (i, item) in items.into_iter().enumerate() {
@@ -232,7 +256,13 @@ pub fn spawn_tasks(items: Vec<Item>, tx: mpsc::Sender<Event>, cancel: Arc<Atomic
             let notify = |text: String| {
                 let _ = tx.send(Event::Note(text));
             };
-            let outcome = Outcome { source: item.source, result: (item.run)(&notify) };
+            let result = (item.run)(&notify);
+            // stopped in the middle: not a failure of the file, and nothing after it runs
+            if cancel.load(Ordering::Relaxed) && result.is_err() {
+                let _ = tx.send(Event::Cancelled);
+                break;
+            }
+            let outcome = Outcome { source: item.source, result };
             all.push(outcome.clone());
             let _ = tx.send(Event::Done { index: i, outcome });
         }
@@ -264,6 +294,32 @@ pub fn spawn_batch(spec: Spec, files: Vec<PathBuf>, dest: Destination, tx: mpsc:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cancel_stops_a_running_engine_at_once() {
+        let flag = Arc::new(AtomicBool::new(false));
+        watch_cancel(&flag);
+        let tmp = scratch_dir().unwrap();
+        // something that would run for half a minute
+        let mut cmd = if cfg!(windows) {
+            let mut c = Command::new("ping");
+            c.args(["-n", "30", "127.0.0.1"]);
+            c
+        } else {
+            let mut c = Command::new("sleep");
+            c.arg("30");
+            c
+        };
+        let f = Arc::clone(&flag);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            f.store(true, Ordering::Relaxed);
+        });
+        let started = Instant::now();
+        assert_eq!(run_command(&mut cmd, &tmp), Err(CANCELLED.to_owned()));
+        assert!(started.elapsed() < Duration::from_secs(3), "stopped in {:?}", started.elapsed());
+        let _ = fs::remove_dir_all(&tmp);
+    }
 
     #[test]
     fn unique_names() {

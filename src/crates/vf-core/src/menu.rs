@@ -230,6 +230,42 @@ fn state_file() -> Option<PathBuf> {
 /// through its "actions". Other Linux file managers have their own ways, not done.
 pub const SUPPORTED: bool = cfg!(windows) || cfg!(target_os = "linux");
 
+/// The second Nemo action: "Convert here with SwapCraft" on the empty space of a folder. It converts the files
+/// copied with Ctrl+C into that folder: the nearest thing to Windows' drag with the right mouse button, which
+/// Nemo has no way to extend.
+pub fn nemo_here_path() -> Option<PathBuf> {
+    nemo_action_path().map(|p| p.with_file_name("swapcraft-here.nemo_action"))
+}
+
+pub fn nemo_here_action(exe: &Path, title: &str) -> String {
+    let icon = exe.with_file_name("swapcraft.png");
+    let english = crate::i18n::t_in(crate::i18n::Lang::En, "menu.here").unwrap_or_else(|| title.to_owned());
+    let mut text = String::from("[Nemo Action]\n");
+    text += &format!("Name={}\n", english.replace('\n', " "));
+    for lang in crate::i18n::Lang::ALL {
+        if let Some(name) = crate::i18n::t_in(lang, "menu.here") {
+            text += &format!("Name[{}]={}\n", lang.code(), name.replace('\n', " "));
+        }
+    }
+    text += &format!("Comment={}\n", english.replace('\n', " "));
+    text += &format!("Exec=\"{}\" --here %P\n", exe.display());
+    if icon.is_file() {
+        text += &format!("Icon-Name={}\n", icon.display());
+    }
+    // a click on the empty space of the folder, not on a file
+    text += "Selection=none\nExtensions=any;\nQuote=double\n";
+    text
+}
+
+/// Whether the menu starts this program: false when it was added by a copy elsewhere. Windows: not known (the
+/// registry entries are many), so true.
+pub fn points_here(exe: &Path) -> bool {
+    if cfg!(windows) {
+        return true;
+    }
+    nemo_action_path().and_then(|p| fs::read_to_string(p).ok()).is_some_and(|t| t.contains(&format!("Exec=\"{}\"", exe.display())))
+}
+
 /// Nemo's action file: `$XDG_DATA_HOME/nemo/actions/swapcraft.nemo_action` (normally `~/.local/share/...`).
 pub fn nemo_action_path() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_DATA_HOME")
@@ -246,7 +282,15 @@ pub fn nemo_action(exe: &Path, title: &str, exts: &[&str]) -> String {
     let icon = exe.with_file_name("swapcraft.png");
     let title = title.replace('\n', " ");
     let mut text = String::from("[Nemo Action]\n");
-    text += &format!("Name={title}\n");
+    // English by default and the entry in each of SwapCraft's languages, which Nemo picks by the desktop's
+    // language (`Name[it]=...`); `title` (the current language's) when the catalog is not loaded
+    let english = crate::i18n::t_in(crate::i18n::Lang::En, "menu.title").unwrap_or_else(|| title.clone());
+    text += &format!("Name={}\n", english.replace('\n', " "));
+    for lang in crate::i18n::Lang::ALL {
+        if let Some(name) = crate::i18n::t_in(lang, "menu.title") {
+            text += &format!("Name[{}]={}\n", lang.code(), name.replace('\n', " "));
+        }
+    }
     text += &format!("Comment={title}\n");
     // the program's path in double quotes (it may hold spaces); each file quoted by Nemo itself
     text += &format!("Exec=\"{}\" --choose %F\n", exe.display());
@@ -254,7 +298,8 @@ pub fn nemo_action(exe: &Path, title: &str, exts: &[&str]) -> String {
         text += &format!("Icon-Name={}\n", icon.display());
     }
     text += "Selection=notnone\n";
-    text += &format!("Extensions={};\n", exts.join(";"));
+    // `none`: files with no extension too (Linux editors save "notes"); the window tells them by their content
+    text += &format!("Extensions={};none;\n", exts.join(";"));
     text += "Quote=double\n";
     text
 }
@@ -320,6 +365,9 @@ pub fn install(exe: &Path, recipes: &[Recipe], texts: &Texts, app_name: &dyn Fn(
             fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
         fs::write(&path, nemo_action(exe, &texts.title, &exts)).map_err(|e| e.to_string())?;
+        if let Some(here) = nemo_here_path() {
+            fs::write(here, nemo_here_action(exe, &texts.here)).map_err(|e| e.to_string())?;
+        }
         if let Some(p) = state_file() {
             if let Some(dir) = p.parent() {
                 let _ = fs::create_dir_all(dir);
@@ -349,7 +397,7 @@ pub fn install(exe: &Path, recipes: &[Recipe], texts: &Texts, app_name: &dyn Fn(
 /// Removes the menu from every type it was added to.
 pub fn uninstall() -> Result<(), String> {
     if !cfg!(windows) {
-        if let Some(p) = nemo_action_path() {
+        for p in [nemo_action_path(), nemo_here_path()].into_iter().flatten() {
             match fs::remove_file(&p) {
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}

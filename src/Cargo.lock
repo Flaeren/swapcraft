@@ -3295,6 +3295,7 @@ dependencies = [
 name = "voidflare-hub"
 version = "0.6.0"
 dependencies = [
+ "arboard",
  "eframe",
  "egui",
  "raw-window-handle",

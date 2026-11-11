@@ -470,7 +470,7 @@ pub fn fit_to_screen(ctx: &egui::Context) {
     let max_w = (monitor.x - 40.0).max(640.0);
     // a bottom edge in the last 48 px is under a taskbar or a panel
     let low = outer.is_some_and(|o| o.bottom() > monitor.y - 48.0);
-    if inner.height() > max_h || inner.width() > max_w || low {
+    if inner.height() > max_h || inner.width() > max_w || low || !cfg!(windows) {
         let size = egui::vec2(inner.width().min(max_w), inner.height().min(max_h));
         ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
         // and back inside the screen, below where a top panel would be

@@ -119,6 +119,15 @@ pub fn set_language(lang: Lang, remember: bool) {
     }
 }
 
+/// The text for `key` in `lang`, whatever the current language (a Nemo action carries its name in every one).
+/// English when that language has no translation; `None` when the key is unknown.
+pub fn t_in(lang: Lang, key: &str) -> Option<String> {
+    let s = state().read().unwrap();
+    let row = s.rows.get(key)?;
+    let own = &row[lang.column()];
+    Some(if own.is_empty() { row[0].clone() } else { own.clone() })
+}
+
 /// The text for `key` in the current language. On Linux a row `key@linux` wins over `key` when the catalog has
 /// one: the few texts that name Windows things (the Start menu, File Explorer) have a Linux wording there.
 pub fn t(key: &str) -> String {

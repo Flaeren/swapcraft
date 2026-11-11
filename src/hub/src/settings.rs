@@ -294,7 +294,8 @@ impl Settings {
                                 Err(e) => (e, true),
                             });
                         }
-                        if ui.button(RichText::new(i18n::t("menu.btn_rewrite")).font(FontId::proportional(12.5))).on_hover_text(i18n::t("menu.btn_rewrite_hint")).clicked() {
+                        let elsewhere = cfg!(windows) || !std::env::current_exe().is_ok_and(|exe| vf_core::menu::points_here(&exe));
+                        if elsewhere && ui.button(RichText::new(i18n::t("menu.btn_rewrite")).font(FontId::proportional(12.5))).on_hover_text(i18n::t("menu.btn_rewrite_hint")).clicked() {
                             self.menu_msg = Some(match crate::menu::install() {
                                 Ok(n) => (i18n::tf("menu.added", &[("n", &n.to_string())]), false),
                                 Err(e) => (e, true),
@@ -313,6 +314,8 @@ impl Settings {
                 // the right-button drag menu is File Explorer's; Nemo has no such hook
                 if cfg!(windows) {
                     ui.label(RichText::new(i18n::t("menu.drag_note")).size(12.0).color(t.faint));
+                } else {
+                    ui.label(RichText::new(i18n::t("menu.here_note")).size(12.0).color(t.faint));
                 }
                 ui.label(RichText::new(i18n::t("menu.note")).size(12.0).color(t.faint));
                 }

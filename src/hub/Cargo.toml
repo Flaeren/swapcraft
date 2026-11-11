@@ -15,6 +15,10 @@ vf-core.workspace = true
 rfd = "0.17"
 
 # The progress card of the right-click menu asks Windows 11 for rounded corners (it has no title bar).
+# "Convert here" in Nemo reads the files copied with Ctrl+C (text/uri-list, X11 and Wayland).
+[target.'cfg(target_os = "linux")'.dependencies]
+arboard = { version = "3.7.0", default-features = false, features = ["wayland-data-control"] }
+
 [target.'cfg(windows)'.dependencies]
 raw-window-handle = "0.6.2"
 windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
