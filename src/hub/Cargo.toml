@@ -14,6 +14,11 @@ vf-ui.workspace = true
 vf-core.workspace = true
 rfd = "0.17"
 
+# The progress card of the right-click menu asks Windows 11 for rounded corners (it has no title bar).
+[target.'cfg(windows)'.dependencies]
+raw-window-handle = "0.6.2"
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
+
 # Puts the flame icon and the product name into the exe itself (Explorer, pinned shortcuts).
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1.34"

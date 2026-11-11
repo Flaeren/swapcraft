@@ -1678,6 +1678,7 @@ fn main() -> eframe::Result {
             .with_drag_and_drop(true)
             .with_icon(vf_ui::shell::window_icon(include_bytes!("../assets/app_icon.rgba"))),
         wgpu_options: vf_ui::shell::wgpu_config(),
+        centered: true,
         ..Default::default()
     };
     eframe::run_native(

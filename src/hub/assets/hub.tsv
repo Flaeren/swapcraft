@@ -212,8 +212,13 @@ menu.title	Convert with SwapCraft	Converti con SwapCraft	Convertir con SwapCraft
 menu.here	Convert here with SwapCraft	Converti qui con SwapCraft	Convertir aquí con SwapCraft	Convertir ici avec SwapCraft	Hier mit SwapCraft umwandeln
 menu.recipe	Recipe: {name}	Ricetta: {name}	Receta: {name}	Recette : {name}	Rezept: {name}
 menu.open_in	Open in {app}…	Apri in {app}…	Abrir en {app}…	Ouvrir dans {app}…	In {app} öffnen…
-menu.from_menu	SwapCraft · from the right-click menu	SwapCraft · dal menu del clic destro	SwapCraft · desde el menú del clic derecho	SwapCraft · depuis le menu du clic droit	SwapCraft · aus dem Rechtsklickmenü
-menu.converting	{n} file(s) to {to}	{n} file in {to}	{n} archivo(s) a {to}	{n} fichier(s) en {to}	{n} Datei(en) in {to}
+menu.toast_running_one	Converting 1 file to {to}…	Converto 1 file in {to}…	Convirtiendo 1 archivo a {to}…	Conversion de 1 fichier en {to}…	1 Datei wird in {to} umgewandelt…
+menu.toast_running	Converting {n} files to {to}…	Converto {n} file in {to}…	Convirtiendo {n} archivos a {to}…	Conversion de {n} fichiers en {to}…	{n} Dateien werden in {to} umgewandelt…
+menu.toast_done	Done: {n} {to} in {folder}	Fatto: {n} {to} in {folder}	Hecho: {n} {to} en {folder}	Terminé : {n} {to} dans {folder}	Fertig: {n} {to} in {folder}
+menu.toast_done_files	Done: {n} files in {folder}	Fatto: {n} file in {folder}	Hecho: {n} archivos en {folder}	Terminé : {n} fichiers dans {folder}	Fertig: {n} Dateien in {folder}
+menu.toast_failed_one	1 not converted	1 non convertito	1 sin convertir	1 non converti	1 nicht umgewandelt
+menu.toast_failed	{k} not converted	{k} non convertiti	{k} sin convertir	{k} non convertis	{k} nicht umgewandelt
+menu.details	Details	Dettagli	Detalles	Détails	Details
 menu.no_recipe	There is no recipe called “{name}” any more.	Non esiste più una ricetta chiamata «{name}».	Ya no existe una receta llamada «{name}».	Il n'existe plus de recette nommée « {name} ».	Es gibt kein Rezept „{name}“ mehr.
 menu.bad_action	This menu entry is from another version: add the menu again in the hub's settings.	Questa voce del menu è di un'altra versione: aggiungi di nuovo il menu dalle impostazioni del hub.	Esta entrada del menú es de otra versión: vuelve a añadir el menú en los ajustes del hub.	Cette entrée vient d'une autre version : ajoutez à nouveau le menu dans les paramètres du hub.	Dieser Menüeintrag stammt aus einer anderen Version: fügen Sie das Menü in den Einstellungen erneut hinzu.
 menu.sec	Right-click menu	Menu del clic destro	Menú del clic derecho	Menu du clic droit	Rechtsklickmenü

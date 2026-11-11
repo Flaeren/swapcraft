@@ -148,12 +148,17 @@ impl DwgApp {
             if button(ui, &t("ui.add_files")).clicked()
                 && let Some(picked) = rfd::FileDialog::new().set_title(t("app.pick_files")).add_filter("DWG", &["dwg"]).pick_files()
             {
+                let before = self.files.len();
                 self.add(&picked);
+                // picked with the dialog and refused all the same: say so, as for a drop
+                shell::drop_feedback(&picked, before, self.files.len(), &mut self.notice);
             }
             if button(ui, &t("ui.add_folder")).clicked()
                 && let Some(dir) = rfd::FileDialog::new().set_title(t("app.pick_folder")).pick_folder()
             {
-                self.add(&[dir]);
+                let before = self.files.len();
+                self.add(std::slice::from_ref(&dir));
+                shell::drop_feedback(&[dir], before, self.files.len(), &mut self.notice);
             }
             if button(ui, &t("ui.remove")).clicked() {
                 widgets::remove_selected(&mut self.files, &mut self.selected);

@@ -348,13 +348,18 @@ impl ConverterApp {
             if button(ui, &t("ui.add_files")).clicked() {
                 let exts: Vec<&str> = self.cfg.exts.to_vec();
                 if let Some(picked) = rfd::FileDialog::new().set_title(t("app.pick_files")).add_filter(t("app.filetype"), &exts).pick_files() {
+                    let before = self.files.len();
                     self.add(&picked);
+                    // picked with the dialog and refused all the same: say so, as for a drop
+                    drop_feedback(&picked, before, self.files.len(), &mut self.notice);
                 }
             }
             if button(ui, &t("ui.add_folder")).clicked()
                 && let Some(dir) = rfd::FileDialog::new().set_title(t("app.pick_folder")).pick_folder()
             {
-                self.add(&[dir]);
+                let before = self.files.len();
+                self.add(std::slice::from_ref(&dir));
+                drop_feedback(&[dir], before, self.files.len(), &mut self.notice);
             }
             if button(ui, &t("ui.remove")).clicked() {
                 widgets::remove_selected(&mut self.files, &mut self.selected);
@@ -458,12 +463,14 @@ pub fn fit_to_screen(ctx: &egui::Context) {
     if DONE.load(Ordering::Relaxed) {
         return;
     }
-    let (monitor, inner) = ctx.input(|i| (i.viewport().monitor_size, i.viewport().inner_rect));
+    let (monitor, inner, outer) = ctx.input(|i| (i.viewport().monitor_size, i.viewport().inner_rect, i.viewport().outer_rect));
     let (Some(monitor), Some(inner)) = (monitor, inner) else { return };
     DONE.store(true, Ordering::Relaxed);
     let max_h = (monitor.y - 110.0).max(480.0);
     let max_w = (monitor.x - 40.0).max(640.0);
-    if inner.height() > max_h || inner.width() > max_w {
+    // a bottom edge in the last 48 px is under a taskbar or a panel
+    let low = outer.is_some_and(|o| o.bottom() > monitor.y - 48.0);
+    if inner.height() > max_h || inner.width() > max_w || low {
         let size = egui::vec2(inner.width().min(max_w), inner.height().min(max_h));
         ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
         // and back inside the screen, below where a top panel would be
@@ -479,6 +486,14 @@ pub fn fit_to_screen(ctx: &egui::Context) {
 pub fn window_icon(rgba_256: &[u8]) -> egui::IconData {
     if cfg!(windows) || rgba_256.len() != 256 * 256 * 4 {
         return egui::IconData { rgba: rgba_256.to_vec(), width: 256, height: 256 };
+    }
+    egui::IconData { rgba: window_icon_128(rgba_256), width: 128, height: 128 }
+}
+
+/// A 256x256 RGBA picture halved to 128x128, each pixel the alpha-weighted mean of four.
+pub fn window_icon_128(rgba_256: &[u8]) -> Vec<u8> {
+    if rgba_256.len() != 256 * 256 * 4 {
+        return vec![0; 128 * 128 * 4];
     }
     let mut out = Vec::with_capacity(128 * 128 * 4);
     for y in 0..128 {
@@ -498,7 +513,7 @@ pub fn window_icon(rgba_256: &[u8]) -> egui::IconData {
             out.push((alpha / 4) as u8);
         }
     }
-    egui::IconData { rgba: out, width: 128, height: 128 }
+    out
 }
 
 /// How the windows are drawn. On Windows only Direct3D 12, not Vulkan: wgpu's default also loads the Vulkan driver,
@@ -526,6 +541,8 @@ pub fn native_options(title: &str, icon_256: &[u8], size: [f32; 2]) -> eframe::N
             .with_drag_and_drop(true)
             .with_icon(window_icon(icon_256)),
         wgpu_options: wgpu_config(),
+        // centred, not where Windows cascades new windows (26 px lower each start, until the bottom is under the taskbar)
+        centered: true,
         ..Default::default()
     }
 }
