@@ -481,7 +481,8 @@ mod tests {
             assert!(docs.accepts(ext), "{ext}");
         }
         assert!(!docs.accepts("pdf"), "a pdf is already a pdf: no route");
-        assert!(!docs.accepts("png"), "a picture has no pdf route");
+        assert!(docs.accepts("png"), "a picture becomes a one-page PDF, so scans in pictures can be made searchable");
+        assert!(!docs.accepts("mp3"), "sound has no pdf route");
         let err = recipe(vec![Step::Convert("docx".into()), Step::Ocr]).chain("pdf").unwrap_err();
         assert!(err.starts_with("step 2:"), "{err}");
         let pages = recipe(vec![Step::Convert("png".into()), Step::Merge]).chain("pdf").unwrap_err();

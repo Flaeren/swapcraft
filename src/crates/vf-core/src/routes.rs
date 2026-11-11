@@ -24,6 +24,8 @@ pub enum Job {
     /// `film::convert`: the output type and the export settings (`key=value`).
     Film(&'static str, &'static [&'static str]),
     PdfExport(Export),
+    /// A picture as a one-page PDF (PdfCraft, and PhotoCraft first for the types PdfCraft does not read).
+    ImagePdf,
     DwgMerged,
     DwgWhole,
 }
@@ -73,6 +75,7 @@ pub const ROUTES: &[Route] = &[
     Route { from: IMAGE_EXTS, label: "BMP", app: "image-converter", job: Job::Engine(PHOTOCRAFT, "bmp") },
     Route { from: IMAGE_EXTS, label: "GIF", app: "image-converter", job: Job::Engine(PHOTOCRAFT, "gif") },
     Route { from: IMAGE_EXTS, label: "ICO", app: "image-converter", job: Job::Engine(PHOTOCRAFT, "ico") },
+    Route { from: IMAGE_EXTS, label: "PDF", app: "image-converter", job: Job::ImagePdf },
     Route { from: AUDIO_EXTS, label: "WAV", app: "audio-converter", job: Job::Audio("wav") },
     Route { from: AUDIO_EXTS, label: "FLAC", app: "audio-converter", job: Job::Audio("flac") },
     Route { from: AUDIO_EXTS, label: "AIFF", app: "audio-converter", job: Job::Audio("aiff") },
@@ -139,7 +142,7 @@ impl Job {
             Job::Engine(e, _) => e,
             Job::Audio(_) => SOUNDCRAFT,
             Job::Film(..) => FILMCRAFT,
-            Job::PdfExport(_) => PDFCRAFT,
+            Job::PdfExport(_) | Job::ImagePdf => PDFCRAFT,
             Job::DwgMerged | Job::DwgWhole => CADCRAFT,
         }
     }
@@ -183,6 +186,7 @@ fn run_with(job: Job, cli: PathBuf, source: &Path, out_dir: &Path, note: &dyn Fn
             crate::film::convert(&spec, source, out_dir)
         }
         Job::PdfExport(what) => pdf::export(&cli, source, what, out_dir),
+        Job::ImagePdf => pdf::from_image(&cli, PHOTOCRAFT.find().as_deref(), source, out_dir),
         Job::DwgMerged => dwg::convert_sheets(&cli, source, out_dir, SheetOptions { include_model: false, merge: true }, note),
         Job::DwgWhole => dwg::convert_whole(&cli, source, out_dir, 420.0, true, "A3", note),
     }
@@ -274,6 +278,7 @@ pub fn route_id(route: &Route) -> String {
         Job::PdfExport(Export::Txt) => "txt".into(),
         Job::PdfExport(Export::Png { .. }) => "png".into(),
         Job::PdfExport(Export::Jpeg { .. }) => "jpg".into(),
+        Job::ImagePdf => "pdf".into(),
         Job::DwgMerged => "pdf-sheets".into(),
         Job::DwgWhole => "pdf-whole".into(),
     }
@@ -286,7 +291,7 @@ pub fn output_ext(route: &Route) -> Option<&'static str> {
         Job::Ebook(kind) => Some(kind.ext()),
         Job::PdfExport(Export::Png { .. } | Export::Jpeg { .. }) => None,
         Job::PdfExport(what) => Some(what.ext()),
-        Job::DwgMerged | Job::DwgWhole => Some("pdf"),
+        Job::ImagePdf | Job::DwgMerged | Job::DwgWhole => Some("pdf"),
     }
 }
 
@@ -308,8 +313,9 @@ mod tests {
         assert_eq!(targets("pdf").len(), 7);
         assert_eq!(targets("dwg").len(), 2);
         assert_eq!(targets("docx").len(), 2, "pdf and epub");
-        assert_eq!(targets("png").len(), 6, "every picture format but itself");
-        assert_eq!(targets("jpeg").len(), 6);
+        assert_eq!(targets("png").len(), 7, "every picture format but itself, and PDF");
+        assert_eq!(targets("jpeg").len(), 7);
+        assert!(find_route("png", "pdf").is_some() && find_route("webp", "pdf").is_some(), "a picture can become a PDF");
         assert_eq!(targets("mp3").len(), 3, "an mp3 can become wav, flac or aiff");
         assert_eq!(targets("wav").len(), 2, "a wav is already a wav");
         assert_eq!(targets("aif").len(), 2);
@@ -390,6 +396,11 @@ mod tests {
             let route = &ROUTES[i];
             let out = run_route(route, &src, &dir, &|_| {}).unwrap_or_else(|e| panic!("bmp -> {}: {e}", route.label));
             assert!(std::fs::metadata(&out).unwrap().len() > 0, "{}", route.label);
+            if ext_of(&out) == "pdf" {
+                // a picture as a PDF page: the file must be a PDF; there is no way back to a picture here
+                assert!(std::fs::read(&out).unwrap().starts_with(b"%PDF-"), "bmp -> PDF is not a PDF");
+                continue;
+            }
             let back_route = find_route(&ext_of(&out), "bmp").unwrap_or_else(|| panic!("no route from {}", out.display()));
             let back = run_route(back_route, &out, &dir.join("back"), &|_| {}).unwrap_or_else(|e| panic!("{} -> bmp: {e}", route.label));
             assert!(back.is_file());

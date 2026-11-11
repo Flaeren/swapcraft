@@ -224,6 +224,43 @@ pub fn batch(cli: &Path, src: &Path, pass: Pass, out_dir: &Path) -> Result<PathB
     })
 }
 
+/// The picture types PdfCraft puts on a page by itself.
+const PAGE_IMAGES: &[&str] = &["png", "jpg", "tif", "bmp", "gif"];
+
+/// A picture as a PDF with one page, the page the size of the picture. PdfCraft takes PNG, JPG, TIFF, BMP and GIF
+/// as they are; any other picture type PhotoCraft reads (WebP, ICO, TGA, PSD...) goes through a PNG first.
+pub fn from_image(pdfcraft: &Path, photocraft: Option<&Path>, src: &Path, out_dir: &Path) -> Result<PathBuf, String> {
+    with_scratch(|tmp| {
+        let ext = match src.extension().and_then(|e| e.to_str()).map(str::to_lowercase).unwrap_or_default().as_str() {
+            "jpeg" => "jpg".to_owned(),
+            "tiff" => "tif".to_owned(),
+            other => other.to_owned(),
+        };
+        let input = if PAGE_IMAGES.contains(&ext.as_str()) {
+            stage(src, tmp, &format!("in.{ext}"))?
+        } else {
+            let photocraft = photocraft.ok_or("The PhotoCraft engine is needed to read this picture, and it was not found.")?;
+            let from = stage(src, tmp, &format!("source.{ext}"))?;
+            let png = tmp.join("in.png");
+            let mut cmd = Command::new(photocraft);
+            cmd.arg("convert").arg(&from).arg(&png);
+            run_command(&mut cmd, tmp)?;
+            png
+        };
+        let done = tmp.join("done");
+        let mut cmd = Command::new(pdfcraft);
+        cmd.arg("batch").arg(&input).args(["--steps", "convert"]).arg("--out-dir").arg(&done);
+        run_command(&mut cmd, tmp)?;
+        let produced = fs::read_dir(&done)
+            .map_err(|e| e.to_string())?
+            .flatten()
+            .map(|e| e.path())
+            .find(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf")))
+            .ok_or_else(|| "the engine wrote no file".to_owned())?;
+        deliver(&produced, out_dir, &format!("{}.pdf", stem(src)))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
