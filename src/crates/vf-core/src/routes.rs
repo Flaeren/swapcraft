@@ -10,6 +10,7 @@ use crate::dwg::{self, SheetOptions};
 use crate::ebook::{self, Kind};
 use crate::engine::{CADCRAFT, DECKCRAFT, Engine, FILMCRAFT, GRIDCRAFT, PDFCRAFT, PHOTOCRAFT, SOUNDCRAFT, WORDCRAFT};
 use crate::job::{self, Event, Item, Spec, Task};
+use crate::mail;
 use crate::pdf::{self, Export};
 
 #[derive(Clone, Copy)]
@@ -23,6 +24,11 @@ pub enum Job {
     Ebook(Kind),
     /// `film::convert`: the output type and the export settings (`key=value`).
     Film(&'static str, &'static [&'static str]),
+    /// `mail::convert` on a message (`.eml`) or a mailbox (`.mbox`): WordCraft only for PDF.
+    Mail(mail::Kind),
+    /// `mail::convert` on an Outlook data file: MailCraft opens it; the result is a folder (one file per mail
+    /// folder) except for the calendar and the contacts.
+    Pst(mail::Kind),
     PdfExport(Export),
     /// A picture as a one-page PDF (PdfCraft, and PhotoCraft first for the types PdfCraft does not read).
     ImagePdf,
@@ -91,6 +97,14 @@ pub const ROUTES: &[Route] = &[
     Route { from: TO_EPUB, label: "EPUB", app: "ebook-converter", job: Job::Ebook(Kind::Epub) },
     Route { from: PLAIN, label: "PDF", app: "ebook-converter", job: Job::Ebook(Kind::Pdf) },
     Route { from: PLAIN, label: "Word (DOCX)", app: "ebook-converter", job: Job::Ebook(Kind::Docx) },
+    Route { from: &["eml", "mbox", "mbx"], label: "PDF", app: "mail-converter", job: Job::Mail(mail::Kind::Pdf) },
+    Route { from: &["mbox", "mbx"], label: "EML messages", app: "mail-converter", job: Job::Mail(mail::Kind::Eml) },
+    Route { from: &["eml"], label: "MBOX", app: "mail-converter", job: Job::Mail(mail::Kind::Mbox) },
+    Route { from: &["pst"], label: "PDF", app: "mail-converter", job: Job::Pst(mail::Kind::Pdf) },
+    Route { from: &["pst"], label: "EML messages", app: "mail-converter", job: Job::Pst(mail::Kind::Eml) },
+    Route { from: &["pst"], label: "MBOX", app: "mail-converter", job: Job::Pst(mail::Kind::Mbox) },
+    Route { from: &["pst"], label: "Calendar (ICS)", app: "mail-converter", job: Job::Pst(mail::Kind::Ics) },
+    Route { from: &["pst"], label: "Contacts (VCF)", app: "mail-converter", job: Job::Pst(mail::Kind::Vcf) },
     Route { from: &["dwg"], label: "PDF · sheets, merged", app: "dwg-to-pdf", job: Job::DwgMerged },
     Route { from: &["dwg"], label: "PDF · whole drawing", app: "dwg-to-pdf", job: Job::DwgWhole },
 ];
@@ -138,7 +152,7 @@ pub fn known_exts() -> Vec<&'static str> {
 impl Job {
     fn engine(self) -> Engine {
         match self {
-            Job::Ebook(_) => WORDCRAFT,
+            Job::Ebook(_) | Job::Mail(_) | Job::Pst(_) => WORDCRAFT,
             Job::Engine(e, _) => e,
             Job::Audio(_) => SOUNDCRAFT,
             Job::Film(..) => FILMCRAFT,
@@ -155,13 +169,13 @@ pub fn run_route(route: &Route, src: &Path, out_dir: &Path, note: &dyn Fn(String
     crate::sniff::with_extension(src, |s| run_with(route.job, cli, s, out_dir, note))
 }
 
-/// The engine program a job drives. An e-book job can do much without WordCraft, so for it a missing engine is
-/// an empty path, and the conversion itself says when it needs the engine.
+/// The engine program a job drives. E-book and mail jobs can do much without WordCraft, so for them a missing
+/// engine is an empty path, and the conversion itself says when it needs the engine (mail finds MailCraft itself).
 fn engine_for(job: Job) -> Result<PathBuf, String> {
     let engine = job.engine();
     match engine.find() {
         Some(p) => Ok(p),
-        None if matches!(job, Job::Ebook(_)) => Ok(PathBuf::new()),
+        None if matches!(job, Job::Ebook(_) | Job::Mail(_) | Job::Pst(_)) => Ok(PathBuf::new()),
         None => Err(format!("The {} engine was not found next to this app or on this PC.", engine.folder)),
     }
 }
@@ -180,6 +194,10 @@ fn run_with(job: Job, cli: PathBuf, source: &Path, out_dir: &Path, note: &dyn Fn
         Job::Ebook(kind) => {
             let spec = Spec { cli, out_ext: kind.ext().to_owned(), extra_args: vec![], env: vec![] };
             ebook::convert(&spec, source, out_dir)
+        }
+        Job::Mail(kind) | Job::Pst(kind) => {
+            let spec = Spec { cli, out_ext: kind.ext().to_owned(), extra_args: vec![], env: vec![] };
+            mail::convert(&spec, source, out_dir)
         }
         Job::Film(out_ext, args) => {
             let spec = Spec { cli, out_ext: out_ext.to_owned(), extra_args: args.iter().map(|a| (*a).to_owned()).collect(), env: vec![] };
@@ -271,6 +289,7 @@ pub fn route_id(route: &Route) -> String {
     match route.job {
         Job::Engine(_, ext) | Job::Film(ext, _) | Job::Audio(ext) => ext.to_owned(),
         Job::Ebook(kind) => kind.ext().to_owned(),
+        Job::Mail(kind) | Job::Pst(kind) => kind.ext().to_owned(),
         Job::PdfExport(Export::Docx) => "docx".into(),
         Job::PdfExport(Export::Pptx) => "pptx".into(),
         Job::PdfExport(Export::Html) => "html".into(),
@@ -289,6 +308,9 @@ pub fn output_ext(route: &Route) -> Option<&'static str> {
     match route.job {
         Job::Engine(_, ext) | Job::Film(ext, _) | Job::Audio(ext) => Some(ext),
         Job::Ebook(kind) => Some(kind.ext()),
+        // a folder of messages; for a .pst a folder of files, one per mail folder
+        Job::Mail(mail::Kind::Eml) | Job::Pst(mail::Kind::Pdf | mail::Kind::Eml | mail::Kind::Mbox) => None,
+        Job::Mail(kind) | Job::Pst(kind) => Some(kind.ext()),
         Job::PdfExport(Export::Png { .. } | Export::Jpeg { .. }) => None,
         Job::PdfExport(what) => Some(what.ext()),
         Job::ImagePdf | Job::DwgMerged | Job::DwgWhole => Some("pdf"),
@@ -328,6 +350,11 @@ mod tests {
         assert_eq!(targets("mp4").len(), 3, "an mp4 is already an mp4");
         assert!(!targets("jpeg").iter().any(|&i| route_id(&ROUTES[i]) == "jpg"), "a .jpeg is already a jpg");
         assert!(targets("xyz").is_empty());
+        assert_eq!(targets("eml").len(), 2, "pdf and mbox");
+        assert_eq!(targets("mbox").len(), 2, "pdf and eml messages");
+        assert_eq!(targets("pst").len(), 5, "pdf, eml, mbox, calendar, contacts");
+        assert!(output_ext(find_route("pst", "pdf").unwrap()).is_none(), "one PDF per mail folder, in a folder");
+        assert_eq!(output_ext(find_route("eml", "pdf").unwrap()), Some("pdf"));
     }
 
     #[test]

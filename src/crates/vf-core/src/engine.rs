@@ -27,12 +27,14 @@ pub const PDFCRAFT: Engine = Engine { folder: "PdfCraft", cli: cli!("pdfcraft-cl
 pub const PHOTOCRAFT: Engine = Engine { folder: "PhotoCraft", cli: cli!("photocraft-cli"), env: "VOIDFLARE_PHOTOCRAFT" };
 pub const SOUNDCRAFT: Engine = Engine { folder: "SoundCraft", cli: cli!("soundcraft-cli"), env: "VOIDFLARE_SOUNDCRAFT" };
 pub const FILMCRAFT: Engine = Engine { folder: "FilmCraft", cli: cli!("filmcraft-cli"), env: "VOIDFLARE_FILMCRAFT" };
+/// MailCraft (UCS-Care-Group/mailcraft, not part of the ArtCraft suite): opens Outlook `.pst` files for the mail converter.
+pub const MAILCRAFT: Engine = Engine { folder: "MailCraft", cli: cli!("mailcraft-cli"), env: "VOIDFLARE_MAILCRAFT" };
 /// CADCraft installs under `%LOCALAPPDATA%ProgramsArtCraft`, not Program Files (`find` looks in both).
 pub const CADCRAFT: Engine = Engine { folder: "CADCraft", cli: cli!("cadcraft-cli"), env: "VOIDFLARE_CADCRAFT" };
 
 /// The engine a manifest names (`wordcraft`, `gridcraft`, ...), if voidflare drives it.
 pub fn by_name(name: &str) -> Option<&'static Engine> {
-    [&WORDCRAFT, &GRIDCRAFT, &DECKCRAFT, &PDFCRAFT, &CADCRAFT, &PHOTOCRAFT, &SOUNDCRAFT, &FILMCRAFT].into_iter().find(|e| e.folder.eq_ignore_ascii_case(name))
+    [&WORDCRAFT, &GRIDCRAFT, &DECKCRAFT, &PDFCRAFT, &CADCRAFT, &PHOTOCRAFT, &SOUNDCRAFT, &FILMCRAFT, &MAILCRAFT].into_iter().find(|e| e.folder.eq_ignore_ascii_case(name))
 }
 
 impl Engine {

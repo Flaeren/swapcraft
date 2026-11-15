@@ -148,7 +148,10 @@ fn run_in(tmp: &Path, spec: &Spec, src: &Path, out_dir: &Path, note: &dyn Fn(Str
     for (k, v) in &spec.env {
         cmd.env(k, v);
     }
-    run_command(&mut cmd, tmp)?;
+    match run_command(&mut cmd, tmp) {
+        Err(e) if e.contains(ICO_TOO_BIG) => shrink_to_icon(spec, src, &target, tmp)?,
+        other => other?,
+    }
     if !target.is_file() {
         return Err("the engine finished but wrote no file".to_owned());
     }
@@ -158,6 +161,36 @@ fn run_in(tmp: &Path, spec: &Spec, src: &Path, out_dir: &Path, note: &dyn Fn(Str
     }
     let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("out");
     deliver(&target, out_dir, &format!("{stem}.{}", spec.out_ext))
+}
+
+/// What PhotoCraft says when an image is larger than an icon can be (an ICO holds at most 256x256).
+const ICO_TOO_BIG: &str = "exceeds the format maximum of 256x256";
+
+/// An icon from an image larger than 256 px: PhotoCraft scales it down to 256 on its longer side (proportions kept)
+/// and writes `target`. Asked for after the plain conversion was refused, so a small image is never touched.
+fn shrink_to_icon(spec: &Spec, src: &Path, target: &Path, tmp: &Path) -> Result<(), String> {
+    let mut probe = Command::new(&spec.cli);
+    probe.arg("run").arg(src).args(["--cmd", "image.imageSize"]);
+    run_command(&mut probe, tmp)?;
+    // `run` prints {"command":"image.imageSize","result":{"height":H,"width":W}}
+    let printed = fs::read_to_string(tmp.join("stdout.txt")).map_err(|e| e.to_string())?;
+    let size = printed.lines().find_map(|l| serde_json::from_str::<serde_json::Value>(l).ok()).and_then(|v| {
+        let r = &v["result"];
+        Some((r["width"].as_f64()?, r["height"].as_f64()?))
+    });
+    let Some((w, h)) = size.filter(|(w, h)| *w > 0.0 && *h > 0.0) else {
+        return Err(format!("the image is larger than an icon can be ({ICO_TOO_BIG})"));
+    };
+    let scale = 256.0 / w.max(h);
+    let (nw, nh) = (((w * scale).round()).clamp(1.0, 256.0), ((h * scale).round()).clamp(1.0, 256.0));
+    let mut cmd = Command::new(&spec.cli);
+    cmd.arg("run")
+        .arg(src)
+        .args(["--cmd", "image.imageSize", "--params"])
+        .arg(format!(r#"{{"width":{nw},"height":{nh}}}"#))
+        .arg("--out")
+        .arg(target);
+    run_command(&mut cmd, tmp)
 }
 
 /// Moves a finished file into `out_dir` as `name`, or `name (2)` if that exists.
@@ -228,6 +261,11 @@ pub fn watch_cancel(flag: &Arc<AtomicBool>) {
     CANCEL.with(|c| *c.borrow_mut() = Some(Arc::clone(flag)));
 }
 
+/// The Cancel switch tied to this thread, to hand to helper threads (they call [`watch_cancel`] with it).
+pub fn cancel_flag() -> Option<Arc<AtomicBool>> {
+    CANCEL.with(|c| c.borrow().clone())
+}
+
 fn cancel_pressed() -> bool {
     CANCEL.with(|c| c.borrow().as_ref().is_some_and(|f| f.load(Ordering::Relaxed)))
 }
@@ -279,8 +317,10 @@ pub fn run_command_for(cmd: &mut Command, tmp: &Path, limit: Duration) -> Result
         // the engines start their messages with "error: ", and the log already says it failed
         let msg = msg.strip_prefix("error: ").unwrap_or(&msg).to_owned();
         let mut msg: String = msg.chars().take(300).collect();
-        if msg.to_lowercase().contains("password") {
-            msg.push_str(&crate::t("job.password_hint"));
+        // the hint lives in the apps' catalog: the CLI has none, and would print the bare key
+        let hint = crate::t("job.password_hint");
+        if msg.to_lowercase().contains("password") && hint != "job.password_hint" {
+            msg.push_str(&hint);
         }
         return Err(msg);
     }

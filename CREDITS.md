@@ -21,6 +21,7 @@ Every conversion is done by a command-line engine from the [ArtCraft](https://ge
 | Audio Converter | SoundCraft |
 | Video Converter | FilmCraft |
 | E-book Converter | WordCraft (PDF and Word); reading EPUB and Kindle books and writing EPUB is voidflare's own Rust code |
+| Mail Converter | WordCraft (PDF) and MailCraft (Outlook PST files); reading messages and mailboxes is voidflare's own Rust code |
 
 - Versions in voidflare 0.3.2: WordCraft 0.12.0, GridCraft 0.13.0, DeckCraft 0.12.0, PdfCraft 0.15.0, CADCraft 0.14.0, PhotoCraft 0.19.0, SoundCraft 0.16.0, FilmCraft 0.16.0. They are pinned, with their SHA-256, in [`src/engines.json`](src/engines.json).
 - The engines are distributed under the terms **MIT License or Apache License 2.0, at your option**, as stated in the `NOTICE` file shipped with each engine.
@@ -33,7 +34,7 @@ The DWG to PDF app uses a CADCraft build that contains a small fix for blocks in
 
 ## Libraries we build on
 
-voidflare is written in Rust. The interface uses [egui](https://github.com/emilk/egui) and `eframe` (MIT OR Apache-2.0), through the forks the ArtCraft launchers use, and the other crates listed in `src/Cargo.lock` under their own licences (MIT, Apache-2.0 or similar). PDF merging uses [lopdf](https://github.com/J-F-Liu/lopdf).
+voidflare is written in Rust. The interface uses [egui](https://github.com/emilk/egui) and `eframe` (MIT OR Apache-2.0), through the forks the ArtCraft launchers use, and the other crates listed in `src/Cargo.lock` under their own licences (MIT, Apache-2.0 or similar). PDF merging uses [lopdf](https://github.com/J-F-Liu/lopdf). E-mail messages and mailboxes are read with [mail-parser](https://github.com/stalwartlabs/mail-parser) (Apache-2.0 OR MIT).
 
 ## Fonts and artwork
 

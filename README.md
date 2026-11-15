@@ -39,9 +39,9 @@
   <a href="https://swapcraft.voidflare.app"><img src="docs/img/hub.png" alt="The SwapCraft hub: the area to drop files on and the installed apps" width="720"></a>
 </p>
 
-**SwapCraft** (by voidflare) takes a file and offers the formats it can become. Your files never leave your PC, there is no account, and you need no Microsoft Office. It is a small hub plus nine apps, and you install only the ones you use: each app is a separate download, and it either comes with its own conversion engine or, if your PC already has a version of ArtCraft that we have tested, uses that one instead of downloading a second copy. It also works from where you already are: the right-click menu on a file, a right-button drag onto a folder, the command line, and AI assistants through MCP.
+**SwapCraft** (by voidflare) takes a file and offers the formats it can become. Your files never leave your PC, there is no account, and you need no Microsoft Office. It is a small hub plus ten apps, and you install only the ones you use: each app is a separate download, and it either comes with its own conversion engine or, if your PC already has a version of ArtCraft that we have tested, uses that one instead of downloading a second copy. It also works from where you already are: the right-click menu on a file, a right-button drag onto a folder, the command line, and AI assistants through MCP.
 
-SwapCraft is built the way the [ArtCraft](https://getartcraft.com) apps are: in Rust, with the same egui interface the Craft launchers use, and on top of the suite's own command-line engines (WordCraft, GridCraft, DeckCraft, PdfCraft, CADCraft, PhotoCraft, SoundCraft and FilmCraft), which do the converting.
+SwapCraft is built the way the [ArtCraft](https://getartcraft.com) apps are: in Rust, with the same egui interface the Craft launchers use, and on top of the suite's own command-line engines (WordCraft, GridCraft, DeckCraft, PdfCraft, CADCraft, PhotoCraft, SoundCraft, FilmCraft and MailCraft), which do the converting.
 
 <p align="center">
   <img src="docs/img/right-drag.gif" alt="Dragging three Word files with the right mouse button onto a folder in File Explorer, choosing Convert here with SwapCraft, then PDF: the three PDFs appear in that folder" width="720">
@@ -53,7 +53,7 @@ SwapCraft is built the way the [ArtCraft](https://getartcraft.com) apps are: in 
   <img src="docs/img/recipes.png" alt="The SwapCraft hub on the Recipes tab: a three-step recipe that converts, merges and shrinks" width="720">
 </p>
 
-> **Status:** early (v0.6.0). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
+> **Status:** early (v0.7.0). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
 
 ## Principles
 
@@ -78,6 +78,7 @@ SwapCraft's conversions are done by command-line engines of the **[ArtCraft](htt
 | Audio Converter | SoundCraft | MIT **or** Apache-2.0 |
 | Video Converter | FilmCraft | MIT **or** Apache-2.0 |
 | E-book Converter | WordCraft for PDF and Word; reading EPUB and Kindle books and writing EPUB is SwapCraft's own code | MIT **or** Apache-2.0 |
+| Mail Converter | WordCraft for PDF; MailCraft to open Outlook PST files; reading messages and mailboxes is SwapCraft's own code | MIT **or** Apache-2.0 |
 
 - The release package keeps each engine's `LICENSE-MIT`, `LICENSE-APACHE`, `NOTICE` and `ATTRIBUTION` files next to it. They list the further components, fonts and models each engine bundles.
 - The ArtCraft name, logo and trademarks are not covered by those licences and are not used here as ours.
@@ -86,12 +87,12 @@ SwapCraft's conversions are done by command-line engines of the **[ArtCraft](htt
 
 ## Quick start
 
-1. Download `swapcraft-hub-<version>-windows.zip` from the [Releases](../../releases) page (about 7 MB).
+1. Download `swapcraft-hub-<version>-windows.zip` from the [Releases](../../releases) page (about 11 MB).
 2. Unzip it to a short path, for example `C:\SwapCraft`, and run `SwapCraft.exe`.
 3. Press **Install** on the converters you need. Each card says what it will download before you click: the app (about 6 MB) plus its engine (5 to 50 MB), or only the app when your PC's ArtCraft engine is a version we have tested. Every download is checked against the release's `SHA256SUMS.txt` before it is installed.
 4. Drop a file on the hub.
 
-**No network where you work?** Download `swapcraft-<version>-windows.zip` instead (about 210 MB): the hub and all nine apps with their engines in one file, nothing else to fetch.
+**No network where you work?** Download `swapcraft-<version>-windows.zip` instead (about 470 MB): the hub and all ten apps with their engines in one file, nothing else to fetch.
 
 The programs are not code-signed yet, so Windows SmartScreen may warn on first run: choose *More info*, then *Run anyway*. Or unblock the ZIP (right click, Properties, *Unblock*) before extracting.
 
@@ -118,6 +119,7 @@ Settings and recipes are kept in `~/.config/voidflare`. On Linux Mint, Settings 
 | Audio Converter | WAV, FLAC, AIFF, MP3, OGG, M4A, AAC, CAF and more | WAV, FLAC, AIFF (not MP3 or OGG) |
 | Video Converter | MP4, MOV, MKV, WebM, AVI, MPEG, TS, MXF | MP4 (H.264), MOV (ProRes), GIF, or only the sound as WAV, M4A, FLAC |
 | E-book Converter | EPUB, AZW3, AZW, MOBI, PRC (no DRM), TXT, HTML, Markdown, DOCX, ODT, RTF | EPUB, TXT, HTML, PDF, DOCX |
+| Mail Converter | EML, MBOX, Outlook PST (also with a password) | PDF (one bookmark per message), EML, MBOX; from a PST also the calendar (ICS) and the contacts (VCF) |
 
 Books with DRM (copy protection) are refused: SwapCraft converts DRM-free books only and never tries to remove protection.
 

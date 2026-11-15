@@ -2,6 +2,18 @@
 
 All notable changes to SwapCraft (formerly voidflare) are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.0] - 2026-11-15
+
+### Added
+
+- **Mail Converter**, a new app. E-mail messages (`.eml`), mailboxes (`.mbox`) and Outlook data files (`.pst`) become a PDF with one bookmark per message, single `.eml` messages, or a mailbox; from a `.pst` also its calendar (`.ics`) and contacts (`.vcf`), with no Outlook needed. A `.pst` gives one file per mail folder (Inbox, Sent Items…), in a folder named after it. Each message's page starts with who sent it, to whom, when, and its attachments. Pictures stored on the internet are never downloaded (the page says how many were left out), pictures carried inside the message are shown, and scripts and hidden blocks go. A signed message says on its page that the signature is not kept in the PDF; an encrypted one says it could not be read. The messages are read by SwapCraft itself; WordCraft lays out the PDF; [MailCraft](https://github.com/UCS-Care-Group/mailcraft) 0.13.0 opens the `.pst` files and comes inside the app. A `.pst` protected by a password makes the app ask for it, and a wrong one asks again; on the command line the password goes in the `MAILCRAFT_PST_PASSWORD` environment variable. Also from the hub, the command line and the MCP server.
+
+### Changed
+
+- **Bookmarks in merged PDFs show again.** A PDF joined from several parts (DWG sheets merged, documents attached inside a Word file, a mailbox) could have its bookmarks written but not linked to the document, so no PDF reader showed them (seen on a mailbox of 74 messages). They are now always linked, and each opens the first page of its part.
+- **Newer engines.** WordCraft 0.18.1, GridCraft 0.19.1, DeckCraft 0.18.1, PdfCraft 0.21.1, PhotoCraft 0.23.1, SoundCraft 0.20.1 and FilmCraft 0.20.1, each tested against our apps before being bundled.
+- **The command line no longer ends a password error with `job.password_hint`.** That hint belongs to the apps' password field; the command line printed its bare name.
+- **A picture larger than 256 pixels becomes an icon.** An ICO holds at most 256x256, and PhotoCraft refused anything bigger; the picture is now scaled down to 256 on its longer side, proportions kept, in the app, the hub and the command line. Smaller pictures are untouched.
 ## [0.6.0] - 2026-11-11
 
 ### Added

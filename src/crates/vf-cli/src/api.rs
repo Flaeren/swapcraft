@@ -47,7 +47,7 @@ pub fn convert(input: &Path, to: &str, out_dir: Option<&Path>) -> Result<Value, 
 
 /// Which engines voidflare found on this PC, with their versions.
 pub fn engines() -> Value {
-    let all: [&Engine; 8] = [
+    let all: [&Engine; 9] = [
         &engine::WORDCRAFT,
         &engine::GRIDCRAFT,
         &engine::DECKCRAFT,
@@ -56,6 +56,7 @@ pub fn engines() -> Value {
         &engine::SOUNDCRAFT,
         &engine::FILMCRAFT,
         &engine::CADCRAFT,
+        &engine::MAILCRAFT,
     ];
     let list: Vec<Value> = all
         .into_iter()

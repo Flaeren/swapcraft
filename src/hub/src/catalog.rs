@@ -102,6 +102,14 @@ pub const APPS: &[App] = &[
         exe: None,
         pack: true,
     },
+    App {
+        id: "mail-converter",
+        name: "Mail Converter",
+        engine: "WordCraft",
+        color: [0xff, 0x92, 0x40],
+        exe: None,
+        pack: true,
+    },
 ];
 
 /// Looks for the portable build next to the hub (`apps/<folder>/<exe>`), or, in the source tree,

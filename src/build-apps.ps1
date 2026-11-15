@@ -35,7 +35,7 @@ try {
     if (Test-Path $dll) { try { Remove-Item -LiteralPath $dll -Force -ErrorAction Stop } catch { Move-Item -LiteralPath $dll -Destination $oldDll -Force } }
     Copy-Item (Join-Path $src "target\release\voidflare_dragdrop.dll") $dll -Force
     Write-Host "voidflare_dragdrop.dll"
-    $engines = @{ "word-to-pdf" = "WordCraft"; "excel-to-pdf" = "GridCraft"; "slides-to-pdf" = "DeckCraft"; "pdf-tools" = "PdfCraft"; "dwg-to-pdf" = "CADCraft"; "image-converter" = "PhotoCraft"; "audio-converter" = "SoundCraft"; "video-converter" = "FilmCraft"; "ebook-converter" = "WordCraft" }
+    $engines = @{ "word-to-pdf" = "WordCraft"; "excel-to-pdf" = "GridCraft"; "slides-to-pdf" = "DeckCraft"; "pdf-tools" = "PdfCraft"; "dwg-to-pdf" = "CADCraft"; "image-converter" = "PhotoCraft"; "audio-converter" = "SoundCraft"; "video-converter" = "FilmCraft"; "ebook-converter" = "WordCraft"; "mail-converter" = @("WordCraft", "MailCraft") }
     $ids = Get-ChildItem (Join-Path $src "crates") -Directory -Filter "app-*" | ForEach-Object { $_.Name.Substring(4) }
     foreach ($id in $ids) {
         $dest = Join-Path $out "apps\$id"
@@ -44,8 +44,9 @@ try {
         Write-Host "apps\$id\$id.exe"
         # Each app carries its own engine, so nobody needs ArtCraft installed: the engine's command-line
         # program, its models and notices, and the MIT/Apache licence texts (all four are "MIT OR Apache-2.0").
-        $engine = $engines[$id]
-        if ($engine) {
+        # Mail Converter carries two: WordCraft (its pack engine) and MailCraft (inside its app ZIP, for .pst files)
+        foreach ($engine in @($engines[$id])) {
+            if (-not $engine) { continue }
             $lower = $engine.ToLower()
             # The engines come from src\engines\, filled by fetch-engines.ps1 with the versions pinned in engines.json
             # (official releases, hash-checked; CADCraft built from source with our patch, see -BuildCadcraft).

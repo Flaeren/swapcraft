@@ -96,7 +96,11 @@ fn smoke_deck(cli: &Path, dir: &Path) -> Result<(), String> {
 
 /// A 16x8 24-bit BMP written by hand (no image library in the test).
 fn tiny_bmp() -> Vec<u8> {
-    let (w, h) = (16u32, 8u32);
+    bmp(16, 8)
+}
+
+/// A `w` x `h` 24-bit BMP (`w * 3` must be a multiple of 4: no row padding is written).
+fn bmp(w: u32, h: u32) -> Vec<u8> {
     let size = 54 + w * 3 * h;
     let mut b = Vec::new();
     b.extend_from_slice(b"BM");
@@ -126,6 +130,17 @@ fn smoke_photo(cli: &Path, dir: &Path) -> Result<(), String> {
         if fs::metadata(&out).map(|m| m.len()).unwrap_or(0) == 0 {
             return Err(format!("bmp -> {ext} wrote an empty file"));
         }
+    }
+    // An icon holds at most 256x256: a larger picture is scaled down to 256 on its longer side, not refused.
+    let big = dir.join("Grande.bmp");
+    fs::write(&big, bmp(600, 300)).map_err(|e| e.to_string())?;
+    let spec = Spec { cli: cli.to_path_buf(), out_ext: "ico".into(), extra_args: vec![], env: vec![] };
+    let out = job::convert_one(&spec, &big, dir).map_err(|e| format!("600x300 bmp -> ico: {e}"))?;
+    let ico = fs::read(&out).map_err(|e| e.to_string())?;
+    // ICONDIR (6 bytes), then the first entry: width and height in one byte each, 0 meaning 256.
+    match (ico.get(6), ico.get(7)) {
+        (Some(0), Some(128)) => {}
+        other => return Err(format!("600x300 bmp -> ico: expected a 256x128 icon, entry says {other:?}")),
     }
     Ok(())
 }

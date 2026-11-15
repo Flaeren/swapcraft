@@ -45,14 +45,14 @@ printf '%-56s %s\n' "swapcraft-hub-$version-$tag.zip" "$(du -h "$out/swapcraft-h
 declare -A names=(
   [word-to-pdf]="Word to PDF" [excel-to-pdf]="Excel to PDF" [slides-to-pdf]="Slides to PDF" [pdf-tools]="PDF Tools"
   [dwg-to-pdf]="DWG to PDF" [image-converter]="Image Converter" [audio-converter]="Audio Converter"
-  [video-converter]="Video Converter" [ebook-converter]="E-book Converter"
+  [video-converter]="Video Converter" [ebook-converter]="E-book Converter" [mail-converter]="Mail Converter"
 )
 packs=()
 for dir in $(find "$portable/apps" -mindepth 1 -maxdepth 1 -type d | LC_ALL=C sort); do
   id=$(basename "$dir")
   [ -x "$dir/$id" ] || { echo "apps/$id/$id is missing" >&2; exit 1; }
   name=${names[$id]:-}; [ -n "$name" ] || { echo "No display name for $id" >&2; exit 1; }
-  engine=$(jq -r --arg id "$id" '(.engines[] | select(.app == $id or ((.also // []) | index($id)))) .name' "$src/engines.json" | head -1)
+  engine=$(jq -r --arg id "$id" '(.engines[] | select((.inside_app // false | not) and (.app == $id or ((.also // []) | index($id))))) .name' "$src/engines.json" | head -1)
   [ -z "$engine" ] && [ "$(jq -r .cadcraft.app "$src/engines.json")" = "$id" ] && engine=cadcraft
   app_zip="swapcraft-app-$id-$version-$tag.zip"
   if [ -n "$engine" ]; then zip_dir "$out/$app_zip" "$dir" "$leftovers|^$engine/"; else zip_dir "$out/$app_zip" "$dir" "$leftovers"; fi

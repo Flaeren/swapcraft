@@ -364,6 +364,31 @@ def galaxy(art, color):
     return [(512, 512, 345)]
 
 
+def relay(art, color):
+    """A planet sending a message: wavefronts of hairlines travel from it to a far bright star (mail)."""
+    d = ImageDraw.Draw(art, "RGBA")
+    px, py, r = 350, 660, 150
+    tx, ty = 752, 278
+    axis = math.atan2(ty - py, tx - px)
+    reach = math.hypot(tx - px, ty - py)
+    for k in range(7):
+        rr = r + 48 + (reach - r - 110) * k / 6
+        spread = math.radians(30 - 2.2 * k)
+        pts, wid = [], []
+        for j in range(41):
+            u = j / 40
+            a = axis - spread + 2 * spread * u
+            pts.append((px + rr * math.cos(a), py + rr * math.sin(a)))
+            # thickest in the middle of each front, thinner as the fronts move away
+            wid.append(max(0.6, (6.0 - 0.55 * k) * (1 - abs(2 * u - 1)) ** 0.7 + 0.5))
+        ribbon(d, pts, wid, (*CREAM, int(240 - 18 * k)))
+    sphere(d, px, py, r, tilt=0.36, roll=math.radians(24), light=(0.55, 0.55, 0.62), lines=24, gamma=1.2, k=0.82,
+           ink=(*CREAM, 255))
+    glow_blob(d, tx, ty, ((70, 30), (46, 70), (26, 150), (11, 255)))
+    star4(d, tx, ty, 84, alpha=200, width=3)
+    return [(350, 660, 220), (752, 278, 130), (560, 470, 160)]
+
+
 # app id -> (painter, the app's colour, a seed for the star field)
 ICONS = {
     "ebook-converter": (galaxy, (232, 176, 90)),
@@ -375,6 +400,7 @@ ICONS = {
     "image-converter": (nebula, (176, 140, 255)),
     "audio-converter": (pulsar, (255, 122, 200)),
     "video-converter": (blackhole, (77, 200, 255)),
+    "mail-converter": (relay, (255, 146, 64)),
 }
 
 

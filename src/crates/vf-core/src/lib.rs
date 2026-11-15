@@ -9,6 +9,7 @@ pub mod epub;
 pub mod film;
 pub mod i18n;
 pub mod job;
+pub mod mail;
 pub mod markup;
 pub mod menu;
 pub mod mobi;

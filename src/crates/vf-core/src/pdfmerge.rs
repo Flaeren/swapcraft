@@ -46,18 +46,20 @@ pub fn merge_with_bookmarks(parts: &[(String, &Path)], out: &Path) -> Result<(),
     let mut pages: BTreeMap<ObjectId, Object> = BTreeMap::new();
     let mut objects: BTreeMap<ObjectId, Object> = BTreeMap::new();
     let mut merged = Document::with_version("1.5");
+    // (title, number of pages) per part: the bookmarks are added once the objects have their final numbers
+    let mut counts: Vec<(&str, usize)> = Vec::new();
     for (title, path) in parts {
         let mut doc = Document::load(path).map_err(|e| format!("{}: {e}", path.display()))?;
         flatten_inherited(&mut doc);
         doc.renumber_objects_with(max_id);
         max_id = doc.max_id + 1;
-        let mut first = None;
+        let mut n = 0;
         for id in doc.get_pages().into_values() {
-            first.get_or_insert(id);
             let page = doc.get_object(id).map_err(|e| e.to_string())?.to_owned();
             pages.insert(id, page);
+            n += 1;
         }
-        merged.add_bookmark(Bookmark::new(title.clone(), [0.0, 0.0, 0.0], 0, first.unwrap_or((0, 0))), None);
+        counts.push((title.as_str(), n));
         objects.extend(doc.objects);
     }
 
@@ -109,8 +111,20 @@ pub fn merge_with_bookmarks(parts: &[(String, &Path)], out: &Path) -> Result<(),
     merged.max_id = merged.objects.len() as u32;
     merged.renumber_objects();
     merged.adjust_zero_pages();
+    // After renumbering, every id taken before is stale: the catalog is found again through the trailer and each
+    // bookmark points at the first page of its part, counted in the final page order. (Before 0.7 the outline was
+    // hung on whatever object had the catalog's old number and pointed at old page numbers: no reader showed it.)
+    let root = merged.trailer.get(b"Root").and_then(Object::as_reference).map_err(|e| e.to_string())?;
+    let page_ids: Vec<ObjectId> = merged.get_pages().into_values().collect();
+    let mut at = 0;
+    for (title, n) in counts {
+        if let Some(&page) = page_ids.get(at) {
+            merged.add_bookmark(Bookmark::new(title.to_owned(), [0.0, 0.0, 0.0], 0, page), None);
+        }
+        at += n;
+    }
     if let Some(outline) = merged.build_outline()
-        && let Ok(Object::Dictionary(cat)) = merged.get_object_mut(catalog_id)
+        && let Ok(Object::Dictionary(cat)) = merged.get_object_mut(root)
     {
         cat.set("Outlines", Object::Reference(outline));
     }
@@ -136,4 +150,61 @@ pub fn crop_first_page(src: &Path, out: &Path, rect: [f64; 4]) -> Result<(), Str
     }
     doc.save(out).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lopdf::dictionary;
+
+    /// A PDF of `n` empty pages, each with a lot of filler objects so the numbers move when merged.
+    fn pdf_with_pages(path: &Path, n: usize, filler: usize) {
+        let mut doc = Document::with_version("1.5");
+        for i in 0..filler {
+            doc.add_object(Object::Integer(i as i64));
+        }
+        let pages_id = doc.new_object_id();
+        let kids: Vec<Object> = (0..n)
+            .map(|_| doc.add_object(dictionary! { "Type" => "Page", "Parent" => pages_id, "MediaBox" => vec![0.into(), 0.into(), 200.into(), 200.into()] }).into())
+            .collect();
+        doc.objects.insert(pages_id, Object::Dictionary(dictionary! { "Type" => "Pages", "Kids" => kids, "Count" => n as i64 }));
+        // an outline of its own, numbered before the catalog, as WordCraft writes: the merge drops it, so every
+        // number after it moves when the merged file is renumbered (the case that hid the bookmarks before 0.7)
+        let own_outline = doc.add_object(dictionary! { "Type" => "Outlines", "Count" => 0 });
+        let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id, "Outlines" => own_outline });
+        doc.trailer.set("Root", catalog);
+        doc.save(path).unwrap();
+    }
+
+    /// The catalog itself carries the outline, and bookmark k opens the first page of part k.
+    #[test]
+    fn bookmarks_hang_on_the_catalog_and_open_the_right_pages() {
+        let dir = std::env::temp_dir().join(format!("vf_pdfmerge_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (a, b, c) = (dir.join("a.pdf"), dir.join("b.pdf"), dir.join("c.pdf"));
+        pdf_with_pages(&a, 2, 40);
+        pdf_with_pages(&b, 3, 5);
+        pdf_with_pages(&c, 1, 70);
+        let out = dir.join("out.pdf");
+        merge_with_bookmarks(&[("Uno".into(), &a), ("Due \u{e8}".into(), &b), ("Tre".into(), &c)], &out).unwrap();
+        let doc = Document::load(&out).unwrap();
+        let pages: Vec<ObjectId> = doc.get_pages().into_values().collect();
+        assert_eq!(pages.len(), 6);
+        let outline = doc.catalog().unwrap().get(b"Outlines").and_then(Object::as_reference).expect("the catalog has the outline");
+        let mut item = doc.get_dictionary(outline).unwrap().get(b"First").and_then(Object::as_reference).unwrap();
+        let mut opened = Vec::new();
+        loop {
+            let dict = doc.get_dictionary(item).unwrap();
+            let action = doc.get_dictionary(dict.get(b"A").and_then(Object::as_reference).unwrap()).unwrap();
+            let target = action.get(b"D").and_then(Object::as_array).unwrap()[0].as_reference().unwrap();
+            opened.push(pages.iter().position(|p| *p == target).expect("a bookmark points at a page of the file"));
+            match dict.get(b"Next").and_then(Object::as_reference) {
+                Ok(next) => item = next,
+                Err(_) => break,
+            }
+        }
+        assert_eq!(opened, [0, 2, 5]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

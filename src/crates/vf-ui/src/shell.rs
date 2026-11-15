@@ -63,6 +63,9 @@ pub struct Config {
     pub options: &'static [OptionDef],
     /// If set, a password field is shown and its value is passed in this environment variable.
     pub password_env: Option<&'static str>,
+    /// Instead of the field: tells a password error apart (`Some(wrong)`) so the app asks for the password in a
+    /// window when a file needs one, and converts those files again with it. Needs `password_env`.
+    pub ask_password: Option<fn(&str) -> Option<bool>>,
     /// 256x256 RGBA: the window icon.
     pub icon_256: &'static [u8],
     /// 128x128 RGBA: the icon in the header.
@@ -93,7 +96,15 @@ struct ConverterApp {
     progress: (usize, usize),
     log: Vec<(String, Kind)>,
     notice: Option<(String, String)>,
+    /// Files that stopped on a missing or wrong password, while the window asking for it is open.
+    asking: Option<Asking>,
     icon: TextureHandle,
+}
+
+struct Asking {
+    files: Vec<PathBuf>,
+    wrong: bool,
+    text: String,
 }
 
 impl ConverterApp {
@@ -123,6 +134,7 @@ impl ConverterApp {
             progress: (0, 0),
             log: Vec::new(),
             notice,
+            asking: None,
             icon: widgets::load_icon(&cc.egui_ctx, cfg.icon_128),
         };
         app.add(&initial);
@@ -165,8 +177,15 @@ impl ConverterApp {
     }
 
     fn start(&mut self) {
+        let files = self.files.clone();
+        self.run(files, false);
+    }
+
+    /// Converts `files`; `again` is the second try of the files that needed a password: the log of the first run
+    /// stays, and the password is forgotten once handed to the job.
+    fn run(&mut self, files: Vec<PathBuf>, again: bool) {
         let Some(cli) = self.cli.clone() else { return };
-        if self.files.is_empty() {
+        if files.is_empty() {
             self.notice = Some((t("ui.nothing_title"), t("app.nothing_text")));
             return;
         }
@@ -197,13 +216,14 @@ impl ConverterApp {
         self.cancel.store(false, Ordering::Relaxed);
         self.rx = Some(rx);
         self.running = true;
-        self.progress = (0, self.files.len());
-        self.log.clear();
+        self.progress = (0, files.len());
+        if !again {
+            self.log.clear();
+        }
         match self.cfg.runner {
-            None => job::spawn_batch(spec, self.files.clone(), dest, tx, self.cancel.clone()),
+            None => job::spawn_batch(spec, files, dest, tx, self.cancel.clone()),
             Some(run) => {
-                let items = self
-                    .files
+                let items = files
                     .iter()
                     .map(|src| {
                         let label = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -214,6 +234,9 @@ impl ConverterApp {
                 job::spawn_tasks(items, tx, self.cancel.clone());
             }
         }
+        if again {
+            self.password.clear();
+        }
     }
 
     fn poll(&mut self) {
@@ -223,6 +246,21 @@ impl ConverterApp {
             self.running = false;
             self.rx = None;
             finish(&all, &mut self.log, self.open_when_done);
+            if let Some(is_password) = self.cfg.ask_password {
+                let mut files = Vec::new();
+                let mut wrong = false;
+                for o in &all {
+                    if let Err(msg) = &o.result
+                        && let Some(w) = is_password(msg)
+                    {
+                        files.push(o.source.clone());
+                        wrong |= w;
+                    }
+                }
+                if !files.is_empty() {
+                    self.asking = Some(Asking { files, wrong, text: String::new() });
+                }
+            }
         }
     }
 }
@@ -335,10 +373,54 @@ impl eframe::App for ConverterApp {
         });
         drop_overlay(&ctx, &tk);
         notice_window(&ctx, &mut self.notice);
+        self.password_window(&ctx, &tk);
     }
 }
 
 impl ConverterApp {
+    /// Asks for the password of the files that stopped on it, and converts them again with it.
+    fn password_window(&mut self, ctx: &egui::Context, tk: &Tokens) {
+        let Some(asking) = &mut self.asking else { return };
+        if self.running || self.notice.is_some() {
+            return;
+        }
+        let mut names: Vec<String> = asking.files.iter().take(3).map(|f| f.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()).collect();
+        if asking.files.len() > 3 {
+            names.push("…".to_owned());
+        }
+        let text = tf(if asking.wrong { "ui.password_wrong" } else { "ui.password_text" }, &[("files", &names.join(", "))]);
+        let (mut go, mut skip) = (false, false);
+        let mut open = true;
+        egui::Window::new(t("ui.password_title"))
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .anchor(Align2::CENTER_CENTER, vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                ui.set_max_width(360.0);
+                ui.label(text);
+                ui.add_space(8.0);
+                let field = ui.add(egui::TextEdit::singleline(&mut asking.text).password(true).desired_width(f32::INFINITY));
+                // Read Enter before taking the focus back: lost_focus() is checked live, so refocusing first hides it.
+                let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if !enter && !field.has_focus() && !ui.ctx().memory(|m| m.focused().is_some()) {
+                    field.request_focus();
+                }
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    go = widgets::primary(ui, tk, &t("ui.password_go"), !asking.text.is_empty()).clicked() || (enter && !asking.text.is_empty());
+                    skip = button(ui, &t("ui.password_skip")).clicked();
+                });
+            });
+        if go {
+            let Asking { files, text, .. } = self.asking.take().expect("asking");
+            self.password = text;
+            self.run(files, true);
+        } else if skip || !open {
+            self.asking = None;
+        }
+    }
+
     fn body(&mut self, ui: &mut egui::Ui, tk: &Tokens) {
         section(ui, tk, &t("ui.files_title"));
         ui.label(RichText::new(t("app.list_label")).size(12.0).color(tk.muted));
@@ -399,7 +481,7 @@ impl ConverterApp {
             ui.checkbox(on, t(def.label_key));
         }
         ui.checkbox(&mut self.recursive, t("ui.opt_recursive"));
-        if self.cfg.password_env.is_some() {
+        if self.cfg.password_env.is_some() && self.cfg.ask_password.is_none() {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.label(t("app.password"));

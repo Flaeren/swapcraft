@@ -28,6 +28,7 @@ static CONFIG: Config = Config {
         OptionDef { label_key: "app.opt_mute", arg: "audio=false", default: false },
     ],
     password_env: None,
+    ask_password: None,
     icon_256: include_bytes!("../assets/icon_256.rgba"),
     icon_128: include_bytes!("../assets/icon_128.rgba"),
     catalog: include_str!("../assets/strings.tsv"),

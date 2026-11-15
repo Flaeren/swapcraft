@@ -24,7 +24,7 @@ $version = (Select-String -Path (Join-Path $src "Cargo.toml") -Pattern '^version
 # CHANGELOG must have a section for it. (In 0.2.0 the hub's Cargo.toml was left at 0.1.0: it shipped saying "v0.1.0" and
 # would have offered its own version as an update forever.) A release is refused when any of them disagrees.
 $mismatch = @()
-Get-ChildItem $portable -Recurse -Filter *.exe | Where-Object { $_.Name -notlike "*.old.exe" -and $_.DirectoryName -notmatch '\\(wordcraft|gridcraft|deckcraft|pdfcraft|cadcraft|photocraft|soundcraft|filmcraft)(\\|$)' } | ForEach-Object {
+Get-ChildItem $portable -Recurse -Filter *.exe | Where-Object { $_.Name -notlike "*.old.exe" -and $_.DirectoryName -notmatch '\\(wordcraft|gridcraft|deckcraft|pdfcraft|cadcraft|photocraft|soundcraft|filmcraft|mailcraft)(\\|$)' } | ForEach-Object {
     if ($_.VersionInfo.ProductVersion -ne $version) { $mismatch += "$($_.FullName.Substring($portable.Length + 1)) says '$($_.VersionInfo.ProductVersion)'" }
 }
 if ($mismatch) { throw "Version $version (src\Cargo.toml) but: " + ($mismatch -join "; ") + ". Run build-apps.ps1 again; if it persists a Cargo.toml has its own version instead of version.workspace = true." }
@@ -33,7 +33,7 @@ Write-Host "Version ${version}: hub and apps agree, CHANGELOG has its section."
 $engines = Get-Content -Raw (Join-Path $src "engines.json") | ConvertFrom-Json
 $compat = Get-Content -Raw (Join-Path $src "engine-compat.json") | ConvertFrom-Json
 # Display names live in hub\src\catalog.rs; keep these in step with it.
-$names = @{ "word-to-pdf" = "Word to PDF"; "excel-to-pdf" = "Excel to PDF"; "slides-to-pdf" = "Slides to PDF"; "pdf-tools" = "PDF Tools"; "dwg-to-pdf" = "DWG to PDF"; "image-converter" = "Image Converter"; "audio-converter" = "Audio Converter"; "video-converter" = "Video Converter"; "ebook-converter" = "E-book Converter" }
+$names = @{ "word-to-pdf" = "Word to PDF"; "excel-to-pdf" = "Excel to PDF"; "slides-to-pdf" = "Slides to PDF"; "pdf-tools" = "PDF Tools"; "dwg-to-pdf" = "DWG to PDF"; "image-converter" = "Image Converter"; "audio-converter" = "Audio Converter"; "video-converter" = "Video Converter"; "ebook-converter" = "E-book Converter"; "mail-converter" = "Mail Converter" }
 if (Test-Path $out) { Remove-Item -LiteralPath $out -Recurse -Force }
 New-Item -ItemType Directory -Force $out | Out-Null
 
@@ -77,7 +77,8 @@ $packs = @()
 foreach ($appDir in (Get-ChildItem (Join-Path $portable "apps") -Directory | Sort-Object Name)) {
     $id = $appDir.Name
     if (-not (Test-Path (Join-Path $appDir.FullName "$id.exe"))) { throw "apps\$id\$id.exe is missing" }
-    $def = $engines.engines | Where-Object { $_.app -eq $id -or $_.also -contains $id } | Select-Object -First 1
+    # the pack engine; an engine marked inside_app (MailCraft) stays in the app ZIP instead
+    $def = $engines.engines | Where-Object { -not $_.inside_app -and ($_.app -eq $id -or $_.also -contains $id) } | Select-Object -First 1
     if (-not $def -and $engines.cadcraft.app -eq $id) { $def = $engines.cadcraft }
     $engineName = if ($def) { $def.name } else { $null }
 

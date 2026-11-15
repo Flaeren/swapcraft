@@ -19,6 +19,7 @@ static CONFIG: Config = Config {
         OptionDef { label_key: "app.opt_markup", arg: "--markup", default: false },
     ],
     password_env: Some("WORDCRAFT_PASSWORD"),
+    ask_password: None,
     icon_256: include_bytes!("../assets/icon_256.rgba"),
     icon_128: include_bytes!("../assets/icon_128.rgba"),
     catalog: include_str!("../assets/strings.tsv"),

@@ -66,9 +66,9 @@ macro_rules! icon_bytes {
     };
 }
 
-const ICON_FILES: [(&str, &[u8]); 9] = icon_bytes!(
+const ICON_FILES: [(&str, &[u8]); 10] = icon_bytes!(
     "dwg-to-pdf", "word-to-pdf", "excel-to-pdf", "slides-to-pdf", "pdf-tools", "image-converter", "audio-converter",
-    "video-converter", "ebook-converter",
+    "video-converter", "ebook-converter", "mail-converter",
 );
 
 impl AppIcons {

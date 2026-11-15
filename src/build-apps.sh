@@ -20,7 +20,7 @@ echo "swapcraft, swapcraft-cli, swapcraft.png"
 declare -A engines=(
   [word-to-pdf]=wordcraft [excel-to-pdf]=gridcraft [slides-to-pdf]=deckcraft [pdf-tools]=pdfcraft
   [dwg-to-pdf]=cadcraft [image-converter]=photocraft [audio-converter]=soundcraft [video-converter]=filmcraft
-  [ebook-converter]=wordcraft
+  [ebook-converter]=wordcraft [mail-converter]="wordcraft mailcraft"
 )
 for dir in crates/app-*/; do
   id=$(basename "$dir"); id=${id#app-}
@@ -28,14 +28,15 @@ for dir in crates/app-*/; do
   mkdir -p "$dest"
   install -m 755 "target/release/$id" "$dest/$id"
   echo "apps/$id/$id"
-  engine=${engines[$id]:-}
-  [ -z "$engine" ] && continue
-  # Each app carries its own engine, so nobody needs ArtCraft installed: the command-line program, its data and
-  # notices, and the MIT/Apache licence texts. fetch-engines.sh already left out the engine's own window.
-  installed="$src/engines/$engine"
-  [ -x "$installed/$engine-cli" ] || { echo "$engine is not in $installed: run fetch-engines.sh first" >&2; exit 1; }
-  rm -rf "$dest/$engine"
-  cp -pr "$installed" "$dest/$engine"
-  [ -d "licenses/$engine" ] && cp -p "licenses/$engine"/* "$dest/$engine/"
-  echo "  + $engine/"
+  # Mail Converter carries two: wordcraft (its pack engine) and mailcraft (inside its app ZIP, for .pst files)
+  for engine in ${engines[$id]:-}; do
+    # Each app carries its own engine, so nobody needs ArtCraft installed: the command-line program, its data and
+    # notices, and the MIT/Apache licence texts. fetch-engines.sh already left out the engine's own window.
+    installed="$src/engines/$engine"
+    [ -x "$installed/$engine-cli" ] || { echo "$engine is not in $installed: run fetch-engines.sh first" >&2; exit 1; }
+    rm -rf "$dest/$engine"
+    cp -pr "$installed" "$dest/$engine"
+    if [ -d "licenses/$engine" ]; then cp -p "licenses/$engine"/* "$dest/$engine/"; fi
+    echo "  + $engine/"
+  done
 done
