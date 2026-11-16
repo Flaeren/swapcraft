@@ -164,7 +164,7 @@ mod tests {
             used.push(format!("hub.app.{}.blurb", app.id));
         }
         // route labels with words in them are translated (`routes::shown_label`); product names stay as they are
-        const NAMES: [&str; 3] = ["Word (DOCX)", "PowerPoint (PPTX)", "MOV (ProRes)"];
+        const NAMES: [&str; 4] = ["Word (DOCX)", "PowerPoint (PPTX)", "MOV (ProRes)", "Excel (XLSX)"];
         for r in vf_core::routes::ROUTES {
             let words = r.label.split(|c: char| !c.is_ascii_alphabetic()).any(|w| w.len() > 1 && w.chars().any(|c| c.is_ascii_lowercase()) && w != "WebP");
             if words && !NAMES.contains(&r.label) {

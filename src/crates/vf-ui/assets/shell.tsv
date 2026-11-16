@@ -46,3 +46,4 @@ ui.password_go	Convert	Converti	Convertir	Convertir	Konvertieren
 ui.password_skip	Skip	Salta	Omitir	Ignorer	Überspringen
 ui.password_text	A password is needed to open {files}.	Serve una password per aprire {files}.	Se necesita una contraseña para abrir {files}.	Un mot de passe est nécessaire pour ouvrir {files}.	Zum Öffnen von {files} wird ein Kennwort benötigt.
 ui.password_wrong	That password does not open {files}. Try again.	Questa password non apre {files}. Riprova.	Esa contraseña no abre {files}. Inténtalo de nuevo.	Ce mot de passe n'ouvre pas {files}. Réessayez.	Dieses Kennwort öffnet {files} nicht. Bitte erneut versuchen.
+sheet.went_to	sheet {sheet} → {file}	foglio {sheet} → {file}	hoja {sheet} → {file}	feuille {sheet} → {file}	Blatt {sheet} → {file}

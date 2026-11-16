@@ -111,7 +111,7 @@ Settings and recipes are kept in `~/.config/voidflare`. On Linux Mint, Settings 
 | App | Reads | Writes |
 |---|---|---|
 | Word to PDF | DOCX, DOC, RTF, ODT | PDF |
-| Excel to PDF | XLSX, CSV, TSV | PDF |
+| Excel to PDF | XLSX, CSV, TSV | PDF, XLSX, CSV (one per sheet) |
 | Slides to PDF | PPTX | PDF |
 | PDF Tools | PDF | DOCX, PPTX, HTML, RTF, TXT, PNG, JPG; also merge, split, extract pages, shrink, OCR (English only) |
 | DWG to PDF | DWG | PDF: sheets merged or separate, or the whole drawing on one page |

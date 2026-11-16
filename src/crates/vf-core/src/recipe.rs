@@ -194,6 +194,8 @@ impl Recipe {
             };
             shape = match step {
                 Step::Convert(to) => match find_route(cur, to) {
+                    // a workbook can have several sheets, and each becomes its own CSV
+                    Some(route) if cur == "xlsx" && matches!(route.job, routes::Job::Sheet("csv")) => Shape::Folder,
                     Some(route) => output_ext(route).map_or(Shape::Folder, |e| Shape::File(e.to_owned())),
                     None => return fail(format!("a .{cur} file cannot be converted to {to}")),
                 },
@@ -457,7 +459,10 @@ fn run_step(step: &Step, input: &Path, dir: &Path, note: &dyn Fn(String)) -> Res
     match step {
         Step::Convert(to) => {
             let route = find_route(&ext_of(input), to).ok_or_else(|| format!("cannot convert .{} to {to}", ext_of(input)))?;
-            routes::run_route(route, input, &dir, note)
+            let made = routes::run_route(route, input, &dir, note)?;
+            // Several files (one CSV per sheet): the folder holding them all is the result, not the first file.
+            let several = fs::read_dir(&dir).map(|d| d.count() > 1).unwrap_or(false);
+            Ok(if several { dir } else { made })
         }
         Step::Shrink(level) => pdf::batch(&pdfcraft()?, input, level.pass(), &dir),
         Step::Ocr => pdf::batch(&pdfcraft()?, input, Pass::Ocr, &dir),

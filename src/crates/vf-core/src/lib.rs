@@ -20,6 +20,7 @@ pub mod pdfmerge;
 pub mod platform;
 pub mod recipe;
 pub mod routes;
+pub mod sheet;
 pub mod shortcuts;
 pub mod sniff;
 pub mod update;

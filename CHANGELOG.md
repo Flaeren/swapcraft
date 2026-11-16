@@ -2,12 +2,18 @@
 
 All notable changes to SwapCraft (formerly voidflare) are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.7.1] - 2026-11-16
 
 ### Added
 
 - **MP3 and M4A in Audio Converter.** SoundCraft writes only WAV, FLAC and AIFF; MP3 (320 kbps) and M4A (AAC) are now written by FilmCraft, the engine Video Converter brings, so they need Video Converter installed beside it (the app says so when it is not). A new setting brings every MP3 or M4A to the same loudness (-16 LUFS), for podcasts and playlists. Also from the hub, the command line and the MCP server.
 - **MP3 from a video.** Video Converter, the hub and the command line can take a video's sound as MP3.
+- **Excel to PDF also writes Excel and CSV.** A workbook becomes one CSV per sheet, beside it and named after the sheet (`Budget - January.csv`); GridCraft alone wrote only the sheet that was open and left out the others without a word. Also from the hub, the command line, the MCP server and recipes (a recipe keeps all the sheets in one folder).
+
+### Changed
+
+- **CSV files from a European Excel are read as meant.** Excel in Italian, Spanish, French or German saves CSV files with `;`, a decimal comma and day-first dates. Such a file used to give numbers as text (`12,5`) and 5 November read as 11 May. Now a column whose values are all numbers or all dates becomes numbers or dates; a column with anything else in it is left as written. This applies to every conversion of a CSV: to PDF and to Excel.
+- **Codes keep their leading zeros.** In any CSV, a value like `00123` (a postcode, an article code) stays text instead of becoming 123, and a number longer than 15 digits (a card or account number) stays text instead of losing its last digits.
 
 ## [0.7.0] - 2026-11-15
 

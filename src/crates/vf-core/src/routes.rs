@@ -22,6 +22,8 @@ pub enum Job {
     /// `ebook::convert`: Rust reads and writes EPUB, Kindle, text and HTML; WordCraft makes PDF and DOCX and reads
     /// word processor files. WordCraft is optional for the formats Rust handles alone.
     Ebook(Kind),
+    /// `sheet::convert` (GridCraft): a CSV read as meant first, one CSV per sheet of a workbook.
+    Sheet(&'static str),
     /// `film::convert`: the output type and the export settings (`key=value`).
     Film(&'static str, &'static [&'static str]),
     /// `mail::convert` on a message (`.eml`) or a mailbox (`.mbox`): WordCraft only for PDF.
@@ -65,7 +67,9 @@ pub const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "webp", "tif", "tiff", "
 
 pub const ROUTES: &[Route] = &[
     Route { from: DOCS, label: "PDF", app: "word-to-pdf", job: Job::Engine(WORDCRAFT, "pdf") },
-    Route { from: SHEETS, label: "PDF", app: "excel-to-pdf", job: Job::Engine(GRIDCRAFT, "pdf") },
+    Route { from: SHEETS, label: "PDF", app: "excel-to-pdf", job: Job::Sheet("pdf") },
+    Route { from: SHEETS, label: "Excel (XLSX)", app: "excel-to-pdf", job: Job::Sheet("xlsx") },
+    Route { from: SHEETS, label: "CSV", app: "excel-to-pdf", job: Job::Sheet("csv") },
     Route { from: SLIDES, label: "PDF", app: "slides-to-pdf", job: Job::Engine(DECKCRAFT, "pdf") },
     Route { from: &["pdf"], label: "Word (DOCX)", app: "pdf-tools", job: Job::PdfExport(Export::Docx) },
     Route { from: &["pdf"], label: "PowerPoint (PPTX)", app: "pdf-tools", job: Job::PdfExport(Export::Pptx) },
@@ -139,7 +143,7 @@ fn canonical(ext: &str) -> &str {
 /// A route that would write the format the file already is (a PNG "converted" to PNG) is not offered.
 fn is_same_format(route: &Route, source: &str) -> bool {
     match route.job {
-        Job::Engine(_, out) | Job::Film(out, _) | Job::Audio(out) => out == source,
+        Job::Engine(_, out) | Job::Film(out, _) | Job::Audio(out) | Job::Sheet(out) => out == source,
         Job::Ebook(kind) => kind.ext() == source,
         _ => false,
     }
@@ -158,6 +162,7 @@ impl Job {
         match self {
             Job::Ebook(_) | Job::Mail(_) | Job::Pst(_) => WORDCRAFT,
             Job::Engine(e, _) => e,
+            Job::Sheet(_) => GRIDCRAFT,
             Job::Audio(_) => SOUNDCRAFT,
             Job::Film(..) => FILMCRAFT,
             Job::PdfExport(_) | Job::ImagePdf => PDFCRAFT,
@@ -202,6 +207,10 @@ fn run_with(job: Job, cli: PathBuf, source: &Path, out_dir: &Path, note: &dyn Fn
         Job::Mail(kind) | Job::Pst(kind) => {
             let spec = Spec { cli, out_ext: kind.ext().to_owned(), extra_args: vec![], env: vec![] };
             mail::convert(&spec, source, out_dir)
+        }
+        Job::Sheet(out_ext) => {
+            let spec = Spec { cli, out_ext: out_ext.to_owned(), extra_args: vec![], env: vec![] };
+            crate::sheet::convert_noted(&spec, source, out_dir, note)
         }
         Job::Film(out_ext, args) => {
             let spec = Spec { cli, out_ext: out_ext.to_owned(), extra_args: args.iter().map(|a| (*a).to_owned()).collect(), env: vec![] };
@@ -291,7 +300,7 @@ pub fn shown_label(label: &str) -> String {
 /// `dwg-pdf-sheets`...). Two routes of one source never share an id.
 pub fn route_id(route: &Route) -> String {
     match route.job {
-        Job::Engine(_, ext) | Job::Film(ext, _) | Job::Audio(ext) => ext.to_owned(),
+        Job::Engine(_, ext) | Job::Film(ext, _) | Job::Audio(ext) | Job::Sheet(ext) => ext.to_owned(),
         Job::Ebook(kind) => kind.ext().to_owned(),
         Job::Mail(kind) | Job::Pst(kind) => kind.ext().to_owned(),
         Job::PdfExport(Export::Docx) => "docx".into(),
@@ -310,7 +319,7 @@ pub fn route_id(route: &Route) -> String {
 /// The extension of the file a route writes, or `None` when it writes a folder (one picture per PDF page).
 pub fn output_ext(route: &Route) -> Option<&'static str> {
     match route.job {
-        Job::Engine(_, ext) | Job::Film(ext, _) | Job::Audio(ext) => Some(ext),
+        Job::Engine(_, ext) | Job::Film(ext, _) | Job::Audio(ext) | Job::Sheet(ext) => Some(ext),
         Job::Ebook(kind) => Some(kind.ext()),
         // a folder of messages; for a .pst a folder of files, one per mail folder
         Job::Mail(mail::Kind::Eml) | Job::Pst(mail::Kind::Pdf | mail::Kind::Eml | mail::Kind::Mbox) => None,
@@ -360,6 +369,9 @@ mod tests {
         assert_eq!(targets("pst").len(), 5, "pdf, eml, mbox, calendar, contacts");
         assert!(output_ext(find_route("pst", "pdf").unwrap()).is_none(), "one PDF per mail folder, in a folder");
         assert_eq!(output_ext(find_route("eml", "pdf").unwrap()), Some("pdf"));
+        assert_eq!(targets("xlsx").len(), 2, "pdf and csv");
+        assert_eq!(targets("csv").len(), 2, "pdf and xlsx");
+        assert_eq!(targets("tsv").len(), 3);
     }
 
     #[test]
