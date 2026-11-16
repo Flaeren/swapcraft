@@ -1,5 +1,5 @@
 {
-  "comment": "The engines voidflare bundles, pinned. fetch-engines.ps1 downloads each asset, refuses it unless its SHA-256 is the one below, and unpacks it into src/engines/<name>/. To move to a newer engine: change tag, asset and sha256 together (the hash is in the release's SHA256SUMS.txt), run the tests, then build. Linux: the `linux` entry of each engine, used by fetch-engines.sh the same way. macOS: the `macos` entry (the universal command-line ZIP), used by fetch-engines.sh on a Mac.",
+  "comment": "The engines voidflare bundles, pinned. fetch-engines.ps1 downloads each asset, refuses it unless its SHA-256 is the one below, and unpacks it into src/engines/<name>/. To move to a newer engine: change tag, asset and sha256 together (the hash is in the release's SHA256SUMS.txt), run the tests, then build. Linux: the `linux` entry of each engine, used by fetch-engines.sh the same way. macOS: the `macos` entry (the universal command-line ZIP), used by fetch-engines.sh on a Mac. `data_from_linux`: the macOS ZIP has no data folder (PdfCraft's OCR models), so it is taken from the Linux package of the same release, hash-checked the same way.",
   "engines": [
     {
       "name": "wordcraft",
@@ -70,7 +70,8 @@
       },
       "macos": {
         "asset": "pdfcraft-cli-0.21.1-macos-universal.zip",
-        "sha256": "337a9f644744b57e10de41c57366e53c5ccf8840a4d5dc7322b17b9b83fdc2fa"
+        "sha256": "337a9f644744b57e10de41c57366e53c5ccf8840a4d5dc7322b17b9b83fdc2fa",
+        "data_from_linux": true
       }
     },
     {

@@ -48,6 +48,18 @@ for i in $(seq 0 $((n - 1))); do
     [ -f "$top/$name-cli" ] || { echo "$asset has no $name-cli" >&2; exit 1; }
     cp -pR "$top"/. "$dest/"
     chmod 755 "$dest/$name-cli"
+    # data the macOS ZIP leaves out (PdfCraft: models/ for OCR) is the same on every system: from the Linux package
+    if [ "$(jq -r ".engines[$i].macos.data_from_linux // false" "$cfg")" = true ]; then
+      lasset=$(jq -r ".engines[$i].linux.asset" "$cfg"); lsha=$(jq -r ".engines[$i].linux.sha256" "$cfg")
+      lfile="$cache/$lasset"
+      [ -f "$lfile" ] || { curl -fsSL -o "$lfile.part" "https://github.com/$repo/releases/download/$tag/$lasset"; mv "$lfile.part" "$lfile"; }
+      got=$(sha256sum "$lfile" | cut -d' ' -f1)
+      if [ "$got" != "$lsha" ]; then rm -f "$lfile"; echo "$lasset: SHA-256 $got, expected $lsha; refused" >&2; exit 1; fi
+      mkdir -p "$work/linux"; tar xzf "$lfile" -C "$work/linux"
+      ltop=$(find "$work/linux" -mindepth 1 -maxdepth 1 -type d | head -1)
+      [ -d "$ltop/share/$name" ] || { echo "$lasset has no share/$name" >&2; exit 1; }
+      cp -pR "$ltop/share/$name"/. "$dest/"
+    fi
   else
     tar xzf "$file" -C "$work"
     top=$(find "$work" -mindepth 1 -maxdepth 1 -type d | head -1)
