@@ -85,10 +85,14 @@ pub const ROUTES: &[Route] = &[
     Route { from: AUDIO_EXTS, label: "WAV", app: "audio-converter", job: Job::Audio("wav") },
     Route { from: AUDIO_EXTS, label: "FLAC", app: "audio-converter", job: Job::Audio("flac") },
     Route { from: AUDIO_EXTS, label: "AIFF", app: "audio-converter", job: Job::Audio("aiff") },
+    // FilmCraft (it comes with Video Converter) writes the lossy formats SoundCraft does not.
+    Route { from: AUDIO_EXTS, label: "MP3", app: "audio-converter", job: Job::Film("mp3", &["format=mp3"]) },
+    Route { from: AUDIO_EXTS, label: "M4A (AAC)", app: "audio-converter", job: Job::Film("m4a", &["format=aac"]) },
     Route { from: VIDEO_EXTS, label: "MP4 (H.264)", app: "video-converter", job: Job::Film("mp4", &["format=h264", "bitrateMode=crf", "crf=23"]) },
     Route { from: VIDEO_EXTS, label: "MOV (ProRes)", app: "video-converter", job: Job::Film("mov", &["format=prores"]) },
     Route { from: VIDEO_EXTS, label: "GIF", app: "video-converter", job: Job::Film("gif", &["format=gif", "audio=false"]) },
     Route { from: VIDEO_EXTS, label: "WAV (sound)", app: "video-converter", job: Job::Film("wav", &["format=wav"]) },
+    Route { from: VIDEO_EXTS, label: "MP3 (sound)", app: "video-converter", job: Job::Film("mp3", &["format=mp3"]) },
     Route { from: BOOKS, label: "Text (TXT)", app: "ebook-converter", job: Job::Ebook(Kind::Txt) },
     Route { from: BOOKS, label: "HTML", app: "ebook-converter", job: Job::Ebook(Kind::Html) },
     Route { from: BOOKS, label: "PDF", app: "ebook-converter", job: Job::Ebook(Kind::Pdf) },
@@ -338,16 +342,17 @@ mod tests {
         assert_eq!(targets("png").len(), 7, "every picture format but itself, and PDF");
         assert_eq!(targets("jpeg").len(), 7);
         assert!(find_route("png", "pdf").is_some() && find_route("webp", "pdf").is_some(), "a picture can become a PDF");
-        assert_eq!(targets("mp3").len(), 3, "an mp3 can become wav, flac or aiff");
-        assert_eq!(targets("wav").len(), 2, "a wav is already a wav");
-        assert_eq!(targets("aif").len(), 2);
+        assert_eq!(targets("mp3").len(), 4, "an mp3 can become wav, flac, aiff or m4a");
+        assert_eq!(targets("wav").len(), 4, "a wav is already a wav");
+        assert_eq!(targets("aif").len(), 4);
+        assert!(find_route("ogg", "mp3").is_some() && find_route("flac", "m4a").is_some(), "lossy audio from FilmCraft");
         assert_eq!(targets("epub").len(), 4, "txt, html, pdf, docx");
         assert_eq!(targets("azw3").len(), 5, "and an epub");
         assert_eq!(targets("txt").len(), 3, "epub, pdf and docx");
         assert_eq!(targets("html").len(), 3);
         assert!(find_route("md", "pdf").is_some());
-        assert_eq!(targets("mkv").len(), 4, "mp4, mov, gif and the sound");
-        assert_eq!(targets("mp4").len(), 3, "an mp4 is already an mp4");
+        assert_eq!(targets("mkv").len(), 5, "mp4, mov, gif and the sound as wav or mp3");
+        assert_eq!(targets("mp4").len(), 4, "an mp4 is already an mp4");
         assert!(!targets("jpeg").iter().any(|&i| route_id(&ROUTES[i]) == "jpg"), "a .jpeg is already a jpg");
         assert!(targets("xyz").is_empty());
         assert_eq!(targets("eml").len(), 2, "pdf and mbox");
@@ -457,7 +462,8 @@ mod tests {
         b
     }
 
-    /// WAV to FLAC and AIFF with the real SoundCraft, and each back to WAV (skipped without the engine).
+    /// WAV to FLAC, AIFF, MP3 and M4A with the real engines, and each back to WAV (skipped without SoundCraft; MP3
+    /// and M4A skipped without FilmCraft).
     #[test]
     fn audio_formats() {
         if SOUNDCRAFT.find().is_none() {
@@ -470,6 +476,9 @@ mod tests {
         std::fs::write(&src, tiny_wav()).unwrap();
         for i in targets("wav") {
             let route = &ROUTES[i];
+            if matches!(route.job, Job::Film(..)) && FILMCRAFT.find().is_none() {
+                continue;
+            }
             let out = run_route(route, &src, &dir, &|_| {}).unwrap_or_else(|e| panic!("wav -> {}: {e}", route.label));
             assert!(std::fs::metadata(&out).unwrap().len() > 100, "{}", route.label);
             let back = find_route(&ext_of(&out), "wav").unwrap();

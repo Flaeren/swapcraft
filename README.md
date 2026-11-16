@@ -75,7 +75,7 @@ SwapCraft's conversions are done by command-line engines of the **[ArtCraft](htt
 | PDF Tools | PdfCraft | MIT **or** Apache-2.0 |
 | DWG to PDF | CADCraft, with one local fix ([patch](src/vendor/cadcraft-tilted-insert.patch)) | MIT **or** Apache-2.0 |
 | Image Converter | PhotoCraft | MIT **or** Apache-2.0 |
-| Audio Converter | SoundCraft | MIT **or** Apache-2.0 |
+| Audio Converter | SoundCraft; MP3 and M4A by the FilmCraft of Video Converter | MIT **or** Apache-2.0 |
 | Video Converter | FilmCraft | MIT **or** Apache-2.0 |
 | E-book Converter | WordCraft for PDF and Word; reading EPUB and Kindle books and writing EPUB is SwapCraft's own code | MIT **or** Apache-2.0 |
 | Mail Converter | WordCraft for PDF; MailCraft to open Outlook PST files; reading messages and mailboxes is SwapCraft's own code | MIT **or** Apache-2.0 |
@@ -116,8 +116,8 @@ Settings and recipes are kept in `~/.config/voidflare`. On Linux Mint, Settings 
 | PDF Tools | PDF | DOCX, PPTX, HTML, RTF, TXT, PNG, JPG; also merge, split, extract pages, shrink, OCR (English only) |
 | DWG to PDF | DWG | PDF: sheets merged or separate, or the whole drawing on one page |
 | Image Converter | PNG, JPG, WebP, TIFF, BMP, GIF, ICO, TGA, PSD, EXR, HDR, DDS, DPX, QOI | PNG, JPG, WebP, TIFF, BMP, GIF, ICO, TGA, PSD |
-| Audio Converter | WAV, FLAC, AIFF, MP3, OGG, M4A, AAC, CAF and more | WAV, FLAC, AIFF (not MP3 or OGG) |
-| Video Converter | MP4, MOV, MKV, WebM, AVI, MPEG, TS, MXF | MP4 (H.264), MOV (ProRes), GIF, or only the sound as WAV, M4A, FLAC |
+| Audio Converter | WAV, FLAC, AIFF, MP3, OGG, M4A, AAC, CAF and more | WAV, FLAC, AIFF; MP3 and M4A when Video Converter is installed (not OGG or Opus) |
+| Video Converter | MP4, MOV, MKV, WebM, AVI, MPEG, TS, MXF | MP4 (H.264), MOV (ProRes), GIF, or only the sound as WAV, MP3, M4A, FLAC |
 | E-book Converter | EPUB, AZW3, AZW, MOBI, PRC (no DRM), TXT, HTML, Markdown, DOCX, ODT, RTF | EPUB, TXT, HTML, PDF, DOCX |
 | Mail Converter | EML, MBOX, Outlook PST (also with a password) | PDF (one bookmark per message), EML, MBOX; from a PST also the calendar (ICS) and the contacts (VCF) |
 

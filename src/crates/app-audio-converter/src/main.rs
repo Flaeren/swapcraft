@@ -1,5 +1,6 @@
-//! Audio Converter: most audio files to WAV, FLAC or AIFF, with resampling and normalising, offline on the
-//! SoundCraft engine. SoundCraft reads many formats (MP3, OGG, M4A, AAC...) but writes only WAV, FLAC and AIFF.
+//! Audio Converter: most audio files to WAV, FLAC, AIFF, MP3 or M4A, with resampling and normalising, offline.
+//! SoundCraft reads many formats (MP3, OGG, M4A, AAC...) but writes only WAV, FLAC and AIFF; MP3 and M4A come from
+//! the FilmCraft of Video Converter (`vf_core::audio`).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use vf_core::engine::SOUNDCRAFT;
@@ -19,10 +20,15 @@ static CONFIG: Config = Config {
         FormatDef { ext: "flac", label: "FLAC · 24-bit", args: &["--bit-depth", "24"] },
         FormatDef { ext: "aiff", label: "AIFF · 16-bit", args: &["--bit-depth", "16"] },
         FormatDef { ext: "aiff", label: "AIFF · 24-bit", args: &["--bit-depth", "24"] },
+        FormatDef { ext: "mp3", label: "MP3 · 320 kbps", args: &[] },
+        FormatDef { ext: "m4a", label: "M4A · AAC", args: &[] },
     ],
     quality: None,
-    runner: None,
-    options: &[OptionDef { label_key: "app.opt_normalize", arg: "--normalize", default: false }],
+    runner: Some(vf_core::audio::convert),
+    options: &[
+        OptionDef { label_key: "app.opt_normalize", arg: "--normalize", default: false },
+        OptionDef { label_key: "app.opt_loudness", arg: vf_core::audio::LOUDNESS, default: false },
+    ],
     password_env: None,
     ask_password: None,
     icon_256: include_bytes!("../assets/icon_256.rgba"),

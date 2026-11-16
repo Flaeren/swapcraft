@@ -53,6 +53,15 @@ impl Engine {
                     candidates.push(app.path().join(self.folder.to_lowercase()).join(self.cli));
                 }
             }
+            // An app sits beside the others (`apps\<app>\`): it can use an engine another app brought (Audio
+            // Converter writes MP3 with the FilmCraft of Video Converter). Only inside an `apps` folder, so a hub in
+            // Downloads does not search the user's other folders.
+            let sibling_root = dir.parent().filter(|p| p.file_name().is_some_and(|n| n.eq_ignore_ascii_case("apps")));
+            if let Some(Ok(apps)) = sibling_root.map(std::fs::read_dir) {
+                for app in apps.flatten() {
+                    candidates.push(app.path().join(self.folder.to_lowercase()).join(self.cli));
+                }
+            }
         }
         candidates.extend(self.system_candidates());
         candidates.into_iter().find(|c| c.is_file())

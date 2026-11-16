@@ -63,7 +63,7 @@ fn has_audio(cli: &Path, src: &Path) -> Option<bool> {
 }
 
 /// Output types that carry only sound.
-const AUDIO_ONLY: &[&str] = &["wav", "m4a", "aac", "flac", "aiff"];
+const AUDIO_ONLY: &[&str] = &["wav", "mp3", "m4a", "aac", "flac", "aiff"];
 
 /// Converts one video (or takes the sound of it) into `spec.out_ext`, into `out_dir`.
 pub fn convert(spec: &Spec, src: &Path, out_dir: &Path) -> Result<PathBuf, String> {
@@ -161,7 +161,7 @@ mod tests {
         let gif = convert(&spec("gif", &["format=gif", "audio=false"]), &src, &dir.join("o")).expect("gif");
         assert!(fs::metadata(&gif).unwrap().len() > 100);
 
-        for (ext, format) in [("wav", "wav"), ("m4a", "aac"), ("flac", "flac")] {
+        for (ext, format) in [("wav", "wav"), ("mp3", "mp3"), ("m4a", "aac"), ("flac", "flac")] {
             let audio = convert(&spec(ext, &[&format!("format={format}")]), &src, &dir.join("o")).unwrap_or_else(|e| panic!("sound as {ext}: {e}"));
             assert!(fs::metadata(&audio).unwrap().len() > 1000, "sound as {ext} is not empty");
             assert!(probe(&audio)["audio_streams"].as_array().is_some_and(|a| !a.is_empty()), "{ext} has an audio stream");

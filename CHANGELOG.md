@@ -2,6 +2,13 @@
 
 All notable changes to SwapCraft (formerly voidflare) are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **MP3 and M4A in Audio Converter.** SoundCraft writes only WAV, FLAC and AIFF; MP3 (320 kbps) and M4A (AAC) are now written by FilmCraft, the engine Video Converter brings, so they need Video Converter installed beside it (the app says so when it is not). A new setting brings every MP3 or M4A to the same loudness (-16 LUFS), for podcasts and playlists. Also from the hub, the command line and the MCP server.
+- **MP3 from a video.** Video Converter, the hub and the command line can take a video's sound as MP3.
+
 ## [0.7.0] - 2026-11-15
 
 ### Added

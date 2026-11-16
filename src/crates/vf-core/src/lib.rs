@@ -1,6 +1,7 @@
 //! Shared core of the voidflare apps: languages, engine discovery, file collection and the job that
 //! runs an ArtCraft command-line engine on one file. Nothing here draws anything.
 
+pub mod audio;
 pub mod dwg;
 pub mod ebook;
 pub mod embedded;

@@ -1,4 +1,4 @@
-//! Video Converter: most video files to MP4 (H.264), ProRes MOV or GIF, or just their sound, offline on the
+//! Video Converter: most video files to MP4 (H.264), ProRes MOV or GIF, or just their sound (WAV, MP3, M4A, FLAC), offline on the
 //! FilmCraft engine. FilmCraft is an editor: each conversion is an import, a sequence and an export (`vf_core::film`).
 //! H.265 is left out on purpose: FilmCraft writes it only through a hardware encoder (NVIDIA), which most PCs lack.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -18,6 +18,7 @@ static CONFIG: Config = Config {
         FormatDef { ext: "mov", label: "MOV · ProRes 422 HQ (for editing)", args: &["format=prores"] },
         FormatDef { ext: "gif", label: "GIF · animated, no sound", args: &["format=gif", "audio=false"] },
         FormatDef { ext: "wav", label: "Sound only · WAV", args: &["format=wav"] },
+        FormatDef { ext: "mp3", label: "Sound only · MP3", args: &["format=mp3"] },
         FormatDef { ext: "m4a", label: "Sound only · AAC (M4A)", args: &["format=aac"] },
         FormatDef { ext: "flac", label: "Sound only · FLAC", args: &["format=flac"] },
     ],
