@@ -474,7 +474,7 @@ mod tests {
     /// A release carries the Windows and the Linux files side by side; each hub takes only its own, and on Linux
     /// the hub (and its command line) is swapped for the Linux programs in the hub ZIP.
     #[test]
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
     fn a_linux_hub_takes_only_the_linux_files_and_replaces_itself() {
         let json = r#"{"tag_name": "v0.6.0", "assets": [
           {"name": "swapcraft-hub-0.6.0-windows.zip", "browser_download_url": "https://e.test/hw.zip", "size": 1},

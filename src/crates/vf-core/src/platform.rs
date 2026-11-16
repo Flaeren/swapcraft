@@ -1,5 +1,5 @@
-//! What differs between Windows and Linux, in one place: program names, the settings folder, the label of this
-//! platform in release file names.
+//! What differs between Windows, Linux and macOS, in one place: program names, the settings folder, the label of
+//! this platform in release file names.
 
 use std::path::PathBuf;
 
@@ -14,17 +14,32 @@ pub fn exe(stem: &str) -> String {
 
 /// The label of this platform in the names of release files: `windows` (kept as it was before Linux, so hubs
 /// up to 0.5 still find their files) or `linux-x86_64`.
-pub const RELEASE_TAG: &str = if cfg!(windows) { "windows" } else { "linux-x86_64" };
+pub const RELEASE_TAG: &str = if cfg!(windows) {
+    "windows"
+} else if cfg!(target_os = "macos") {
+    "macos-universal"
+} else {
+    "linux-x86_64"
+};
 
 /// The label in the names of the app and engine packs: `windows-x64` or `linux-x86_64`.
-pub const PACK_TAG: &str = if cfg!(windows) { "windows-x64" } else { "linux-x86_64" };
+pub const PACK_TAG: &str = if cfg!(windows) {
+    "windows-x64"
+} else if cfg!(target_os = "macos") {
+    "macos-universal"
+} else {
+    "linux-x86_64"
+};
 
 /// Where SwapCraft keeps its settings (language, recipes, menus...): `%APPDATA%\voidflare` on Windows,
-/// `$XDG_CONFIG_HOME/voidflare` (normally `~/.config/voidflare`) on Linux. The folder keeps the old name on both,
-/// like the registry keys, so nothing has to move.
+/// `$XDG_CONFIG_HOME/voidflare` (normally `~/.config/voidflare`) on Linux, `~/Library/Application Support/voidflare`
+/// on macOS. The folder keeps the old name everywhere, like the registry keys, so nothing has to move.
 pub fn data_dir() -> Option<PathBuf> {
     if cfg!(windows) {
         std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("voidflare"))
+    } else if cfg!(target_os = "macos") {
+        let home = std::env::var_os("HOME").filter(|v| !v.is_empty())?;
+        Some(PathBuf::from(home).join("Library").join("Application Support").join("voidflare"))
     } else {
         let base = std::env::var_os("XDG_CONFIG_HOME")
             .filter(|v| !v.is_empty())
@@ -39,20 +54,24 @@ pub fn data_file(name: &str) -> Option<PathBuf> {
     data_dir().map(|d| d.join(name))
 }
 
-/// Opens a folder in the system's file manager (Explorer, or whatever `xdg-open` picks on Linux).
+/// Opens a folder in the system's file manager (Explorer, the Finder, or whatever `xdg-open` picks on Linux).
 pub fn open_folder(dir: impl AsRef<std::path::Path>) {
     let dir = dir.as_ref();
     #[cfg(windows)]
     let _ = std::process::Command::new("explorer.exe").arg(dir).spawn();
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(dir).spawn();
+    #[cfg(not(any(windows, target_os = "macos")))]
     let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
 }
 
-/// Shows a file in the file manager: selected in Explorer; on Linux its folder is opened.
+/// Shows a file in the file manager: selected in Explorer and in the Finder; on Linux its folder is opened.
 pub fn reveal(file: &std::path::Path) {
     #[cfg(windows)]
     let _ = std::process::Command::new("explorer.exe").arg(format!("/select,{}", file.display())).spawn();
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg("-R").arg(file).spawn();
+    #[cfg(not(any(windows, target_os = "macos")))]
     if let Some(dir) = file.parent() {
         open_folder(dir);
     }
@@ -75,6 +94,10 @@ mod tests {
         if cfg!(windows) {
             assert_eq!(exe("wordcraft-cli"), "wordcraft-cli.exe");
             assert_eq!(RELEASE_TAG, "windows");
+        } else if cfg!(target_os = "macos") {
+            assert_eq!(exe("wordcraft-cli"), "wordcraft-cli");
+            assert_eq!(PACK_TAG, "macos-universal");
+            assert!(data_dir().is_some_and(|d| d.ends_with("Library/Application Support/voidflare")));
         } else {
             assert_eq!(exe("wordcraft-cli"), "wordcraft-cli");
             assert_eq!(PACK_TAG, "linux-x86_64");

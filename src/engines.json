@@ -1,5 +1,5 @@
 {
-  "comment": "The engines voidflare bundles, pinned. fetch-engines.ps1 downloads each asset, refuses it unless its SHA-256 is the one below, and unpacks it into src/engines/<name>/. To move to a newer engine: change tag, asset and sha256 together (the hash is in the release's SHA256SUMS.txt), run the tests, then build. Linux: the `linux` entry of each engine, used by fetch-engines.sh the same way.",
+  "comment": "The engines voidflare bundles, pinned. fetch-engines.ps1 downloads each asset, refuses it unless its SHA-256 is the one below, and unpacks it into src/engines/<name>/. To move to a newer engine: change tag, asset and sha256 together (the hash is in the release's SHA256SUMS.txt), run the tests, then build. Linux: the `linux` entry of each engine, used by fetch-engines.sh the same way. macOS: the `macos` entry (the universal command-line ZIP), used by fetch-engines.sh on a Mac.",
   "engines": [
     {
       "name": "wordcraft",
@@ -16,6 +16,10 @@
       "linux": {
         "asset": "wordcraft-0.18.1-linux-x86_64.tar.gz",
         "sha256": "312a057d46dd80597c12dccfd1097ce25edea40baaaeb50bcb6f01ac1aebadb5"
+      },
+      "macos": {
+        "asset": "wordcraft-cli-0.18.1-macos-universal.zip",
+        "sha256": "34397cf6fcf73ee8ae8d53cab08fbdfc213262dbb6753c2965ebb7cde37b8616"
       }
     },
     {
@@ -29,6 +33,10 @@
       "linux": {
         "asset": "gridcraft-0.19.1-linux-x86_64.tar.gz",
         "sha256": "8d97bba2d5bb00fd69ed55064852c1fd914de40d5ecd55ca01c8df81b828946d"
+      },
+      "macos": {
+        "asset": "gridcraft-cli-0.19.1-macos-universal.zip",
+        "sha256": "7c2895ebad0bbd92b65c622ba7e22ada56e0498065dfdbd433111ba1e225eb8a"
       }
     },
     {
@@ -42,6 +50,10 @@
       "linux": {
         "asset": "deckcraft-0.18.1-linux-x86_64.tar.gz",
         "sha256": "5bae7d5566638624411ef968f2532ab3358dc280884144583e497c5631db8a26"
+      },
+      "macos": {
+        "asset": "deckcraft-cli-0.18.1-macos-universal.zip",
+        "sha256": "10992f73c88a4c0361dd0fec3a4d7490731ffb3ea9658ee2274b396e3341af00"
       }
     },
     {
@@ -55,6 +67,10 @@
       "linux": {
         "asset": "pdfcraft-0.21.1-linux-x86_64.tar.gz",
         "sha256": "c2919e9044effde318e66807ad2a21bbb74a9555b3c0b99f9ad0c40cf61ce25e"
+      },
+      "macos": {
+        "asset": "pdfcraft-cli-0.21.1-macos-universal.zip",
+        "sha256": "337a9f644744b57e10de41c57366e53c5ccf8840a4d5dc7322b17b9b83fdc2fa"
       }
     },
     {
@@ -68,6 +84,10 @@
       "linux": {
         "asset": "photocraft-0.23.1-linux-x86_64.tar.gz",
         "sha256": "4383aef67a07cc370ad250a6ed60015205d3e6c463faf3ff4b0f67b8178ccfc8"
+      },
+      "macos": {
+        "asset": "photocraft-cli-0.23.1-macos-universal.zip",
+        "sha256": "a6ecdc6d4add02881642bda0a0b191b4974118651f2ec5641dc71b2c3ff4b752"
       }
     },
     {
@@ -81,6 +101,10 @@
       "linux": {
         "asset": "soundcraft-0.20.1-linux-x86_64.tar.gz",
         "sha256": "caefcf85c4f1138717d592d31ce5be07f2fca616ec36d63fac6760cdefbe28a9"
+      },
+      "macos": {
+        "asset": "soundcraft-cli-0.20.1-macos-universal.zip",
+        "sha256": "866fcbfe32179e6652159385b4f676ba756e1cadb88fac3e9173e9643f763b51"
       }
     },
     {
@@ -94,6 +118,10 @@
       "linux": {
         "asset": "filmcraft-0.20.1-linux-x86_64.tar.gz",
         "sha256": "3e4fea3cb8d473e68f189a0a8792ba46160fab507adab3ab8920073fd41f24fa"
+      },
+      "macos": {
+        "asset": "filmcraft-cli-0.20.1-macos-universal.zip",
+        "sha256": "1651d9defb54f853cbd69016428bb9f72a7bf26d56e4755b8e2a79535fd0ac82"
       }
     },
     {
@@ -109,6 +137,10 @@
       "linux": {
         "asset": "mailcraft-0.13.0-linux-x86_64.tar.gz",
         "sha256": "8f4f9aea71712b964a08031d6138bc2a295a25a78614f1fffca57a69784dfc69"
+      },
+      "macos": {
+        "asset": "mailcraft-cli-0.13.0-macos-universal.zip",
+        "sha256": "8b78129c9ae9a6138767c23f3ba27900a3f9757d4379943a7fac9451d5b9b636"
       }
     }
   ],

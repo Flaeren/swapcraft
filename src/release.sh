@@ -12,10 +12,17 @@
 set -euo pipefail
 src="$(cd "$(dirname "$0")" && pwd)"
 root="$(dirname "$src")"
-portable="$root/portable-linux"
+if [ "$(uname -s)" = Darwin ]; then
+  # macOS: the same files with -macos-universal, plus SwapCraft-<ver>-macos-universal.zip (the app to drag into
+  # Applications, see the end)
+  portable="$root/portable-macos"
+  tag=macos-universal
+else
+  portable="$root/portable-linux"
+  tag=linux-x86_64
+fi
 out="$root/release"
-tag=linux-x86_64
-[ -x "$portable/swapcraft" ] || { echo "portable-linux/swapcraft is missing: run build-apps.sh first" >&2; exit 1; }
+[ -x "$portable/swapcraft" ] || { echo "$portable/swapcraft is missing: run build-apps.sh first" >&2; exit 1; }
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$src/Cargo.toml" | head -1)
 
 # Version guard, as on Windows: every crate takes the workspace version, the command line reports it, the CHANGELOG
@@ -71,5 +78,44 @@ for dir in $(find "$portable/apps" -mindepth 1 -maxdepth 1 -type d | LC_ALL=C so
   packs+=("$pack")
 done
 printf '%s\n' "${packs[@]}" | jq -s --arg v "$version" '{schema: 1, version: $v, packs: .}' > "$out/manifest-$tag.json"
+
+# macOS: the whole portable folder inside SwapCraft.app (Contents/MacOS holds the hub, swapcraft-cli and apps/, as the
+# portable folder does), so it opens from Applications with a double click and its icon. Not signed by Apple: the
+# first start needs System Settings > Privacy & Security > Open Anyway (or `xattr -dr com.apple.quarantine`).
+if [ "$tag" = macos-universal ]; then
+  stage="$root/.macos-app"
+  app="$stage/SwapCraft.app"
+  rm -rf "$stage"; mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+  (cd "$portable" && find . -type f | sed 's|^\./||' | grep -Ev "$leftovers" | while read -r f; do
+    mkdir -p "$app/Contents/MacOS/$(dirname "$f")"; cp -p "$f" "$app/Contents/MacOS/$f"; done)
+  iconset="$stage/swapcraft.iconset"; mkdir -p "$iconset"
+  for s in 16 32 128 256; do
+    sips -z "$s" "$s" "$src/hub/assets/swapcraft-256.png" --out "$iconset/icon_${s}x${s}.png" >/dev/null
+  done
+  for s in 16 32 128; do d=$((s * 2)); sips -z "$d" "$d" "$src/hub/assets/swapcraft-256.png" --out "$iconset/icon_${s}x${s}@2x.png" >/dev/null; done
+  iconutil -c icns "$iconset" -o "$app/Contents/Resources/swapcraft.icns"
+  cat > "$app/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>SwapCraft</string>
+  <key>CFBundleDisplayName</key><string>SwapCraft</string>
+  <key>CFBundleIdentifier</key><string>app.voidflare.swapcraft</string>
+  <key>CFBundleVersion</key><string>$version</string>
+  <key>CFBundleShortVersionString</key><string>$version</string>
+  <key>CFBundleExecutable</key><string>swapcraft</string>
+  <key>CFBundleIconFile</key><string>swapcraft</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+PLIST
+  # ditto keeps the bundle the way the Finder expects it (permissions, no ._ files)
+  ditto -c -k --keepParent "$app" "$out/SwapCraft-$version-$tag.zip"
+  printf '%-56s %s\n' "SwapCraft-$version-$tag.zip" "$(du -h "$out/SwapCraft-$version-$tag.zip" | cut -f1)"
+  rm -rf "$stage"
+fi
 (cd "$out" && LC_ALL=C ls -1 | grep -v '^SHA256SUMS.txt$' | xargs sha256sum > SHA256SUMS.txt)
 echo "manifest-$tag.json + SHA256SUMS.txt ($(wc -l < "$out/SHA256SUMS.txt") files listed)"

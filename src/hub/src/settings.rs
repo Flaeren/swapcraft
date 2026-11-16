@@ -50,7 +50,8 @@ pub struct Settings {
 
 impl Settings {
     pub fn new() -> Self {
-        let welcome = data_dir().is_some_and(|d| !welcome_done_in(&d));
+        // The welcome dialog only offers the menu shortcut, which macOS does not get.
+        let welcome = shortcuts::SUPPORTED && data_dir().is_some_and(|d| !welcome_done_in(&d));
         Self { open: false, welcome, lang: i18n::remembered().unwrap_or(Lang::En), appearance: Appearance::load(), shortcut: State::Missing, desktop: State::Missing, msg: None, recheck_at: None, menu_msg: None }
     }
 
@@ -217,6 +218,8 @@ impl Settings {
                 }
                 ui.label(RichText::new(i18n::t("hub.updates_note")).size(12.0).color(t.faint));
 
+                // Menu and desktop shortcuts: none on macOS (shortcuts::SUPPORTED).
+                if shortcuts::SUPPORTED {
                 section(ui, t, &i18n::t("hub.sec_shortcuts"));
                 let (status, color) = match &self.shortcut {
                     State::Ok => (i18n::t("hub.sc_ok"), t.good),
@@ -283,6 +286,7 @@ impl Settings {
                     ui.label(RichText::new(msg).size(12.0).color(if *bad { t.bad } else { t.good }));
                 }
                 ui.label(RichText::new(i18n::t("hub.pin_note")).size(12.0).color(t.faint));
+                }
 
                 // The right-click menu: File Explorer on Windows, Nemo on Linux.
                 if vf_core::menu::SUPPORTED {

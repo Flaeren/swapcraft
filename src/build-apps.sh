@@ -3,17 +3,34 @@
 # folder the Linux release is packed from:
 #   ../portable-linux/swapcraft             the hub (and swapcraft-cli, swapcraft.png for the menu launcher)
 #   ../portable-linux/apps/<id>/<id>         each app, with its engine next to it (apps/<id>/<engine>/)
+# On macOS the same layout goes to ../portable-macos, every program built for Apple silicon and for Intel and joined
+# into one (universal) file with lipo; there it needs bash 4 or later and GNU coreutils first on the PATH.
 # Run fetch-engines.sh --build-cadcraft first. Usage: ./build-apps.sh
 set -euo pipefail
 src="$(cd "$(dirname "$0")" && pwd)"
-out="$(dirname "$src")/portable-linux"
-mkdir -p "$out"
 cd "$src"
-cargo build --release --workspace
+if [ "$(uname -s)" = Darwin ]; then
+  out="$(dirname "$src")/portable-macos"
+  cargo build --release --workspace --target aarch64-apple-darwin
+  cargo build --release --workspace --target x86_64-apple-darwin
+  bin=target/universal
+  mkdir -p "$bin"
+  for f in target/aarch64-apple-darwin/release/*; do
+    name=$(basename "$f")
+    if [ -f "$f" ] && [ -x "$f" ] && [ -f "target/x86_64-apple-darwin/release/$name" ]; then
+      lipo -create -output "$bin/$name" "$f" "target/x86_64-apple-darwin/release/$name"
+    fi
+  done
+else
+  out="$(dirname "$src")/portable-linux"
+  cargo build --release --workspace
+  bin=target/release
+fi
+mkdir -p "$out"
 
 # a running program can be replaced on Linux (the old file lives on until it exits), so a plain copy is enough
-install -m 755 target/release/voidflare-hub "$out/swapcraft"
-install -m 755 target/release/swapcraft-cli "$out/swapcraft-cli"
+install -m 755 "$bin/voidflare-hub" "$out/swapcraft"
+install -m 755 "$bin/swapcraft-cli" "$out/swapcraft-cli"
 install -m 644 hub/assets/swapcraft-256.png "$out/swapcraft.png"
 echo "swapcraft, swapcraft-cli, swapcraft.png"
 
@@ -26,7 +43,7 @@ for dir in crates/app-*/; do
   id=$(basename "$dir"); id=${id#app-}
   dest="$out/apps/$id"
   mkdir -p "$dest"
-  install -m 755 "target/release/$id" "$dest/$id"
+  install -m 755 "$bin/$id" "$dest/$id"
   echo "apps/$id/$id"
   # Mail Converter carries two: wordcraft (its pack engine) and mailcraft (inside its app ZIP, for .pst files)
   for engine in ${engines[$id]:-}; do

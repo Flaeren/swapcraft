@@ -15,6 +15,10 @@ use std::path::{Path, PathBuf};
 /// The shortcut's file name, which is also the name shown in the Start menu. On Linux the menu shows the `Name=`
 /// inside the file, and the file name is an id.
 const LINK_NAME: &str = if cfg!(windows) { "SwapCraft.lnk" } else { "swapcraft.desktop" };
+/// Whether this system gets menu and desktop shortcuts: the Start menu on Windows, `.desktop` launchers on Linux.
+/// On macOS the app is dragged to Applications and the Dock instead, so the hub offers none.
+pub const SUPPORTED: bool = !cfg!(target_os = "macos");
+
 /// The icon the Linux launcher shows: a PNG shipped beside the hub program.
 #[cfg(not(windows))]
 pub const ICON_FILE: &str = "swapcraft.png";

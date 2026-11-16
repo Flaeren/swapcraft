@@ -1,0 +1,81 @@
+name: mac
+
+# A trial build for macOS (one universal build for Apple silicon and Intel), kept apart from build.yml while it is new:
+# it runs on pushes to the `mac` branch and by hand, and only keeps its files as a build artifact. Nothing is published.
+# The programs are not signed by Apple: the first start needs System Settings > Privacy & Security > Open Anyway.
+on:
+  push:
+    branches: [mac]
+    paths: ["src/**", ".github/workflows/mac.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-macos:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      # the Linux scripts are reused: they want bash 4+ (associative arrays) and GNU coreutils (sha256sum, stat -c,
+      # install), first on the PATH
+      - name: bash and GNU coreutils
+        run: |
+          brew install bash coreutils jq
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+
+      - name: Rust toolchain (both kinds of Mac)
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          rustc --version
+
+      - name: Cache Cargo downloads and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('src/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Engines (pinned, hash-checked) and CADCraft with our patch
+        working-directory: src
+        run: bash fetch-engines.sh --build-cadcraft
+
+      - name: Tests
+        working-directory: src
+        run: |
+          e="$PWD/engines"
+          export VOIDFLARE_WORDCRAFT=$e/wordcraft/wordcraft-cli VOIDFLARE_GRIDCRAFT=$e/gridcraft/gridcraft-cli \
+            VOIDFLARE_DECKCRAFT=$e/deckcraft/deckcraft-cli VOIDFLARE_PDFCRAFT=$e/pdfcraft/pdfcraft-cli \
+            VOIDFLARE_CADCRAFT=$e/cadcraft/cadcraft-cli
+          cargo test --release --workspace
+
+      - name: Build the hub and the apps
+        working-directory: src
+        run: bash build-apps.sh
+
+      - name: Pack the files
+        working-directory: src
+        run: bash release.sh
+
+      - name: Check the files
+        working-directory: src
+        run: cargo test --release -p vf-core --test release_assets -- --nocapture
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: swapcraft-macos
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14

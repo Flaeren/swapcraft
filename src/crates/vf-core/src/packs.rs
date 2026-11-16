@@ -20,7 +20,13 @@ use crate::update::{self, Release};
 
 /// The list of packs in a release. Windows keeps the original name, so hubs up to 0.5 still find it; each other
 /// platform has its own, because its packs are other files.
-pub const MANIFEST_NAME: &str = if cfg!(windows) { "manifest.json" } else { "manifest-linux-x86_64.json" };
+pub const MANIFEST_NAME: &str = if cfg!(windows) {
+    "manifest.json"
+} else if cfg!(target_os = "macos") {
+    "manifest-macos-universal.json"
+} else {
+    "manifest-linux-x86_64.json"
+};
 const STATE_FILE: &str = "pack.json";
 /// Upper bounds for one ZIP: far above any real pack (the largest is ~110 MB), far below a ZIP bomb.
 const MAX_ENTRIES: usize = 20_000;
