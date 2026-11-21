@@ -165,9 +165,81 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # The same for macOS (one universal build for Apple silicon and Intel), with the same scripts as Linux. The programs
+  # are not signed by Apple: the first start needs System Settings > Privacy & Security > Open Anyway. The same steps
+  # run in mac.yml for the `mac` branch.
+  package-macos:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      # the Linux scripts are reused: they want bash 4+ (associative arrays) and GNU coreutils (sha256sum, stat -c,
+      # install), first on the PATH
+      - name: bash and GNU coreutils
+        run: |
+          brew install bash coreutils jq
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+
+      - name: Rust toolchain (both kinds of Mac)
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          rustc --version
+
+      - name: Cache Cargo downloads and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('src/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Engines (pinned, hash-checked) and CADCraft with our patch
+        working-directory: src
+        run: bash fetch-engines.sh --build-cadcraft
+
+      - name: Tests
+        working-directory: src
+        run: |
+          e="$PWD/engines"
+          export VOIDFLARE_WORDCRAFT=$e/wordcraft/wordcraft-cli VOIDFLARE_GRIDCRAFT=$e/gridcraft/gridcraft-cli \
+            VOIDFLARE_DECKCRAFT=$e/deckcraft/deckcraft-cli VOIDFLARE_PDFCRAFT=$e/pdfcraft/pdfcraft-cli \
+            VOIDFLARE_CADCRAFT=$e/cadcraft/cadcraft-cli
+          cargo test --release --workspace
+
+      - name: Build the hub and the apps
+        working-directory: src
+        run: bash build-apps.sh
+
+      - name: Tag matches the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          v=$(sed -n 's/^version = "\(.*\)"/\1/p' src/Cargo.toml | head -1)
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME but src/Cargo.toml says $v" >&2; exit 1; }
+
+      - name: Pack the release files
+        working-directory: src
+        run: bash release.sh
+
+      - name: Check the release files
+        working-directory: src
+        run: cargo test --release -p vf-core --test release_assets -- --nocapture
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: swapcraft-macos
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [package, package-linux]
+    needs: [package, package-linux, package-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -184,15 +256,20 @@ jobs:
           name: swapcraft-linux
           path: release-linux
 
-      # One release, both systems: the Linux files join the Windows ones and SHA256SUMS.txt is written again over
-      # all of them (each job's own list covered only its files). No name is in both sets.
-      - name: Put the Windows and Linux files together
+      - uses: actions/download-artifact@v4
+        with:
+          name: swapcraft-macos
+          path: release-macos
+
+      # One release, three systems: the Linux and macOS files join the Windows ones and SHA256SUMS.txt is written
+      # again over all of them (each job's own list covered only its files). No name is in two sets.
+      - name: Put the Windows, Linux and macOS files together
         run: |
-          rm release-linux/SHA256SUMS.txt
-          for f in release-linux/*; do
-            [ -e "release/$(basename "$f")" ] && { echo "$(basename "$f") is in both sets" >&2; exit 1; }
+          rm -f release-linux/SHA256SUMS.txt release-macos/SHA256SUMS.txt
+          for f in release-linux/* release-macos/*; do
+            [ -e "release/$(basename "$f")" ] && { echo "$(basename "$f") is in two sets" >&2; exit 1; }
+            mv "$f" release/
           done
-          mv release-linux/* release/
           cd release && LC_ALL=C ls -1 | grep -v '^SHA256SUMS.txt$' | xargs sha256sum > SHA256SUMS.txt
           cat SHA256SUMS.txt
 

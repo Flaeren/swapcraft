@@ -2,6 +2,20 @@
 
 All notable changes to SwapCraft (formerly voidflare) are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.2] - 2026-11-21
+
+### Added
+
+- **Apple Numbers files (`.numbers`).** Excel to PDF, the hub, the command line, the MCP server and recipes now take a Numbers spreadsheet and write Excel, PDF or CSV (one CSV per table). What comes across: the exact values, number formats (currency, percentages, dates), fonts, colours and fills, alignment, merged cells, column widths and row heights, frozen header rows, conditional styles, the formulas (a formula stays a formula, also between tables) and the charts. When Excel would calculate a formula differently from Numbers, the cell keeps Numbers' value and carries a note. The file is read by SwapCraft itself, no Numbers needed. A Numbers file that iCloud has not downloaded to the PC (an empty file) gets a message that says so.
+- **iPhone photos (`.heic`, `.heif`) in Image Converter.** They open with their colour profile and EXIF data and become any picture format or PDF. Read only: SwapCraft does not write HEIC.
+- **SwapCraft for macOS**, one universal build for Apple silicon and Intel, in the same release as Windows and Linux. The programs are not signed by Apple, so the first start needs System Settings > Privacy & Security > Open Anyway.
+
+### Known limits
+
+- Numbers: the lines between rows do not come across, the title of a chart is not read, and a 3D chart becomes flat.
+- Numbers to PDF writes numbers with American separators (`5,307.32`); the Excel file does not.
+- Pages and Keynote files are not read yet.
+
 ## [0.7.1] - 2026-11-16
 
 ### Added

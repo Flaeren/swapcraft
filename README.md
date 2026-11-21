@@ -53,7 +53,7 @@ SwapCraft is built the way the [ArtCraft](https://getartcraft.com) apps are: in 
   <img src="docs/img/recipes.png" alt="The SwapCraft hub on the Recipes tab: a three-step recipe that converts, merges and shrinks" width="720">
 </p>
 
-> **Status:** early (v0.7.1). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
+> **Status:** early (v0.7.2). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
 
 ## Principles
 
@@ -111,11 +111,11 @@ Settings and recipes are kept in `~/.config/voidflare`. On Linux Mint, Settings 
 | App | Reads | Writes |
 |---|---|---|
 | Word to PDF | DOCX, DOC, RTF, ODT | PDF |
-| Excel to PDF | XLSX, CSV, TSV | PDF, XLSX, CSV (one per sheet) |
+| Excel to PDF | XLSX, CSV, TSV, Numbers | PDF, XLSX, CSV (one per sheet) |
 | Slides to PDF | PPTX | PDF |
 | PDF Tools | PDF | DOCX, PPTX, HTML, RTF, TXT, PNG, JPG; also merge, split, extract pages, shrink, OCR (English only) |
 | DWG to PDF | DWG | PDF: sheets merged or separate, or the whole drawing on one page |
-| Image Converter | PNG, JPG, WebP, TIFF, BMP, GIF, ICO, TGA, PSD, EXR, HDR, DDS, DPX, QOI | PNG, JPG, WebP, TIFF, BMP, GIF, ICO, TGA, PSD |
+| Image Converter | PNG, JPG, WebP, TIFF, BMP, GIF, ICO, TGA, PSD, EXR, HDR, DDS, DPX, QOI, HEIC (read only) | PNG, JPG, WebP, TIFF, BMP, GIF, ICO, TGA, PSD |
 | Audio Converter | WAV, FLAC, AIFF, MP3, OGG, M4A, AAC, CAF and more | WAV, FLAC, AIFF; MP3 and M4A when Video Converter is installed (not OGG or Opus) |
 | Video Converter | MP4, MOV, MKV, WebM, AVI, MPEG, TS, MXF | MP4 (H.264), MOV (ProRes), GIF, or only the sound as WAV, MP3, M4A, FLAC |
 | E-book Converter | EPUB, AZW3, AZW, MOBI, PRC (no DRM), TXT, HTML, Markdown, DOCX, ODT, RTF | EPUB, TXT, HTML, PDF, DOCX |
