@@ -313,6 +313,13 @@ pub fn installed() -> bool {
         && state_file().and_then(|p| fs::read_to_string(p).ok()).is_some_and(|t| t.lines().any(|l| !l.trim().is_empty()))
 }
 
+/// Whether this version converts a type the installed menu was not written for (a new format came with the update):
+/// the menu then has to be written again, or files of that type would have no entry.
+pub fn has_new_types() -> bool {
+    let known = remembered_exts();
+    installed() && routes::known_exts().iter().any(|e| !known.iter().any(|k| k == e))
+}
+
 fn remembered_exts() -> Vec<String> {
     state_file().and_then(|p| fs::read_to_string(p).ok()).map(|t| t.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_owned).collect()).unwrap_or_default()
 }

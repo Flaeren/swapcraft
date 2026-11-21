@@ -65,7 +65,8 @@ pub fn upgrade_if_needed() {
     // Also rewritten when the saved drag menu has an old title (the name changed from voidflare to SwapCraft in
     // 0.4.1), so the menu in File Explorer follows the program's name.
     let stale_title = has_file && menu::dragmenu::path().and_then(|p| std::fs::read_to_string(p).ok()).is_some_and(|text| !text.contains(&texts().here));
-    if installed() && has_dll && (!has_file || stale_title) {
+    // ...and when an update brought a file type the saved menu has no entry for (`.numbers` in 0.7.2)
+    if installed() && ((has_dll && (!has_file || stale_title)) || menu::has_new_types()) {
         refresh(&recipe::load().unwrap_or_default());
     }
 }

@@ -48,7 +48,8 @@ pub struct Route {
 }
 
 const DOCS: &[&str] = &["docx", "doc", "rtf", "odt"];
-const SHEETS: &[&str] = &["xlsx", "csv", "tsv"];
+/// `numbers` is Apple Numbers: read by `iwork.rs` into CSV files, which then take the same road as any CSV.
+const SHEETS: &[&str] = &["xlsx", "csv", "tsv", "numbers"];
 const SLIDES: &[&str] = &["pptx", "deckcraft"];
 /// Kindle files (read, never written) and the EPUB.
 const KINDLE: &[&str] = &["azw3", "azw", "mobi", "prc", "kf8"];
@@ -63,7 +64,9 @@ pub const VIDEO_EXTS: &[&str] = &["mp4", "m4v", "mov", "mkv", "webm", "avi", "mp
 /// What SoundCraft reads (its `convert --help`). Video containers (mp4, mkv, webm) are left to the video converter.
 pub const AUDIO_EXTS: &[&str] = &["wav", "wave", "bwf", "rf64", "aif", "aiff", "aifc", "flac", "mp3", "mp2", "mp1", "ogg", "oga", "m4a", "m4b", "aac", "adts", "caf"];
 /// What PhotoCraft reads and writes (checked one by one with the real engine, see the `image_formats` test).
-pub const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "webp", "tif", "tiff", "bmp", "gif", "tga", "ico", "psd", "exr", "hdr", "dds", "dpx", "pnm", "ppm", "qoi"];
+/// `heic` and `heif` (iPhone photos) are only read: PhotoCraft does not write them, so they are never an offered
+/// target (no route has that label). Checked on a real iPhone photo, see `real_heic_photo_converts`.
+pub const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "webp", "tif", "tiff", "bmp", "gif", "tga", "ico", "psd", "exr", "hdr", "dds", "dpx", "pnm", "ppm", "qoi", "heic", "heif"];
 
 pub const ROUTES: &[Route] = &[
     Route { from: DOCS, label: "PDF", app: "word-to-pdf", job: Job::Engine(WORDCRAFT, "pdf") },
@@ -339,6 +342,26 @@ pub fn find_route(ext: &str, to: &str) -> Option<&'static Route> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// With `VOIDFLARE_TEST_HEIC` (an iPhone photo) and PhotoCraft: PNG keeps the pixels' size and the colour profile.
+    #[test]
+    fn real_heic_photo_converts() {
+        let (Some(path), Some(cli)) = (std::env::var_os("VOIDFLARE_TEST_HEIC"), PHOTOCRAFT.find()) else { return };
+        let size = |f: &Path| {
+            let out = std::process::Command::new(&cli).arg("info").arg(f).output().unwrap();
+            let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+            (v["width"].as_u64().unwrap(), v["height"].as_u64().unwrap())
+        };
+        let dir = crate::job::scratch_dir().unwrap();
+        let route = find_route("heic", "PNG").expect("a HEIC photo can become a PNG");
+        let out = run_route(route, Path::new(&path), &dir, &|_| {}).unwrap();
+        let png = std::fs::read(&out).unwrap();
+        assert!(png.starts_with(b"\x89PNG"));
+        assert_eq!(size(&out), size(Path::new(&path)), "same pixels, upright as the phone saved them");
+        assert!(png.windows(4).any(|w| w == b"iCCP"), "the colour profile (Display P3 on an iPhone) travels");
+        assert!(find_route("heic", "HEIC").is_none() && targets("heic").len() == 8, "read only: the 7 picture formats and PDF");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn every_route_has_an_extension_and_a_target() {
