@@ -51,16 +51,38 @@ fn script_error(stdout: &str) -> Option<String> {
     stdout.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).find(|v| v["ok"] == false).and_then(|v| v["error"].as_str().map(str::to_owned))
 }
 
-/// Whether the file has an audio stream, by FilmCraft's own `probe`; `None` when the probe says nothing usable.
-fn has_audio(cli: &Path, src: &Path) -> Option<bool> {
+/// FilmCraft's own `probe` of the file, as JSON; `None` when it says nothing usable.
+fn probe(cli: &Path, src: &Path) -> Option<Value> {
     let tmp = job::scratch_dir().ok()?;
     let mut cmd = Command::new(cli);
     cmd.arg("probe").arg(src);
     let out = job::run_capture(&mut cmd, &tmp).ok();
     let _ = fs::remove_dir_all(&tmp);
-    let v: Value = serde_json::from_str(&out?).ok()?;
-    Some(!v["audio_streams"].as_array()?.is_empty())
+    serde_json::from_str(&out?).ok()
 }
+
+/// Whether the probed file has an audio stream; `None` when the probe says nothing usable.
+fn has_audio(probe: &Value) -> Option<bool> {
+    Some(!probe["audio_streams"].as_array()?.is_empty())
+}
+
+/// The codec of a video FilmCraft has no decoder for. It imports such a file without a word and then exports a card
+/// that says "Media unreadable" in place of the pictures (a 21 MB old-codec AVI came out as a 168 KB MP4 of that
+/// card), so the conversion must not go on. The probe names a codec it knows in words ("H.264 (High)", "Uncompressed
+/// RGB 24-bit") and gives its video a pixel format; a codec it does not know is named by its bare four-letter code in
+/// the file (`CRAM`) and has no pixel format. (An empty pixel format alone is not enough: an uncompressed AVI has none
+/// and reads fine.) `None`: no video, or one it can read.
+fn undecodable_codec(probe: &Value) -> Option<String> {
+    let video = probe.get("video").filter(|v| v.is_object())?;
+    if !video["pixel_format"].as_str().unwrap_or("").is_empty() {
+        return None;
+    }
+    let codec = video["codec"].as_str()?.trim();
+    (codec.len() == 4 && codec.chars().all(|c| c.is_ascii_alphanumeric())).then(|| codec.to_owned())
+}
+
+/// The most disk an uncompressed copy of an old-codec video may take while it is converted.
+const MAX_RAW_BYTES: u64 = 8 << 30;
 
 /// Output types that carry only sound.
 const AUDIO_ONLY: &[&str] = &["wav", "mp3", "m4a", "aac", "flac", "aiff"];
@@ -68,19 +90,46 @@ const AUDIO_ONLY: &[&str] = &["wav", "mp3", "m4a", "aac", "flac", "aiff"];
 /// Converts one video (or takes the sound of it) into `spec.out_ext`, into `out_dir`.
 pub fn convert(spec: &Spec, src: &Path, out_dir: &Path) -> Result<PathBuf, String> {
     let params = export_params(&spec.extra_args)?;
+    let probed = probe(&spec.cli, src);
+    let audio_only = AUDIO_ONLY.contains(&spec.out_ext.as_str());
     // FilmCraft would write a silent file for a clip with no sound; say so instead.
-    if AUDIO_ONLY.contains(&spec.out_ext.as_str()) && has_audio(&spec.cli, src) == Some(false) {
+    if audio_only && probed.as_ref().and_then(has_audio) == Some(false) {
         // Translated in the apps; the command line and the MCP server load no catalog, so they get the English.
         let said = crate::t("film.no_sound");
         return Err(if said == "film.no_sound" { "This video has no sound to take.".to_owned() } else { said });
     }
+    let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("out").to_owned();
     let tmp = job::scratch_dir().map_err(|e| e.to_string())?;
-    let result = run_in(&tmp, spec, src, out_dir, params);
+    let result = match probed.as_ref().and_then(undecodable_codec) {
+        // Microsoft Video 1: FilmCraft cannot read it, so it is decoded here into an uncompressed AVI that it can
+        Some(codec) if crate::msvideo1::is_msvideo1_name(&codec) => decode_old_avi(&tmp, src).and_then(|raw| run_in(&tmp, spec, &raw, out_dir, &stem, params)),
+        // any other codec it does not know would come out as a "Media unreadable" card: refuse, and say which codec
+        Some(codec) => {
+            // Translated in the apps; the command line and the MCP server load no catalog, so they get the English.
+            let said = crate::tf("film.unreadable", &[("codec", &codec)]);
+            Err(if said == "film.unreadable" { format!("FilmCraft cannot read this video: its codec ({codec}) is not supported, so the result would only be a \"Media unreadable\" picture. Nothing was converted.") } else { said })
+        }
+        None => run_in(&tmp, spec, src, out_dir, &stem, params),
+    };
     let _ = fs::remove_dir_all(&tmp);
     result
 }
 
-fn run_in(tmp: &Path, spec: &Spec, src: &Path, out_dir: &Path, params: Map<String, Value>) -> Result<PathBuf, String> {
+/// Decodes an AVI made with Microsoft Video 1 into an uncompressed one in `tmp` (the pictures, and the sound when it is
+/// plain PCM). The file is as big as the pictures are, so a very long video is refused rather than filling the disk.
+fn decode_old_avi(tmp: &Path, src: &Path) -> Result<PathBuf, String> {
+    let bytes = fs::read(src).map_err(|e| format!("{}: {e}", src.display()))?;
+    if crate::msvideo1::raw_size(&bytes).is_some_and(|n| n > MAX_RAW_BYTES) {
+        return Err("This video is too long to be converted: decoding its old codec would need more than 8 GB of disk space.".to_owned());
+    }
+    drop(bytes);
+    let raw = tmp.join("decoded.avi");
+    let stopped = || job::cancel_flag().is_some_and(|f| f.load(std::sync::atomic::Ordering::Relaxed));
+    crate::msvideo1::to_raw_avi(src, &raw, &stopped)?;
+    Ok(raw)
+}
+
+fn run_in(tmp: &Path, spec: &Spec, src: &Path, out_dir: &Path, stem: &str, params: Map<String, Value>) -> Result<PathBuf, String> {
     let target = tmp.join(format!("out.{}", spec.out_ext));
     let script_file = tmp.join("convert.jsonl");
     fs::write(&script_file, script(src, &target, params)).map_err(|e| e.to_string())?;
@@ -94,7 +143,6 @@ fn run_in(tmp: &Path, spec: &Spec, src: &Path, out_dir: &Path, params: Map<Strin
     if !target.is_file() {
         return Err("the engine finished but wrote no file".to_owned());
     }
-    let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("out");
     job::deliver(&target, out_dir, &format!("{stem}.{}", spec.out_ext))
 }
 
@@ -170,6 +218,56 @@ mod tests {
         let no_sound = convert(&spec("wav", &["format=wav"]), &silent, &dir.join("o"));
         assert!(no_sound.as_ref().is_err_and(|e| e.contains("no sound")), "a clip without sound has no audio to take: {no_sound:?}");
         assert!(fs::read_dir(dir.join("o")).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().starts_with("senza")), "nothing written for the silent clip");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The probes FilmCraft gave for the real files: an old-codec AVI it cannot decode (empty pixel format), and the
+    /// videos it can.
+    #[test]
+    fn a_video_with_no_decoder_is_told_from_one_that_has() {
+        let avi: Value = serde_json::from_str(r#"{"audio_streams":[],"container":"AVI","video":{"codec":"CRAM","height":576,"pixel_format":"","width":1024}}"#).unwrap();
+        assert_eq!(undecodable_codec(&avi).as_deref(), Some("CRAM"));
+        for good in [
+            r#"{"audio_streams":[],"video":{"codec":"H.264 (High)","pixel_format":"YUV 4:2:0 8-bit"}}"#,
+            r#"{"audio_streams":[],"video":{"codec":"Apple ProRes 422 HQ","pixel_format":"YUV 4:2:2 10-bit"}}"#,
+            r#"{"audio_streams":[],"video":{"codec":"GIF","pixel_format":"RGB 8-bit"}}"#,
+        ] {
+            assert_eq!(undecodable_codec(&serde_json::from_str(good).unwrap()), None, "{good}");
+        }
+        // a sound file has no video object at all, and a probe that says nothing is not a verdict
+        assert_eq!(undecodable_codec(&serde_json::from_str(r#"{"audio_streams":[{"codec":"MP3"}],"video":null}"#).unwrap()), None);
+        assert_eq!(undecodable_codec(&serde_json::from_str("{}").unwrap()), None);
+        // an uncompressed AVI has no pixel format either, but FilmCraft names its codec in words and reads it
+        let raw: Value = serde_json::from_str(r#"{"video":{"codec":"Uncompressed RGB 24-bit","pixel_format":""}}"#).unwrap();
+        assert_eq!(undecodable_codec(&raw), None);
+        // no codec name at all: the engine is left to try
+        let nameless: Value = serde_json::from_str(r#"{"video":{"codec":"","pixel_format":""}}"#).unwrap();
+        assert_eq!(undecodable_codec(&nameless), None);
+        // another bare four-letter code is a codec it does not know either
+        let other: Value = serde_json::from_str(r#"{"video":{"codec":"IV50","pixel_format":""}}"#).unwrap();
+        assert_eq!(undecodable_codec(&other).as_deref(), Some("IV50"));
+    }
+
+    /// With `VOIDFLARE_TEST_CRAM` (an AVI made with Microsoft Video 1) and FilmCraft: the video is decoded here and
+    /// converted, named after the original, and it is the real picture, not FilmCraft's "Media unreadable" card (which
+    /// is a flat, mostly red picture: a real clip has far more detail, so the file is far bigger for its length).
+    #[test]
+    fn real_old_codec_avi_converts_to_mp4() {
+        use crate::engine::FILMCRAFT;
+        let (Some(path), Some(cli)) = (std::env::var_os("VOIDFLARE_TEST_CRAM"), FILMCRAFT.find()) else { return };
+        let spec = Spec { cli, out_ext: "mp4".into(), extra_args: vec!["format=h264".into(), "bitrateMode=crf".into(), "crf=23".into()], env: vec![] };
+        let dir = job::scratch_dir().unwrap();
+        let made = convert(&spec, Path::new(&path), &dir).expect("converts");
+        assert_eq!(made.extension().and_then(|e| e.to_str()), Some("mp4"));
+        assert_eq!(made.file_stem(), Path::new(&path).file_stem(), "named after the original, not after the decoded copy");
+        let probed = probe(&spec.cli, &made).expect("the result probes");
+        assert_eq!(probed["video"]["codec"].as_str().map(|c| c.starts_with("H.264")), Some(true));
+        let seconds = probed["duration"].as_f64().unwrap_or(0.0) / 255_255_255_000.0;
+        let source = probe(&spec.cli, Path::new(&path)).and_then(|p| p["duration"].as_f64()).unwrap_or(0.0) / 255_255_255_000.0;
+        assert!((seconds - source).abs() < 0.3, "{seconds} s against {source} s");
+        // the card compresses to about 40 kbit per second; a picture of an ultrasound scan to well over 1 Mbit
+        let kbps = fs::metadata(&made).unwrap().len() as f64 * 8.0 / 1000.0 / seconds.max(0.1);
+        assert!(kbps > 400.0, "{kbps} kbit/s looks like the empty card");
         let _ = fs::remove_dir_all(&dir);
     }
 

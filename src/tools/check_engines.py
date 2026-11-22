@@ -23,7 +23,17 @@ def latest(repo):
     return data["tagName"], data["publishedAt"][:10], [a["name"] for a in data["assets"]], ""
 
 
+def workarounds_for(name):
+    """The headings of ENGINE-WORKAROUNDS.md that belong to this engine (`## <Engine>: ...`)."""
+    path = here / "ENGINE-WORKAROUNDS.md"
+    if not path.is_file():
+        return []
+    return [l[3:].strip() for l in path.read_text(encoding="utf-8").splitlines()
+            if l.startswith("## ") and l[3:].lower().startswith(name.lower() + ":")]
+
+
 behind = 0
+newer_engines = []
 for e in pins:
     tag, date, assets, err = latest(e["repo"])
     if tag is None:
@@ -31,6 +41,8 @@ for e in pins:
         continue
     newer = tag != e["tag"]
     behind += newer
+    if newer:
+        newer_engines.append(e["name"])
     ver = tag.lstrip("v")
     asset = re.sub(r"\d+\.\d+\.\d+", ver, e["asset"])
     has_asset = asset in assets
@@ -39,4 +51,12 @@ for e in pins:
     print(f"{e['name']:<11} pinned {e['tag']:<8} latest {tag:<8} ({date}) {state:<16}"
           f" asset {'found' if has_asset else 'MISSING'}, in engine-compat: {'yes' if tested else 'no'}")
 print(f"\n{behind} of {len(pins)} engines have a newer release than the pinned one.")
+# Rule of 22/11/2026: we fix some gaps of the engines ourselves; a new engine may fix them, and then we must not keep
+# both. For every engine that is behind, say which of our fixes to check against its release notes and drop if it is done.
+for name in newer_engines:
+    mine = workarounds_for(name)
+    if mine:
+        print(f"\nBefore aligning {name}: does the new release fix one of OUR workarounds? (ENGINE-WORKAROUNDS.md)")
+        for m in mine:
+            print(f"  - {m}")
 sys.exit(0)

@@ -15,6 +15,7 @@ pub mod mail;
 pub mod markup;
 pub mod menu;
 pub mod mobi;
+pub mod msvideo1;
 pub mod numbers;
 mod numbers_functions;
 pub mod packs;

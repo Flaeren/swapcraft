@@ -59,6 +59,11 @@ struct State {
     fg_at_down: isize,
     sel_ready: bool,
     sel_exts: Vec<String>,
+    /// Which press this is, and whether it was on a file item (`item_at`); the answer comes a moment after the press.
+    press_id: u64,
+    item_hit: Option<bool>,
+    /// How long after the pointer started to move the shell's drag picture was first seen (for the log).
+    image_at: Option<u128>,
     m: BarModel,
 }
 
@@ -70,6 +75,9 @@ static STATE: Mutex<State> = Mutex::new(State {
     fg_at_down: 0,
     sel_ready: false,
     sel_exts: Vec::new(),
+    press_id: 0,
+    item_hit: None,
+    image_at: None,
     m: BarModel::new(),
 });
 
@@ -95,9 +103,20 @@ fn class_of(hwnd: HWND) -> String {
     String::from_utf16_lossy(&buf[..n])
 }
 
-fn explorer_in_front() -> bool {
-    let fg = unsafe { GetForegroundWindow() };
-    matches!(class_of(fg).as_str(), "CabinetWClass" | "ExploreWClass" | "Progman" | "WorkerW")
+/// Whether the point is inside the client area of `top` (all but its title bar and borders), worked out from the
+/// window's own rectangles: nothing is sent to the program that owns it.
+fn in_client_area(top: HWND, x: i32, y: i32) -> bool {
+    unsafe {
+        let mut rc = RECT::default();
+        if GetClientRect(top, &mut rc).is_err() {
+            return false;
+        }
+        let mut origin = POINT { x: 0, y: 0 };
+        if !windows::Win32::Graphics::Gdi::ClientToScreen(top, &mut origin).as_bool() {
+            return false;
+        }
+        x >= origin.x && x < origin.x + rc.right && y >= origin.y && y < origin.y + rc.bottom
+    }
 }
 
 /// WM_NCHITTEST of the window under the cursor: 1 = client area, 2 = title bar, others = borders and buttons.
@@ -111,6 +130,37 @@ fn hit_test(x: i32, y: i32) -> i32 {
         let lp = LPARAM(((y as u32 as isize) << 16) | (x as u32 as isize & 0xffff));
         let r = SendMessageTimeoutW(h, WM_NCHITTEST, WPARAM(0), lp, SMTO_ABORTIFHUNG, 50, Some(&mut result));
         if r.0 == 0 { 0 } else { result as i32 as i16 as i32 }
+    }
+}
+
+/// Whether the point is on a file or folder item of an Explorer window (a list item, a details row, a tree item),
+/// asked of Windows' UI Automation, which Explorer answers within a few milliseconds. A press on an item followed by
+/// a move is a file drag by itself: Windows draws its drag picture only a while later (long for a big photo or a
+/// video, whose thumbnail it prepares first), and a quick drag was over before it came. `None`: it could not be asked.
+fn item_at(x: i32, y: i32) -> Option<bool> {
+    use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation, UIA_DataItemControlTypeId, UIA_ListItemControlTypeId, UIA_TreeItemControlTypeId};
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let ask = || -> Result<bool> {
+            let auto: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)?;
+            let mut e = auto.ElementFromPoint(POINT { x, y })?;
+            let walker = auto.ControlViewWalker()?;
+            // the element under the pointer may be a part of the item (its icon, its name): look a few levels up
+            for _ in 0..4 {
+                let t = e.CurrentControlType()?;
+                if t == UIA_ListItemControlTypeId || t == UIA_DataItemControlTypeId || t == UIA_TreeItemControlTypeId {
+                    return Ok(true);
+                }
+                match walker.GetParentElement(&e) {
+                    Ok(p) => e = p,
+                    Err(_) => break,
+                }
+            }
+            Ok(false)
+        };
+        let r = ask();
+        CoUninitialize();
+        r.ok()
     }
 }
 
@@ -474,26 +524,50 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                             begin_hide(hwnd);
                         }
                     }
-                    let front = explorer_in_front();
+                    let fg = unsafe { GetForegroundWindow() };
+                    let front = matches!(class_of(fg).as_str(), "CabinetWClass" | "ExploreWClass" | "Progman" | "WorkerW");
                     let hit = if front { hit_test(x, y) } else { 0 };
+                    // Not a title bar, not a border. Explorer answers WM_NCHITTEST (HTCLIENT = 1), but it may be too
+                    // busy to answer in time (a folder of videos: it is preparing their thumbnails); then the window's own
+                    // rectangles decide, which need no answer from it.
+                    let in_client = front && hit != 1 && in_client_area(fg, x, y);
+                    let client = front && (hit == 1 || (hit == 0 && in_client));
+                    if front {
+                        gfx::log(&format!("press at ({x},{y}) on {}: hit test {hit}, inside the client area {in_client}, candidate {client}", class_of(fg)));
+                    }
                     let mut s = st();
                     s.pressed = true;
-                    s.candidate = front && hit == 1; // HTCLIENT: not a title bar, not a border
+                    s.candidate = client;
                     s.origin = (x, y);
                     s.fg_at_down = unsafe { GetForegroundWindow() }.0 as isize;
                     s.pending_since = None;
+                    s.press_id += 1;
+                    s.item_hit = None;
+                    let (press, candidate) = (s.press_id, s.candidate);
+                    drop(s);
+                    if candidate {
+                        // is the press on an item? (asked off the UI thread; the answer is kept only for this press)
+                        std::thread::spawn(move || {
+                            let on_item = item_at(x, y);
+                            let mut s = st();
+                            if s.press_id == press {
+                                s.item_hit = on_item;
+                            }
+                        });
+                    }
                 } else if flags & RI_MOUSE_LEFT_BUTTON_UP != 0 {
-                    let (shown, pick, was_pending) = {
+                    let (shown, pick, pending, image_at, ready, exts) = {
                         let mut s = st();
                         s.pressed = false;
                         s.candidate = false;
-                        (s.m.shown, s.m.pick_mode, s.pending_since.take().is_some())
+                        (s.m.shown, s.m.pick_mode, s.pending_since.take(), s.image_at.take(), s.sel_ready, s.sel_exts.clone())
                     };
                     unsafe {
                         let _ = KillTimer(Some(hwnd), TIMER_CONFIRM);
                     }
-                    if was_pending && !shown {
-                        gfx::log("cancel: button released before the drag was confirmed");
+                    if let (Some(since), false) = (pending, shown) {
+                        // what was known when the button came up, to tell a drag the bar missed from a plain click-and-move
+                        gfx::log(&format!("cancel: button released {} ms after the drag started, before it was confirmed (drag image seen at {:?} ms, selection ready={ready} {exts:?})", since.elapsed().as_millis(), image_at));
                     }
                     if shown && !pick && st().m.accepted.is_none() {
                         // the drop, if any, is delivered just before or after this; hide a moment later either way
@@ -623,7 +697,18 @@ fn confirm_tick(hwnd: HWND) {
         return;
     };
     let ms = since.elapsed().as_millis();
-    if !shown && drag_image_present() && (ready || ms >= SELECTION_WAIT_MS) {
+    let image = !shown && drag_image_present();
+    if image {
+        let mut s = st();
+        if s.image_at.is_none() {
+            s.image_at = Some(ms); // the shell drew its drag picture ms after the pointer started to move
+        }
+    }
+    // a press on a file item and a move is a file drag, without waiting for the shell's picture of it (which may
+    // come late, or after a quick drag is over); the picture still confirms a drag whose item could not be asked about
+    let on_item = !shown && st().item_hit == Some(true);
+    if (image || on_item) && (ready || ms >= SELECTION_WAIT_MS) {
+        gfx::log(&format!("confirmed {} ms after the drag started: by {}", ms, if on_item { "the item under the pointer" } else { "the drag picture" }));
         kill();
         let unsupported = {
             let s = st();
@@ -644,7 +729,7 @@ fn confirm_tick(hwnd: HWND) {
         s.candidate = false;
         s.pending_since = None;
         drop(s);
-        gfx::log("skip: no drag image appeared (a selection rectangle, not a file drag)");
+        gfx::log(&format!("skip: no drag image appeared in {CONFIRM_MAX_MS} ms (a selection rectangle, not a file drag)"));
     }
 }
 
