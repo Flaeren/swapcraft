@@ -35,6 +35,9 @@ pub struct Glow {
     pm: Option<Pixmap>,
     /// What the glow is heading for: `Some(color)` when it is on and holding that colour (nothing else queued).
     steady: Option<[u8; 4]>,
+    /// Counts the bitmaps made, so a backend that fades the window by its opacity (no new picture per frame) knows
+    /// when the picture itself changed and has to be sent again.
+    generation: u64,
 }
 
 /// What a timer tick did.
@@ -157,6 +160,7 @@ impl Glow {
         if (self.color != step.color && self.alpha <= 0.5) || self.pm.is_none() {
             self.color = step.color;
             self.pm = self.mon.as_ref().map(|m| render(m, step.color));
+            self.generation += 1;
         }
         self.alpha = self.from + (step.to as f32 - self.from) * ease(t);
         if t < 1.0 {
@@ -177,6 +181,11 @@ impl Glow {
     pub fn frame(&self) -> Option<(&Pixmap, i32, i32, u8)> {
         let (pm, mon) = (self.pm.as_ref()?, self.mon.as_ref()?);
         Some((pm, mon.full.left, mon.full.top, self.alpha.round().clamp(0.0, 255.0) as u8))
+    }
+
+    /// Which bitmap `frame` holds: it changes whenever a new one was drawn.
+    pub fn generation(&self) -> u64 {
+        self.generation
     }
 
     /// The glow went off: forget the monitor-sized bitmap (it is not kept while the glow is off).

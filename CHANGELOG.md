@@ -2,6 +2,25 @@
 
 All notable changes to SwapCraft (formerly voidflare) are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.0] - 2026-11-22
+
+### Added
+
+- **A drop bar on the screen edge (Windows and Linux).** Drag a file or several in the file manager and a bar slides in from the edge of the screen you are on, offering the formats the files can become (only those every file can take, never the format a file already has, and dimmed when its engine is not on the PC). Drop on one and the conversion starts, with the result beside the original and nothing overwritten; "More…" opens the full list. A queue runs one file at a time; a notification-area icon opens the queue card (what runs, waits, is done or failed, and why), and a notification at the end opens the result in its folder. While files convert a soft orange glow runs along the screen edges and turns green when they are done (red, and still, if one failed). It costs nothing at rest: no polling, no timers. On Windows it is `swapcraft-tray.exe`, on Linux `swapcraft-tray` (X11).
+- **A welcome in three steps on the first start:** the Start menu entry, a desktop shortcut, then the drag and drop functions (the right-click menu and the drop bar, which starts with the computer). People who already saw the old welcome get the last step once. The settings have a section to turn the drop bar on and off.
+- **Old AVI videos convert.** Videos made with Microsoft Video 1 (fourcc `CRAM`, `MSVC`, `WHAM`; common in screen recordings and clips from the 1990s and early 2000s, and in some medical devices) could not be read by FilmCraft, which exported a red "Media unreadable" picture instead. SwapCraft now decodes them itself (8-bit palette and 15-bit) and hands the engine a file it reads.
+
+### Changed
+
+- **A video the engine cannot decode is refused, not converted.** Any other codec FilmCraft does not know now stops the conversion with a message that names the codec, instead of writing a valid video that only shows "Media unreadable".
+- The programs of SwapCraft now update together: the update replaces `swapcraft-tray` along with the hub.
+
+### Known limits
+
+- The drop bar is not in the macOS build yet.
+- On Linux the drop bar needs an X11 session (or XWayland with an X11 file manager); the glow needs a compositing window manager (Cinnamon, GNOME, KDE have one), and the icon needs a notification area.
+- The sound of an old AVI is carried over only when it is plain PCM; otherwise the video comes out without sound. A video that would need more than 8 GB of disk space once decoded is refused.
+
 ## [0.7.2] - 2026-11-21
 
 ### Added

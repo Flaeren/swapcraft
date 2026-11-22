@@ -72,7 +72,8 @@ fn tray_exe() -> Option<PathBuf> {
 
 /// The drop bar can be offered: Windows, with its program next to the hub.
 fn drag_possible() -> bool {
-    vf_core::tray::SUPPORTED && vf_core::menu::SUPPORTED && tray_exe().is_some()
+    // (the right-click menu is added too where there is one: `enable_drag`; the Mac has the bar only)
+    vf_core::tray::SUPPORTED && tray_exe().is_some()
 }
 
 /// A hub that moved (the folder is portable) leaves the start with Windows pointing at the old place: point it here.

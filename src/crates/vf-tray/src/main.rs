@@ -22,8 +22,15 @@ mod offer;
 mod queue;
 mod watcher;
 
-// Windows
+// The drawing commands (--render-*) for the systems whose own entry point below does not have them
+#[cfg(not(windows))]
+mod cli;
 
+// Linux (X11)
+#[cfg(target_os = "linux")]
+mod linux;
+
+// Windows
 #[cfg(windows)]
 mod aura;
 #[cfg(windows)]
@@ -35,9 +42,41 @@ mod gfx;
 #[cfg(windows)]
 mod tray;
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 fn main() {
-    eprintln!("swapcraft-tray is Windows only for now.");
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if cli::render_command(&args) {
+        return;
+    }
+    eprintln!("swapcraft-tray does not run on this system yet.");
+}
+
+#[cfg(target_os = "linux")]
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if cli::render_command(&args) {
+        return;
+    }
+    match args.first().map(String::as_str) {
+        // `--selftest <file> <format> [--xdnd]`: the bar for <file> on the real X server, the drop, the conversion
+        Some("--selftest") => {
+            let (Some(file), Some(to)) = (args.get(1), args.get(2)) else {
+                println!("usage: --selftest <file> <format> [--xdnd]");
+                return;
+            };
+            if let Err(e) = linux::selftest(file, to, args.iter().any(|a| a == "--xdnd")) {
+                println!("selftest failed: {e}");
+                std::process::exit(1);
+            }
+        }
+        _ => {
+            if let Err(e) = linux::run() {
+                draw::log(&format!("stopped: {e}"));
+                eprintln!("swapcraft-tray: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
 }
 
 #[cfg(windows)]

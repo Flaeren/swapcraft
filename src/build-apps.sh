@@ -1,7 +1,7 @@
 #!/bin/bash
 # Linux counterpart of build-apps.ps1: builds the hub and the apps in release and lays out ../portable-linux, the
 # folder the Linux release is packed from:
-#   ../portable-linux/swapcraft             the hub (and swapcraft-cli, swapcraft.png for the menu launcher)
+#   ../portable-linux/swapcraft             the hub (and swapcraft-cli, swapcraft-tray, swapcraft.png for the menu launcher)
 #   ../portable-linux/apps/<id>/<id>         each app, with its engine next to it (apps/<id>/<engine>/)
 # On macOS the same layout goes to ../portable-macos, every program built for Apple silicon and for Intel and joined
 # into one (universal) file with lipo; there it needs bash 4 or later and GNU coreutils first on the PATH.
@@ -31,8 +31,10 @@ mkdir -p "$out"
 # a running program can be replaced on Linux (the old file lives on until it exits), so a plain copy is enough
 install -m 755 "$bin/voidflare-hub" "$out/swapcraft"
 install -m 755 "$bin/swapcraft-cli" "$out/swapcraft-cli"
+# the drop bar and tray icon (resident helper): Linux (X11) only for now; the Mac build of it is a stub that only says so
+if [ "$(uname -s)" != Darwin ] && [ -x "$bin/swapcraft-tray" ]; then install -m 755 "$bin/swapcraft-tray" "$out/swapcraft-tray"; fi
 install -m 644 hub/assets/swapcraft-256.png "$out/swapcraft.png"
-echo "swapcraft, swapcraft-cli, swapcraft.png"
+echo "swapcraft, swapcraft-cli, swapcraft-tray (Linux), swapcraft.png"
 
 declare -A engines=(
   [word-to-pdf]=wordcraft [excel-to-pdf]=gridcraft [slides-to-pdf]=deckcraft [pdf-tools]=pdfcraft

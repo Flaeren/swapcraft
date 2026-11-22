@@ -1,7 +1,7 @@
 #!/bin/bash
 # Linux counterpart of release.ps1: packs ../portable-linux into the Linux files of a GitHub release, in ../release/ :
 #   swapcraft-<ver>-linux-x86_64.zip                the FULL bundle (hub + every app + its engine), for a PC without a network
-#   swapcraft-hub-<ver>-linux-x86_64.zip            the hub alone (swapcraft, swapcraft-cli, swapcraft.png)
+#   swapcraft-hub-<ver>-linux-x86_64.zip            the hub alone (swapcraft, swapcraft-cli, swapcraft-tray, swapcraft.png)
 #   swapcraft-app-<id>-<ver>-linux-x86_64.zip       one app (its program), no engine
 #   swapcraft-engine-<name>-<engine ver>-linux-x86_64.zip   one trimmed engine (cli, data, notices, licences)
 #   manifest-linux-x86_64.json                      what the Linux hub reads (the Windows hub reads manifest.json)
@@ -46,7 +46,7 @@ zip_dir() {
 leftovers='(^|/)pack\.json$|\.old$'
 
 zip_dir "$out/swapcraft-$version-$tag.zip" "$portable" "$leftovers"
-(cd "$portable" && zip -q -X -9 "$out/swapcraft-hub-$version-$tag.zip" swapcraft swapcraft-cli swapcraft.png)
+(cd "$portable" && zip -q -X -9 "$out/swapcraft-hub-$version-$tag.zip" swapcraft swapcraft-cli swapcraft.png $([ -f swapcraft-tray ] && echo swapcraft-tray))
 printf '%-56s %s\n' "swapcraft-hub-$version-$tag.zip" "$(du -h "$out/swapcraft-hub-$version-$tag.zip" | cut -f1)"
 
 declare -A names=(
