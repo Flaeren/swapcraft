@@ -177,11 +177,6 @@ pub fn clear_finished() {
     notify();
 }
 
-/// The last file written, to show in its folder.
-pub fn last_result() -> Option<PathBuf> {
-    entries().iter().rev().find_map(|e| if let Status::Done(p) = &e.status { Some(p.clone()) } else { None })
-}
-
 /// Shows a finished entry's result in Explorer (its folder with the file selected).
 pub fn reveal(path: &Path) {
     vf_core::platform::reveal(path);

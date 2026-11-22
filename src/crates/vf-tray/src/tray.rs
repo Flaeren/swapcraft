@@ -3,7 +3,6 @@
 
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -11,6 +10,7 @@ use windows::Win32::UI::Shell::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
 
+use crate::watcher::{GlowCmd, Watcher};
 use crate::{aura, flyout, gfx, queue};
 
 pub const WM_TRAY: u32 = WM_APP + 3;
@@ -20,9 +20,8 @@ const MENU_OPEN: usize = 2;
 /// The notification was clicked (the shell sends it in the low word of the callback's lParam).
 const NIN_BALLOONUSERCLICK: u32 = 0x0405;
 
-static WAS_ACTIVE: AtomicBool = AtomicBool::new(false);
-/// How many were done and failed when the current batch began, so a batch is judged by its own results.
-static BASE: Mutex<(usize, usize)> = Mutex::new((0, 0));
+/// What to tell the person when the queue changes (decided in `watcher.rs`, shown here).
+static WATCHER: Mutex<Watcher> = Mutex::new(Watcher::new());
 static BALLOON_TARGET: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 fn wide<const N: usize>(s: &str) -> [u16; N] {
@@ -77,44 +76,20 @@ fn balloon(hwnd: HWND, title: &str, text: &str, target: Option<PathBuf>, error: 
 
 /// The queue changed (called on the window's thread): glow, tooltip, card, and the notification at the end.
 pub fn on_queue(hwnd: HWND) {
-    let c = queue::counts();
-    let active = c.active() > 0;
-    let was = WAS_ACTIVE.swap(active, Ordering::Relaxed);
-    if active && !was {
-        *BASE.lock().unwrap_or_else(|e| e.into_inner()) = (c.done, c.failed);
-    }
-    if active {
-        aura::working();
-        set_tip(hwnd, &format!("SwapCraft \u{b7} {} in corso", c.active()));
-    } else {
-        set_tip(hwnd, "SwapCraft");
+    let u = WATCHER.lock().unwrap_or_else(|e| e.into_inner()).update(queue::counts(), &queue::snapshot(), flyout::is_visible());
+    set_tip(hwnd, &u.tip);
+    match u.glow {
+        Some(GlowCmd::Working) => aura::working(),
+        Some(GlowCmd::Finish(ok)) => {
+            gfx::log(&format!("batch over: ok={ok}"));
+            aura::finish(ok)
+        }
+        Some(GlowCmd::Stop) => aura::stop(),
+        None => {}
     }
     flyout::refresh();
-    if was && !active {
-        let (base_done, base_failed) = *BASE.lock().unwrap_or_else(|e| e.into_inner());
-        let (done, failed) = (c.done.saturating_sub(base_done), c.failed.saturating_sub(base_failed));
-        gfx::log(&format!("batch over: done={done} failed={failed}"));
-        if failed > 0 {
-            aura::finish(false);
-            if !flyout::is_visible() {
-                let (name, why) = queue::snapshot().iter().rev().find_map(|e| if let queue::Status::Failed(m) = &e.status { Some((e.name.clone(), m.clone())) } else { None }).unwrap_or_default();
-                balloon(hwnd, "Conversione non riuscita", &format!("{name}: {why}"), None, true);
-            }
-        } else if done > 0 {
-            aura::finish(true);
-            if !flyout::is_visible() {
-                let last = queue::last_result();
-                let text = if done == 1 {
-                    let name = last.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                    format!("{name} \u{e8} pronto. Clicca per vederlo nella cartella.")
-                } else {
-                    format!("{done} file convertiti. Clicca per vederli nella cartella.")
-                };
-                balloon(hwnd, "SwapCraft", &text, last, false);
-            }
-        } else {
-            aura::stop(); // cancelled: nothing to announce
-        }
+    if let Some(n) = u.notice {
+        balloon(hwnd, &n.title, &n.text, n.target, n.error);
     }
 }
 

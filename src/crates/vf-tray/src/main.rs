@@ -12,8 +12,17 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+// the part every system shares: what to offer, the queue, and how things look
+mod bar_view;
+mod card_view;
+mod draw;
+mod glow;
+mod model;
 mod offer;
 mod queue;
+mod watcher;
+
+// Windows
 
 #[cfg(windows)]
 mod aura;
