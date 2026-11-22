@@ -26,6 +26,7 @@ pub mod routes;
 pub mod sheet;
 pub mod shortcuts;
 pub mod sniff;
+pub mod tray;
 pub mod update;
 
 pub use i18n::{t, tf};

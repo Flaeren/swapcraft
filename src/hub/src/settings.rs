@@ -19,6 +19,9 @@ pub fn data_dir() -> Option<PathBuf> {
 }
 
 const WELCOME_MARK: &str = "welcome.txt";
+/// The drag-and-drop step (right-click menu, drop bar) has been answered: people who saw the older welcome dialog get
+/// that step once, on their first start after the update.
+const DRAG_MARK: &str = "welcome-drag.txt";
 
 /// Has the welcome dialog already been answered (either way) in `dir`?
 pub fn welcome_done_in(dir: &Path) -> bool {
@@ -30,11 +33,71 @@ pub fn mark_welcome_done_in(dir: &Path) {
     let _ = std::fs::write(dir.join(WELCOME_MARK), "done\n");
 }
 
+pub fn drag_step_done_in(dir: &Path) -> bool {
+    dir.join(DRAG_MARK).is_file()
+}
+
+pub fn mark_drag_step_done_in(dir: &Path) {
+    let _ = std::fs::create_dir_all(dir);
+    let _ = std::fs::write(dir.join(DRAG_MARK), "done\n");
+}
+
+/// The questions of the welcome dialog, asked one after the other.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Step {
+    /// An entry in the Start menu (the applications menu on Linux).
+    Start,
+    Desktop,
+    /// The right-click menu and the drop bar (which runs from the start of Windows).
+    Drag,
+}
+
+/// Which questions to ask. A first start asks them all; a start after an update asks only the drag step, once, of
+/// whoever answered the older dialog. `drag_possible`: this PC can have them (Windows, the helper next to the hub).
+fn plan(shortcuts_supported: bool, welcome_done: bool, drag_done: bool, drag_possible: bool) -> Vec<Step> {
+    let mut steps = Vec::new();
+    if shortcuts_supported && !welcome_done {
+        steps.extend([Step::Start, Step::Desktop]);
+    }
+    if drag_possible && !drag_done {
+        steps.push(Step::Drag);
+    }
+    steps
+}
+
+/// The drop bar's program, if it sits next to this hub.
+fn tray_exe() -> Option<PathBuf> {
+    std::env::current_exe().ok().and_then(|e| vf_core::tray::exe_beside(&e))
+}
+
+/// The drop bar can be offered: Windows, with its program next to the hub.
+fn drag_possible() -> bool {
+    vf_core::tray::SUPPORTED && vf_core::menu::SUPPORTED && tray_exe().is_some()
+}
+
+/// A hub that moved (the folder is portable) leaves the start with Windows pointing at the old place: point it here.
+/// Does nothing when the person never turned the bar on.
+pub fn keep_tray_pointing_here() {
+    if let Some(exe) = tray_exe()
+        && vf_core::tray::autostart_on()
+        && !vf_core::tray::autostart_points_to(&exe)
+    {
+        let _ = vf_core::tray::set_autostart(&exe, true);
+    }
+}
+
 pub struct Settings {
     /// The settings window is open.
     pub open: bool,
     /// The welcome dialog is showing.
     welcome: bool,
+    /// The questions the dialog asks, and which one it is at.
+    steps: Vec<Step>,
+    step: usize,
+    /// The drop bar starts with Windows, read when the settings window opens.
+    tray_on: bool,
+    /// What turning the drop bar on or off said.
+    tray_msg: Option<(String, bool)>,
     lang: Lang,
     appearance: Appearance,
     shortcut: State,
@@ -50,9 +113,15 @@ pub struct Settings {
 
 impl Settings {
     pub fn new() -> Self {
-        // The welcome dialog only offers the menu shortcut, which macOS does not get.
-        let welcome = shortcuts::SUPPORTED && data_dir().is_some_and(|d| !welcome_done_in(&d));
-        Self { open: false, welcome, lang: i18n::remembered().unwrap_or(Lang::En), appearance: Appearance::load(), shortcut: State::Missing, desktop: State::Missing, msg: None, recheck_at: None, menu_msg: None }
+        // The shortcuts questions are not asked on macOS, which does not get them; the drag step only where it exists.
+        let dir = data_dir();
+        let mut steps = plan(shortcuts::SUPPORTED, dir.as_deref().is_some_and(welcome_done_in), dir.as_deref().is_some_and(drag_step_done_in), drag_possible());
+        // test hook, like VOIDFLARE_HUB_TAB=settings: VOIDFLARE_HUB_TAB=welcome asks every question again
+        if std::env::var("VOIDFLARE_HUB_TAB").is_ok_and(|v| v == "welcome") {
+            steps = plan(shortcuts::SUPPORTED, false, false, drag_possible());
+        }
+        let welcome = data_dir().is_some() && !steps.is_empty();
+        Self { open: false, welcome, steps, step: 0, tray_on: false, tray_msg: None, lang: i18n::remembered().unwrap_or(Lang::En), appearance: Appearance::load(), shortcut: State::Missing, desktop: State::Missing, msg: None, recheck_at: None, menu_msg: None }
     }
 
     pub fn show_welcome(&self) -> bool {
@@ -62,8 +131,40 @@ impl Settings {
     pub fn open(&mut self) {
         self.shortcut = shortcuts::state();
         self.desktop = shortcuts::state_at(Place::Desktop);
+        self.tray_on = vf_core::tray::autostart_on();
         self.msg = None;
         self.open = true;
+    }
+
+    /// The drag step's "Activate": the right-click menu (with the drag-and-drop part) and the drop bar, which from now
+    /// on starts with Windows and starts now. Each says how it went; the settings window shows a failure.
+    fn enable_drag(&mut self) {
+        if vf_core::menu::SUPPORTED {
+            self.menu_msg = Some(match crate::menu::install() {
+                Ok(n) => (i18n::tf("menu.added", &[("n", &n.to_string())]), false),
+                Err(e) => (e, true),
+            });
+        }
+        self.enable_tray();
+    }
+
+    fn enable_tray(&mut self) {
+        self.tray_msg = Some(match tray_exe() {
+            Some(exe) => match vf_core::tray::enable(&exe) {
+                Ok(()) => (i18n::t("tray.enabled"), false),
+                Err(e) => (e, true),
+            },
+            None => (i18n::t("tray.missing"), true),
+        });
+        self.tray_on = vf_core::tray::autostart_on();
+    }
+
+    fn disable_tray(&mut self) {
+        self.tray_msg = Some(match vf_core::tray::disable() {
+            Ok(()) => (i18n::t("tray.disabled"), false),
+            Err(e) => (e, true),
+        });
+        self.tray_on = vf_core::tray::autostart_on();
     }
 
     fn add_shortcut(&mut self) {
@@ -132,19 +233,37 @@ impl Settings {
         }
     }
 
+    /// One question at a time: Start menu, desktop, then the drag-and-drop functions. "Not now" moves on to the next.
     fn welcome_ui(&mut self, ctx: &egui::Context, t: &Tokens) {
+        let Some(kind) = self.steps.get(self.step).copied() else {
+            self.welcome = false;
+            return;
+        };
         let mut answer: Option<bool> = None;
         Modal::new(Id::unique("welcome")).show(ctx, |ui| {
             ui.set_width(380.0);
             ui.add_space(4.0);
-            ui.label(RichText::new(i18n::t("hub.welcome_title")).font(vf_ui::theme::strong(18.0)).color(t.ink_strong));
+            if self.steps.len() > 1 {
+                let (n, m) = ((self.step + 1).to_string(), self.steps.len().to_string());
+                ui.label(RichText::new(i18n::tf("hub.welcome_step", &[("n", &n), ("m", &m)])).size(12.0).color(t.faint));
+                ui.add_space(2.0);
+            }
+            // (title, text, note, the yes button)
+            let (title, text, note, yes) = match kind {
+                Step::Start => ("hub.welcome_title", "hub.welcome_text", Some("hub.welcome_note"), "hub.btn_add_start"),
+                Step::Desktop => ("hub.welcome2_title", "hub.welcome2_text", None, "hub.btn_add_desktop_short"),
+                Step::Drag => ("hub.welcome3_title", "hub.welcome3_text", Some("hub.welcome3_note"), "hub.btn_enable"),
+            };
+            ui.label(RichText::new(i18n::t(title)).font(vf_ui::theme::strong(18.0)).color(t.ink_strong));
             ui.add_space(8.0);
-            ui.label(RichText::new(i18n::t("hub.welcome_text")).color(t.muted));
-            ui.add_space(6.0);
-            ui.label(RichText::new(i18n::t("hub.welcome_note")).size(12.0).color(t.faint));
+            ui.label(RichText::new(i18n::t(text)).color(t.muted));
+            if let Some(note) = note {
+                ui.add_space(6.0);
+                ui.label(RichText::new(i18n::t(note)).size(12.0).color(t.faint));
+            }
             ui.add_space(14.0);
             ui.horizontal(|ui| {
-                if primary(ui, t, &i18n::t("hub.btn_add_start")).clicked() {
+                if primary(ui, t, &i18n::t(yes)).clicked() {
                     answer = Some(true);
                 }
                 if ui.add(egui::Button::new(RichText::new(i18n::t("hub.btn_not_now")).font(FontId::proportional(12.5)))).clicked() {
@@ -152,18 +271,33 @@ impl Settings {
                 }
             });
         });
-        if let Some(add) = answer {
-            if add {
-                self.add_shortcut();
+        let Some(add) = answer else { return };
+        if add {
+            match kind {
+                Step::Start => self.add_shortcut(),
+                Step::Desktop => self.add_desktop(),
+                Step::Drag => self.enable_drag(),
             }
-            if let Some(dir) = data_dir() {
+        }
+        self.step += 1;
+        if self.step < self.steps.len() {
+            return;
+        }
+        // the last question was answered: remember it, and close
+        if let Some(dir) = data_dir() {
+            if self.steps.contains(&Step::Start) {
                 mark_welcome_done_in(&dir);
             }
-            self.welcome = false;
-            // after "add", show the result in the settings window so a failure is not silent
-            if add && self.msg.as_ref().is_some_and(|(_, bad)| *bad) {
-                self.open();
+            if self.steps.contains(&Step::Drag) {
+                mark_drag_step_done_in(&dir);
+                mark_welcome_done_in(&dir);
             }
+        }
+        self.welcome = false;
+        // after "add", show the result in the settings window so a failure is not silent
+        let failed = |m: &Option<(String, bool)>| m.as_ref().is_some_and(|(_, bad)| *bad);
+        if failed(&self.msg) || failed(&self.menu_msg) || failed(&self.tray_msg) {
+            self.open = true; // (not `open()`: it would clear the messages)
         }
     }
 
@@ -327,6 +461,26 @@ impl Settings {
                 ui.label(RichText::new(i18n::t("menu.note")).size(12.0).color(t.faint));
                 }
 
+                // The drop bar (Windows, when its program sits next to the hub).
+                if vf_core::tray::SUPPORTED && tray_exe().is_some() {
+                    section(ui, t, &i18n::t("tray.sec"));
+                    let on = self.tray_on;
+                    ui.label(RichText::new(i18n::t(if on { "tray.on" } else { "tray.off" })).color(if on { t.good } else { t.muted }));
+                    ui.horizontal(|ui| {
+                        if on {
+                            if ui.button(RichText::new(i18n::t("tray.btn_remove")).font(FontId::proportional(12.5))).clicked() {
+                                self.disable_tray();
+                            }
+                        } else if primary(ui, t, &i18n::t("hub.btn_enable")).clicked() {
+                            self.enable_tray();
+                        }
+                    });
+                    if let Some((msg, bad)) = &self.tray_msg {
+                        ui.label(RichText::new(msg).size(12.0).color(if *bad { t.bad } else { t.good }));
+                    }
+                    ui.label(RichText::new(i18n::t("tray.note")).size(12.0).color(t.faint));
+                }
+
                 section(ui, t, &i18n::t("hub.sec_data"));
                 if let Some(dir) = data_dir() {
                     ui.label(RichText::new(dir.display().to_string()).font(FontId::proportional(12.5)).color(t.muted));
@@ -390,6 +544,29 @@ pub fn gear_button(ui: &mut egui::Ui, t: &Tokens, rect: Rect) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_welcome_asks_in_order_and_an_update_asks_only_the_new_step() {
+        // first start on Windows with the drop bar: Start, desktop, drag
+        assert_eq!(plan(true, false, false, true), [Step::Start, Step::Desktop, Step::Drag]);
+        // first start without the bar's program: the two shortcuts only
+        assert_eq!(plan(true, false, false, false), [Step::Start, Step::Desktop]);
+        // answered the old dialog, not the drag step yet: just that one
+        assert_eq!(plan(true, true, false, true), [Step::Drag]);
+        // everything answered, or macOS: nothing
+        assert!(plan(true, true, true, true).is_empty());
+        assert!(plan(false, true, true, false).is_empty());
+    }
+
+    #[test]
+    fn the_drag_step_is_asked_once() {
+        let dir = std::env::temp_dir().join(format!("vf-welcome-drag-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!drag_step_done_in(&dir));
+        mark_drag_step_done_in(&dir);
+        assert!(drag_step_done_in(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn the_welcome_dialog_is_asked_once() {

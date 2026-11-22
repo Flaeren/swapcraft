@@ -339,6 +339,20 @@ pub fn find_route(ext: &str, to: &str) -> Option<&'static Route> {
     targets(ext).into_iter().map(|i| &ROUTES[i]).find(|r| route_id(r) == to)
 }
 
+/// Whether this PC has what the route needs to convert a `from_ext` file: the engine it drives (WordCraft, PdfCraft...),
+/// found the way `run_route` finds it. The e-book and mail jobs work without WordCraft for the formats Rust handles
+/// alone, so they only need it for PDF, DOCX and the word processor files they read. Lets a program grey a format out
+/// before anyone drops a file on it instead of failing afterwards.
+pub fn available(route: &Route, from_ext: &str) -> bool {
+    let wordcraft = || WORDCRAFT.find().is_some();
+    match route.job {
+        Job::Ebook(kind) => !(kind.needs_wordcraft() || ebook::WORDCRAFT_EXTS.contains(&from_ext)) || wordcraft(),
+        Job::Mail(kind) => kind != mail::Kind::Pdf || wordcraft(),
+        Job::Pst(kind) => crate::engine::MAILCRAFT.find().is_some() && (kind != mail::Kind::Pdf || wordcraft()),
+        other => other.engine().find().is_some(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

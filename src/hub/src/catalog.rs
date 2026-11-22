@@ -148,7 +148,7 @@ mod tests {
         let sources = [include_str!("main.rs"), include_str!("settings.rs"), include_str!("recipes.rs"), include_str!("menu.rs"), include_str!("catalog.rs")].join("\n");
         let mut used: Vec<String> = Vec::new();
         for part in sources.split('"').skip(1).step_by(2) {
-            if ["hub.", "rec.", "menu."].iter().any(|p| part.starts_with(p)) && !part.ends_with(".rs") && !part.ends_with('.') && part.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) {
+            if ["hub.", "rec.", "menu.", "tray."].iter().any(|p| part.starts_with(p)) && !part.ends_with(".rs") && !part.ends_with('.') && part.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) {
                 used.push(part.to_owned());
             }
         }

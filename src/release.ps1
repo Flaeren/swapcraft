@@ -60,13 +60,13 @@ $full = Join-Path $out "swapcraft-$version-windows.zip"
 New-Zip $full $portable $leftovers
 Write-Host ("{0,-52} {1}" -f (Split-Path -Leaf $full), (Size-Mb $full))
 $hubOnly = Join-Path $out "swapcraft-hub-$version-windows.zip"
-New-Zip $hubOnly $portable { param($rel) $rel -notin @("SwapCraft.exe", "swapcraft-cli.exe", "voidflare_dragdrop.dll") }
+New-Zip $hubOnly $portable { param($rel) $rel -notin @("SwapCraft.exe", "swapcraft-cli.exe", "swapcraft-tray.exe", "voidflare_dragdrop.dll") }
 Write-Host ("{0,-52} {1}" -f (Split-Path -Leaf $hubOnly), (Size-Mb $hubOnly))
 # the same three files under the 0.4 names, for the hubs that update from voidflare-hub-*
 $legacyHub = Join-Path $out "voidflare-hub-$version-windows.zip"
 $archive = [System.IO.Compression.ZipFile]::Open($legacyHub, [System.IO.Compression.ZipArchiveMode]::Create)
 try {
-    foreach ($pair in @(@("SwapCraft.exe", "voidflare.exe"), @("swapcraft-cli.exe", "voidflare-cli.exe"), @("voidflare_dragdrop.dll", "voidflare_dragdrop.dll"))) {
+    foreach ($pair in @(@("SwapCraft.exe", "voidflare.exe"), @("swapcraft-cli.exe", "voidflare-cli.exe"), @("swapcraft-tray.exe", "swapcraft-tray.exe"), @("voidflare_dragdrop.dll", "voidflare_dragdrop.dll"))) {
         [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, (Join-Path $portable $pair[0]), $pair[1], [System.IO.Compression.CompressionLevel]::Optimal)
     }
 } finally { $archive.Dispose() }

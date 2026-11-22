@@ -230,6 +230,8 @@ impl Hub {
         });
         // The right-click menu added by an older hub has no drag-and-drop part yet: write it once.
         menu::upgrade_if_needed();
+        // the drop bar starts with Windows from where the hub is now (the portable folder may have moved)
+        std::thread::spawn(settings::keep_tray_pointing_here);
         // 0.5: this hub was voidflare.exe a moment ago (see `main`). The Start menu entry and the right-click menus
         // are pointed at SwapCraft.exe without asking; a notice says what changed.
         let renamed = settings::data_dir().is_some_and(|d| std::fs::remove_file(d.join(RENAMED_MARK)).is_ok());

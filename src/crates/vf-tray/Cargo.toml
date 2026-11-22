@@ -1,0 +1,43 @@
+[package]
+name = "vf-tray"
+description = "SwapCraft's resident helper: a drop bar on the screen edge, a tray icon with the queue, and an orange-to-green edge glow while files convert. Windows only for now; on other systems it only says so."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "swapcraft-tray"
+path = "src/main.rs"
+
+[dependencies]
+vf-core.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# Draws the bar, the glow and the queue card into a bitmap with per-pixel alpha (pure Rust, no GPU, no window toolkit),
+# and Inter / IBM Plex Mono from vf-ui's assets (SIL OFL) for the text.
+tiny-skia = "0.12.0"
+fontdue = "0.9.5"
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_System_Com",
+    "Win32_System_Console",
+    "Win32_System_Ole",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_WindowsAndMessaging",
+] }
+# The #[implement] macro expands to paths under `windows_core`, so the crate must be a direct dependency.
+windows-core = "0.62.2"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1.34"

@@ -1,6 +1,6 @@
 # Builds the hub and the Rust apps in release and puts the products in ..\portable, the only folder
 # that needs zipping to try SwapCraft on another PC:
-#   ..\portable\SwapCraft.exe          the hub (and swapcraft-cli.exe, voidflare_dragdrop.dll)
+#   ..\portable\SwapCraft.exe          the hub (and swapcraft-cli.exe, swapcraft-tray.exe, voidflare_dragdrop.dll)
 #   ..\portable\apps\<id>\<id>.exe     each app, with its engine next to it
 # Usage: powershell -File build-apps.ps1
 $ErrorActionPreference = "Stop"
@@ -28,6 +28,8 @@ try {
     Put (Join-Path $src "target\release\voidflare-hub.exe") (Join-Path $out "SwapCraft.exe")
     # the command line and MCP server (no window) sits beside the hub and updates with it
     Put (Join-Path $src "target\release\swapcraft-cli.exe") (Join-Path $out "swapcraft-cli.exe")
+    # the drop bar and tray icon (resident helper): it may be running, so it is parked under a new name like the others
+    Put (Join-Path $src "target\release\swapcraft-tray.exe") (Join-Path $out "swapcraft-tray.exe")
     # the drag-and-drop menu handler: File Explorer loads it, so it may be in use; like an exe, it can be renamed
     $dll = Join-Path $out "voidflare_dragdrop.dll"
     $oldDll = Join-Path $out "voidflare_dragdrop.old.dll"

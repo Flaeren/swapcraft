@@ -268,6 +268,17 @@ pub fn install_from_zip(zip: &Path, exe: &Path, work: &Path) -> Result<(), Strin
             let _ = fs::rename(&new_dll, &dll);
         }
     }
+    // The drop bar's program too. It may be running (it lives in the notification area): the old one is parked under
+    // a new name and the new one is picked up the next time it starts. Best effort, like the others.
+    let tray = exe.with_file_name(crate::tray::EXE_NAME);
+    let new_tray = unpacked.join(crate::tray::EXE_NAME);
+    if is_exe(&new_tray) {
+        if tray.exists() {
+            let _ = replace_exe(&tray, &new_tray);
+        } else {
+            let _ = fs::rename(&new_tray, &tray);
+        }
+    }
     Ok(())
 }
 
@@ -599,6 +610,28 @@ mod tests {
         assert!(!root.join("README.txt").exists(), "nothing but the hub (and its command line) is copied out");
         assert_eq!(fs::read(root.join("swapcraft-cli.exe")).unwrap(), b"MZ-new-cli", "the command line travels with the hub");
         assert_eq!(fs::read(root.join("swapcraft-cli.old.exe")).unwrap(), b"MZ-old-cli");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn the_drop_bar_program_travels_with_the_hub() {
+        let root = std::env::temp_dir().join(format!("vf-hub-tray-zip-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let exe = root.join("SwapCraft.exe");
+        fs::write(&exe, b"MZ-old-hub").unwrap();
+        fs::write(root.join("swapcraft-tray.exe"), b"MZ-old-tray").unwrap();
+        let zip = root.join("update.zip");
+        zip_with(&zip, &[("SwapCraft.exe", b"MZ-new-hub"), ("swapcraft-tray.exe", b"MZ-new-tray")]);
+        install_from_zip(&zip, &exe, &root.join(".work")).expect("the swap works");
+        assert_eq!(fs::read(root.join("swapcraft-tray.exe")).unwrap(), b"MZ-new-tray");
+        assert_eq!(fs::read(root.join("swapcraft-tray.old.exe")).unwrap(), b"MZ-old-tray", "a running copy is parked, not lost");
+        // a hub that never had the bar gets it too
+        let _ = fs::remove_file(root.join("swapcraft-tray.exe"));
+        zip_with(&zip, &[("SwapCraft.exe", b"MZ-newer-hub"), ("swapcraft-tray.exe", b"MZ-newer-tray")]);
+        install_from_zip(&zip, &exe, &root.join(".work2")).expect("the swap works");
+        assert_eq!(fs::read(root.join("swapcraft-tray.exe")).unwrap(), b"MZ-newer-tray");
         let _ = fs::remove_dir_all(&root);
     }
 
