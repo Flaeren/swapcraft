@@ -270,6 +270,12 @@ pub fn install_from_zip(zip: &Path, exe: &Path, work: &Path) -> Result<(), Strin
     }
     // The drop bar's program too. It may be running (it lives in the notification area): the old one is parked under
     // a new name and the new one is picked up the next time it starts. Best effort, like the others.
+    place_tray(exe, &unpacked);
+    Ok(())
+}
+
+/// Puts the drop bar's program from the unpacked ZIP beside `exe`, replacing the one there. Best effort.
+fn place_tray(exe: &Path, unpacked: &Path) {
     let tray = exe.with_file_name(crate::tray::EXE_NAME);
     let new_tray = unpacked.join(crate::tray::EXE_NAME);
     if is_exe(&new_tray) {
@@ -279,7 +285,37 @@ pub fn install_from_zip(zip: &Path, exe: &Path, work: &Path) -> Result<(), Strin
             let _ = fs::rename(&new_tray, &tray);
         }
     }
-    Ok(())
+}
+
+/// A hub brought up from 0.7 by its own updater has no drop bar beside it (that updater only knew the hub, the command
+/// line and the DLL). This fetches the latest release's hub ZIP, checks its SHA-256 and takes only the drop bar's
+/// program out of it, beside the running hub. Nothing else is touched. Returns where the program is now.
+pub fn fetch_tray(progress: &dyn Fn(u64, u64), cancel: &AtomicBool) -> Result<PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("Cannot tell where voidflare is installed: {e}"))?;
+    let release = latest()?;
+    fetch_tray_at(&exe, &release, progress, cancel)
+}
+
+/// `fetch_tray` for the hub at `exe` and a release already read.
+pub fn fetch_tray_at(exe: &Path, release: &Release, progress: &dyn Fn(u64, u64), cancel: &AtomicBool) -> Result<PathBuf, String> {
+    let dir = exe.parent().ok_or("Cannot tell which folder voidflare is in.")?;
+    let staging = dir.join(STAGING);
+    let _ = fs::remove_dir_all(&staging);
+    let result = download_verified(release, &staging, progress, cancel).and_then(|zip| tray_from_zip(&zip, exe, &staging));
+    let _ = fs::remove_dir_all(&staging);
+    result
+}
+
+/// Unpacks `zip` inside `work` and puts the drop bar's program beside `exe`.
+pub fn tray_from_zip(zip: &Path, exe: &Path, work: &Path) -> Result<PathBuf, String> {
+    let unpacked = work.join("unpacked");
+    crate::packs::extract_zip(zip, &unpacked, &AtomicBool::new(false))?;
+    if !is_exe(&unpacked.join(crate::tray::EXE_NAME)) {
+        return Err(format!("The release has no {}; nothing was changed.", crate::tray::EXE_NAME));
+    }
+    place_tray(exe, &unpacked);
+    let placed = exe.with_file_name(crate::tray::EXE_NAME);
+    if is_exe(&placed) { Ok(placed) } else { Err(format!("Cannot put {} next to the hub.", crate::tray::EXE_NAME)) }
 }
 
 /// The drag-and-drop menu handler that sits beside the hub.
@@ -632,6 +668,46 @@ mod tests {
         zip_with(&zip, &[("SwapCraft.exe", b"MZ-newer-hub"), ("swapcraft-tray.exe", b"MZ-newer-tray")]);
         install_from_zip(&zip, &exe, &root.join(".work2")).expect("the swap works");
         assert_eq!(fs::read(root.join("swapcraft-tray.exe")).unwrap(), b"MZ-newer-tray");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    #[ignore = "downloads the published release"]
+    fn the_published_release_gives_the_drop_bar() {
+        let root = std::env::temp_dir().join(format!("vf-hub-real-tray-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let exe = root.join("SwapCraft.exe");
+        fs::write(&exe, b"MZ-my-hub").unwrap();
+        let release = latest().expect("the release is found");
+        let placed = fetch_tray_at(&exe, &release, &|_, _| {}, &AtomicBool::new(false)).expect("the bar is downloaded and verified");
+        assert!(fs::metadata(&placed).unwrap().len() > 1_000_000, "a real program, not a stub");
+        assert!(!root.join(STAGING).exists(), "the staging folder is gone");
+        assert_eq!(fs::read(&exe).unwrap(), b"MZ-my-hub");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn a_hub_without_the_drop_bar_fetches_only_that_program() {
+        let root = std::env::temp_dir().join(format!("vf-hub-fetch-tray-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let exe = root.join("SwapCraft.exe");
+        fs::write(&exe, b"MZ-my-hub").unwrap();
+        let zip = root.join("hub.zip");
+        zip_with(&zip, &[("SwapCraft.exe", b"MZ-zip-hub"), ("swapcraft-cli.exe", b"MZ-zip-cli"), ("swapcraft-tray.exe", b"MZ-zip-tray")]);
+        let placed = tray_from_zip(&zip, &exe, &root.join(".work")).expect("the bar is taken out");
+        assert_eq!(placed, root.join("swapcraft-tray.exe"));
+        assert_eq!(fs::read(&placed).unwrap(), b"MZ-zip-tray");
+        assert_eq!(fs::read(&exe).unwrap(), b"MZ-my-hub", "the running hub is left alone");
+        assert!(!root.join("swapcraft-cli.exe").exists(), "nothing else is taken");
+        // a ZIP without the bar is an error and changes nothing
+        let _ = fs::remove_file(&placed);
+        zip_with(&zip, &[("SwapCraft.exe", b"MZ-zip-hub")]);
+        assert!(tray_from_zip(&zip, &exe, &root.join(".work2")).is_err());
+        assert!(!placed.exists());
         let _ = fs::remove_dir_all(&root);
     }
 

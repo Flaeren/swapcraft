@@ -99,6 +99,8 @@ pub struct Settings {
     tray_on: bool,
     /// What turning the drop bar on or off said.
     tray_msg: Option<(String, bool)>,
+    /// The drop bar's program is being downloaded (a hub brought up from 0.7 has none beside it).
+    tray_fetch: Option<std::sync::mpsc::Receiver<Result<PathBuf, String>>>,
     lang: Lang,
     appearance: Appearance,
     shortcut: State,
@@ -122,7 +124,7 @@ impl Settings {
             steps = plan(shortcuts::SUPPORTED, false, false, drag_possible());
         }
         let welcome = data_dir().is_some() && !steps.is_empty();
-        Self { open: false, welcome, steps, step: 0, tray_on: false, tray_msg: None, lang: i18n::remembered().unwrap_or(Lang::En), appearance: Appearance::load(), shortcut: State::Missing, desktop: State::Missing, msg: None, recheck_at: None, menu_msg: None }
+        Self { open: false, welcome, steps, step: 0, tray_on: false, tray_msg: None, tray_fetch: None, lang: i18n::remembered().unwrap_or(Lang::En), appearance: Appearance::load(), shortcut: State::Missing, desktop: State::Missing, msg: None, recheck_at: None, menu_msg: None }
     }
 
     pub fn show_welcome(&self) -> bool {
@@ -158,6 +160,39 @@ impl Settings {
             None => (i18n::t("tray.missing"), true),
         });
         self.tray_on = vf_core::tray::autostart_on();
+    }
+
+    /// Downloads the drop bar's program from the latest release (checksum verified), on the user's click.
+    fn fetch_tray(&mut self, ctx: &egui::Context) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.tray_fetch = Some(rx);
+        self.tray_msg = None;
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let result = update::fetch_tray(&|_, _| {}, &std::sync::atomic::AtomicBool::new(false));
+            let _ = tx.send(result);
+            ctx.request_repaint();
+        });
+    }
+
+    /// Picks up the end of the download: on success the section shows the usual "Activate".
+    fn poll_tray_fetch(&mut self) {
+        let Some(rx) = &self.tray_fetch else { return };
+        match rx.try_recv() {
+            Ok(Ok(_)) => {
+                self.tray_fetch = None;
+                self.tray_msg = None;
+            }
+            Ok(Err(e)) => {
+                self.tray_fetch = None;
+                self.tray_msg = Some((e, true));
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.tray_fetch = None;
+                self.tray_msg = Some((i18n::t("tray.missing"), true));
+            }
+        }
     }
 
     fn disable_tray(&mut self) {
@@ -216,6 +251,7 @@ impl Settings {
 
     /// Draws whichever of the two windows is open. `auto_on` is the hub's update-check switch.
     pub fn ui(&mut self, ctx: &egui::Context, t: &Tokens, auto_on: &mut bool) {
+        self.poll_tray_fetch();
         if let Some(at) = self.recheck_at {
             if std::time::Instant::now() >= at {
                 self.recheck();
@@ -462,7 +498,21 @@ impl Settings {
                 ui.label(RichText::new(i18n::t("menu.note")).size(12.0).color(t.faint));
                 }
 
-                // The drop bar (Windows, when its program sits next to the hub).
+                // The drop bar. Without its program beside the hub (a hub brought up from 0.7 by its own updater has
+                // none) the section offers to download it.
+                if vf_core::tray::SUPPORTED && tray_exe().is_none() {
+                    section(ui, t, &i18n::t("tray.sec"));
+                    ui.label(RichText::new(i18n::t("tray.missing")).color(t.muted));
+                    if self.tray_fetch.is_some() {
+                        ui.label(RichText::new(i18n::t("tray.getting")).size(12.0).color(t.faint));
+                        ui.ctx().request_repaint_after(std::time::Duration::from_millis(300));
+                    } else if primary(ui, t, &i18n::t("tray.btn_get")).clicked() {
+                        self.fetch_tray(ui.ctx());
+                    }
+                    if let Some((msg, bad)) = &self.tray_msg {
+                        ui.label(RichText::new(msg).size(12.0).color(if *bad { t.bad } else { t.good }));
+                    }
+                }
                 if vf_core::tray::SUPPORTED && tray_exe().is_some() {
                     section(ui, t, &i18n::t("tray.sec"));
                     let on = self.tray_on;

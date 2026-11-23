@@ -2,6 +2,12 @@
 
 All notable changes to SwapCraft (formerly voidflare) are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.1] - 2026-11-23
+
+### Fixed
+
+- **The drop bar was missing after updating from 0.7.x.** The updater of 0.7.x only knew the hub, the command line and the drag-and-drop DLL, so a hub brought up to 0.8.0 from the app itself had no `swapcraft-tray` beside it, and neither the drop bar section in the settings nor the third welcome step appeared. The settings now show the section when the program is missing, with a "Download the drop bar" button: it fetches the latest release's hub ZIP, checks its SHA-256 and puts only `swapcraft-tray` next to the hub (nothing else is touched, and only when you click). Updating from 0.8.0 to 0.8.1 also brings it, since the 0.8.0 updater already carries the drop bar. If you prefer to do it by hand, unzip `swapcraft-hub-0.8.1-windows.zip` over the SwapCraft folder.
+
 ## [0.8.0] - 2026-11-22
 
 ### Added
