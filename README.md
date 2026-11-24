@@ -39,7 +39,7 @@
   <a href="https://swapcraft.voidflare.app"><img src="docs/img/hub.png" alt="The SwapCraft hub: the area to drop files on and the installed apps" width="720"></a>
 </p>
 
-**SwapCraft** (by voidflare) takes a file and offers the formats it can become. Your files never leave your PC, there is no account, and you need no Microsoft Office. It is a small hub plus ten apps, and you install only the ones you use: each app is a separate download, and it either comes with its own conversion engine or, if your PC already has a version of ArtCraft that we have tested, uses that one instead of downloading a second copy. It also works from where you already are: the right-click menu on a file, a right-button drag onto a folder, the command line, and AI assistants through MCP.
+**SwapCraft** (by voidflare) takes a file and offers the formats it can become. Your files never leave your PC, there is no account, and you need no Microsoft Office. It is a small hub plus ten apps, and you install only the ones you use: each app is a separate download, and it either comes with its own conversion engine or, if your PC already has a version of ArtCraft that we have tested, uses that one instead of downloading a second copy. It also works from where you already are: the right-click menu on a file, a right-button drag onto a folder, a drop bar on the screen edge (several files can become one PDF), the command line, and AI assistants through MCP.
 
 SwapCraft is built the way the [ArtCraft](https://getartcraft.com) apps are: in Rust, with the same egui interface the Craft launchers use, and on top of the suite's own command-line engines (WordCraft, GridCraft, DeckCraft, PdfCraft, CADCraft, PhotoCraft, SoundCraft, FilmCraft and MailCraft), which do the converting.
 
@@ -53,7 +53,7 @@ SwapCraft is built the way the [ArtCraft](https://getartcraft.com) apps are: in 
   <img src="docs/img/recipes.png" alt="The SwapCraft hub on the Recipes tab: a three-step recipe that converts, merges and shrinks" width="720">
 </p>
 
-> **Status:** early (v0.7.2). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
+> **Status:** early (v0.8.2). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
 
 ## Principles
 
