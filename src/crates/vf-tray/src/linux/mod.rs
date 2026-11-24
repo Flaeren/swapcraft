@@ -34,7 +34,7 @@ use crate::bar_view::{MISSING, View, render};
 use crate::card_view::{self, BTN_CANCEL, BTN_CLEAR, BTN_OPEN};
 use crate::draw::{self, Mon, Rect};
 use crate::glow::{Glow, Tick};
-use crate::model::{ACCEPTED_MS, BarModel, Drop, EXPAND_AFTER_MS, PICK_TIMEOUT_MS};
+use crate::model::{ACCEPTED_MS, BarModel, Drop, PICK_TIMEOUT_MS};
 use crate::offer;
 use crate::queue::{self, Entry, Status};
 use crate::watcher::{GlowCmd, Watcher};
@@ -478,14 +478,14 @@ impl App {
         self.redraw_bar();
         self.kill_timer(Timer::Expand);
         if h.expand_timer {
-            self.set_timer(Timer::Expand, EXPAND_AFTER_MS as u64);
+            self.set_timer(Timer::Expand, h.expand_ms as u64);
         }
     }
 
     fn expand(&mut self) {
         if self.m.expand() {
             self.redraw_bar();
-            log("EXPAND (full list opened)");
+            log("EXPAND (full list or PDF choice opened)");
         }
     }
 
@@ -527,6 +527,7 @@ impl App {
 
     fn apply_selection(&mut self, paths: &[PathBuf]) {
         self.dragged = paths.to_vec();
+        self.m.set_files(paths.iter().filter(|p| p.is_file()).count());
         let exts = offer::exts_of(paths);
         self.m.offer = if exts.is_empty() { offer::generic() } else { offer::offer(&exts) };
         self.sel_exts = exts;

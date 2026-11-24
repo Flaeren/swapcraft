@@ -35,8 +35,9 @@ pub struct View {
     pub expanded: bool,
     pub pick: bool,
     pub accepted: Option<usize>,
+    /// The panel holds the "one PDF or several" choice instead of the "More" list.
+    pub choice: bool,
 }
-
 
 impl View {
     pub fn extra(&self) -> f32 {
@@ -164,7 +165,7 @@ pub fn render(v: &View) -> Pixmap {
         draw_pill(&mut pm, v.slot_box(i), v.hot == i as i32, true, slot.available, &slot.label, &ext);
     }
     if v.expanded {
-        gfx::draw_text(&mut pm, &f.plex, 10.0 * s, 0.9 * s, PANEL_X * s + 2.0 * s, tt + 5.0 * s, VIOLET, "TUTTI I FORMATI");
+        gfx::draw_text(&mut pm, &f.plex, 10.0 * s, 0.9 * s, PANEL_X * s + 2.0 * s, tt + 5.0 * s, VIOLET, if v.choice { "COME UNIRLI?" } else { "TUTTI I FORMATI" });
         for (k, slot) in v.offer.more.iter().enumerate() {
             let chosen = v.accepted.is_some() && v.hot == CHIP_BASE + k as i32;
             let ext = if chosen { "avviato".to_owned() } else if slot.available { ext_text(slot, false) } else { MISSING.to_owned() };
@@ -172,4 +173,13 @@ pub fn render(v: &View) -> Pixmap {
         }
     }
     pm
+}
+
+/// The bar with the "one PDF or several" choice open, to look at it (`--render-choice`): two spreadsheets, the pointer
+/// on the first chip.
+pub fn choice_demo() -> View {
+    let mut o = crate::offer::offer(&["xlsx".to_owned()]);
+    let choice = o.pdf_choice(0, 2).unwrap_or_default();
+    o.more = choice;
+    View { scale: 1.0, h: 720, hot: CHIP_BASE, offer: o, expanded: true, pick: false, accepted: None, choice: true }
 }

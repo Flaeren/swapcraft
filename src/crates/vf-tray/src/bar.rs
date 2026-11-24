@@ -29,7 +29,7 @@ use windows::core::{BOOL, Interface, PCWSTR, Ref, Result, implement, w};
 
 use crate::bar_view::*;
 use crate::gfx;
-use crate::model::{ACCEPTED_MS, BarModel, Drop, EXPAND_AFTER_MS, PICK_TIMEOUT_MS};
+use crate::model::{ACCEPTED_MS, BarModel, Drop, PICK_TIMEOUT_MS};
 use crate::offer;
 use crate::{aura, queue, tray};
 
@@ -288,11 +288,13 @@ fn read_selection(fg: isize) -> Vec<PathBuf> {
 }
 
 /// The files' types are known (or are not): choose what the bar offers.
-fn apply_selection(exts: Vec<String>) {
+fn apply_selection(paths: &[PathBuf]) {
+    let exts = offer::exts_of(paths);
     let o = if exts.is_empty() { offer::generic() } else { offer::offer(&exts) };
     let mut s = st();
     s.sel_exts = exts;
     s.m.offer = o;
+    s.m.set_files(paths.iter().filter(|p| p.is_file()).count());
 }
 
 fn view() -> View {
@@ -397,7 +399,7 @@ fn set_hot(hwnd: HWND, hot: i32) {
     unsafe {
         let _ = KillTimer(Some(hwnd), TIMER_EXPAND);
         if h.expand_timer {
-            SetTimer(Some(hwnd), TIMER_EXPAND, EXPAND_AFTER_MS, None);
+            SetTimer(Some(hwnd), TIMER_EXPAND, h.expand_ms, None);
         }
     }
 }
@@ -407,7 +409,7 @@ fn expand(hwnd: HWND) {
         return;
     }
     redraw(hwnd);
-    gfx::log("EXPAND (full list opened)");
+    gfx::log("EXPAND (full list or PDF choice opened)");
 }
 
 /// The files were handed to the queue: show it on the bar for a moment, then take the bar away.
@@ -439,10 +441,16 @@ impl IDropTarget_Impl for Target_Impl {
     fn DragEnter(&self, data: Ref<'_, IDataObject>, _keys: MODIFIERKEYS_FLAGS, _pt: &POINTL, effect: *mut DROPEFFECT) -> Result<()> {
         // the data object is the authority: if the files are not what the selection said, offer the right formats
         if let Some(d) = data.as_ref() {
-            let exts = offer::exts_of(&dragged_paths(d));
-            if exts != st().sel_exts {
+            let paths = dragged_paths(d);
+            let exts = offer::exts_of(&paths);
+            // (a different number of files with the same types matters too: the PDF choice needs two or more)
+            let (known_exts, known_files) = {
+                let s = st();
+                (s.sel_exts.clone(), s.m.files)
+            };
+            if exts != known_exts || paths.iter().filter(|p| p.is_file()).count() != known_files {
                 gfx::log(&format!("DRAGENTER corrects the formats: {exts:?}"));
-                apply_selection(exts);
+                apply_selection(&paths);
                 st().sel_ready = true;
                 redraw(self.hwnd);
             }
@@ -588,7 +596,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                             let me = hwnd.0 as isize;
                             std::thread::spawn(move || {
                                 let paths = read_selection(fg);
-                                apply_selection(offer::exts_of(&paths));
+                                apply_selection(&paths);
                                 st().sel_ready = true;
                                 unsafe {
                                     let _ = PostMessageW(Some(HWND(me as *mut c_void)), WM_SELECTION, WPARAM(0), LPARAM(0));
@@ -807,7 +815,7 @@ pub fn render_png(path: &str, ext: &str, missing_from: Option<usize>) {
         }
     }
     let expanded = !o.more.is_empty();
-    let v = View { scale: 1.0, h: 720, hot: -1, offer: o, expanded, pick: false, accepted: None };
+    let v = View { scale: 1.0, h: 720, hot: -1, offer: o, expanded, pick: false, accepted: None, choice: false };
     let _ = render(&v).save_png(path);
 }
 
@@ -818,7 +826,7 @@ pub fn selftest(file: &str, to_id: &str) -> Result<()> {
     let hwnd = make_window()?;
     let target: IDropTarget = Target { hwnd }.into();
     let data = data_object_for(file)?;
-    apply_selection(offer::exts_of(&[PathBuf::from(file)]));
+    apply_selection(&[PathBuf::from(file)]);
     st().sel_ready = true;
     show(hwnd);
     pump_for(400); // let the slide-in finish, like a person who takes a moment to reach the bar

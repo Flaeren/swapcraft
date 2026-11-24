@@ -9,7 +9,10 @@ use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use vf_core::job::{self, CANCELLED, Destination};
+use vf_core::recipe::{self, Out, Recipe, Step};
 use vf_core::routes::{self, Route};
+
+use crate::offer::MERGE_ID;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Status {
@@ -45,9 +48,11 @@ impl Counts {
     }
 }
 
-struct Request {
-    id: u64,
-    route: &'static Route,
+enum Request {
+    /// One file, one route.
+    One { id: u64, route: &'static Route },
+    /// All of `files` into one PDF (convert each to PDF, then merge); `id` is the queue entry that stands for them.
+    Merge { id: u64, files: Vec<PathBuf> },
 }
 
 static ENTRIES: Mutex<Vec<Entry>> = Mutex::new(Vec::new());
@@ -93,6 +98,9 @@ pub fn submit(files: &[PathBuf], to_id: &str, to_label: &str) -> usize {
         std::thread::spawn(move || worker(rx));
         tx
     });
+    if to_id == MERGE_ID {
+        return submit_merged(tx, files, to_label);
+    }
     let mut taken = 0;
     for file in files.iter().filter(|f| f.is_file()) {
         let id = NEXT.fetch_add(1, Ordering::Relaxed);
@@ -101,7 +109,7 @@ pub fn submit(files: &[PathBuf], to_id: &str, to_label: &str) -> usize {
         let status = if route.is_some() { Status::Waiting } else { Status::Failed("Questo formato non è disponibile per il file.".to_owned()) };
         entries().push(Entry { id, name, to: to_label.to_owned(), source: file.clone(), status });
         if let Some(route) = route {
-            let _ = tx.send(Request { id, route });
+            let _ = tx.send(Request::One { id, route });
         }
         taken += 1;
     }
@@ -111,26 +119,78 @@ pub fn submit(files: &[PathBuf], to_id: &str, to_label: &str) -> usize {
     taken
 }
 
+/// Queues `files` as ONE entry that becomes a single PDF; returns how many files it holds (0 when none is a file).
+fn submit_merged(tx: &Sender<Request>, files: &[PathBuf], to_label: &str) -> usize {
+    let mut files: Vec<PathBuf> = files.iter().filter(|f| f.is_file()).cloned().collect();
+    // the order of the pages is the order of the names, as in a recipe
+    files.sort_by_key(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase()));
+    let Some(first) = files.first().cloned() else { return 0 };
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let first_name = first.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = if files.len() > 1 { format!("{first_name} +{}", files.len() - 1) } else { first_name };
+    let taken = files.len();
+    entries().push(Entry { id, name, to: to_label.to_owned(), source: first, status: Status::Waiting });
+    let _ = tx.send(Request::Merge { id, files });
+    notify();
+    taken
+}
+
+/// The recipe behind "one PDF": every file to PDF, then the PDFs into one, beside the first file and named after it
+/// with the number of the others (`relazione +3.pdf`); nothing is ever overwritten.
+fn merge_recipe(first: &Path, count: usize) -> Recipe {
+    let stem = first.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    // (`{` and `}` in a file name would be taken for the recipe's own placeholders)
+    let stem = stem.replace('{', "(").replace('}', ")");
+    let mut r = Recipe::new("one PDF");
+    r.steps = vec![Step::Convert("pdf".into()), Step::Merge];
+    r.out = Out::Beside;
+    r.file_name = if count > 1 { format!("{stem} +{}", count - 1) } else { stem };
+    r.in_menu = false;
+    r
+}
+
+/// What a finished merge becomes: the merged file, or why there is none. When some files could not be converted the
+/// rest are still merged; the entry then says so (and where the file is) instead of looking like a clean success.
+fn merge_status(outcomes: &[job::Outcome], files: usize) -> Status {
+    let made = outcomes.iter().find_map(|o| o.result.as_ref().ok().cloned());
+    let failed: Vec<&String> = outcomes.iter().filter_map(|o| o.result.as_ref().err()).collect();
+    match (made, failed.first()) {
+        (Some(path), None) => Status::Done(path),
+        (Some(path), Some(why)) => Status::Failed(format!("{} su {files} file non uniti ({}): {}", failed.len(), clean(why), path.display())),
+        (None, Some(why)) => Status::Failed(clean(why)),
+        (None, None) => Status::Cancelled,
+    }
+}
+
 fn worker(rx: std::sync::mpsc::Receiver<Request>) {
     let flag = cancel_flag().clone();
     job::watch_cancel(&flag);
     while let Ok(req) = rx.recv() {
-        if status_of(req.id) != Some(Status::Waiting) {
+        let id = match &req {
+            Request::One { id, .. } | Request::Merge { id, .. } => *id,
+        };
+        if status_of(id) != Some(Status::Waiting) {
             continue; // cancelled while it waited
         }
-        set_status(req.id, Status::Running);
+        set_status(id, Status::Running);
         notify();
-        let source = entries().iter().find(|e| e.id == req.id).map(|e| e.source.clone()).unwrap_or_default();
-        let out_dir = job::out_dir_for(&Destination::Beside, &source);
-        let result = routes::run_route(req.route, &source, &out_dir, &|_| {});
-        set_status(
-            req.id,
-            match result {
-                Ok(path) => Status::Done(path),
-                Err(e) if e == CANCELLED => Status::Cancelled,
-                Err(e) => Status::Failed(clean(&e)),
-            },
-        );
+        let result = match req {
+            Request::One { route, .. } => {
+                let source = entries().iter().find(|e| e.id == id).map(|e| e.source.clone()).unwrap_or_default();
+                let out_dir = job::out_dir_for(&Destination::Beside, &source);
+                match routes::run_route(route, &source, &out_dir, &|_| {}) {
+                    Ok(path) => Status::Done(path),
+                    Err(e) if e == CANCELLED => Status::Cancelled,
+                    Err(e) => Status::Failed(clean(&e)),
+                }
+            }
+            Request::Merge { files, .. } => {
+                let (tx, _events) = std::sync::mpsc::channel();
+                let outcomes = recipe::run(&merge_recipe(&files[0], files.len()), &files, &tx, &flag);
+                if flag.load(Ordering::Relaxed) { Status::Cancelled } else { merge_status(&outcomes, files.len()) }
+            }
+        };
+        set_status(id, result);
         if !entries().iter().any(|e| e.status == Status::Waiting) {
             flag.store(false, Ordering::Relaxed);
         }
@@ -191,4 +251,23 @@ pub fn push_demo() {
     e.push(mk(3, "Bilancio 2020.numbers", "Excel (XLSX)", Status::Running));
     e.push(mk(4, "IMG_4021.heic", "JPG", Status::Waiting));
     e.push(mk(5, "una fattura con un nome davvero molto lungo per provare i puntini finali.pdf", "Word (DOCX)", Status::Waiting));
+}
+
+/// `--selftest-merge <file>...`: the files as ONE PDF through the real queue (no window), then what it made.
+pub fn selftest_merge(files: &[String]) -> Result<(), String> {
+    let paths: Vec<PathBuf> = files.iter().map(PathBuf::from).collect();
+    let taken = submit(&paths, MERGE_ID, "PDF unico");
+    println!("taken {taken} file(s) as one entry");
+    let start = std::time::Instant::now();
+    while counts().active() > 0 && start.elapsed().as_secs() < 300 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let all = snapshot();
+    for e in &all {
+        println!("{} -> {} : {:?}", e.name, e.to, e.status);
+    }
+    match all.as_slice() {
+        [e] if matches!(e.status, Status::Done(_)) => Ok(()),
+        _ => Err("the merge did not finish cleanly".to_owned()),
+    }
 }

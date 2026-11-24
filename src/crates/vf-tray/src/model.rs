@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use crate::bar_view::{BAR_W, View};
 use crate::draw::Mon;
-use crate::offer::{self, CHIP_BASE, Offer, Slot};
+use crate::offer::{self, CHIP_BASE, CHOICE_AFTER_MS, Offer, Slot};
 
 /// How long the bar slides in from the edge, and how long it takes to fade out again.
 pub const ANIM_MS: f32 = 190.0;
@@ -32,6 +32,12 @@ pub struct BarModel {
     /// The format under the pointer: a main slot index, `CHIP_BASE + k` for the "More" list, or -1.
     pub hot: i32,
     pub offer: Offer,
+    /// How many files are being dragged (the PDF choice needs more than one).
+    pub files: usize,
+    /// The "one PDF or several" choice, while its panel is open (it takes the place of the "More" list).
+    pub sub: Vec<Slot>,
+    /// The choice was opened from the "More" list (its PDF chip): taking it away brings the list back.
+    sub_from_list: bool,
     /// After a drop that started conversions: how many files were taken.
     pub accepted: Option<usize>,
     // placement of the bar that is (or was last) on screen, in physical pixels (base = collapsed)
@@ -50,6 +56,8 @@ pub struct Hover {
     pub changed: bool,
     /// Start the timer that opens the list ("More" is hot and the list is closed); otherwise cancel it.
     pub expand_timer: bool,
+    /// How long that timer runs: the "More" list opens quickly, the PDF choice after a second.
+    pub expand_ms: u32,
 }
 
 /// What a drop on the bar means.
@@ -80,6 +88,9 @@ impl BarModel {
             expanded: false,
             hot: -1,
             offer: Offer { slots: Vec::new(), more: Vec::new() },
+            files: 0,
+            sub: Vec::new(),
+            sub_from_list: false,
             accepted: None,
             scale_pct: 100,
             height: 1000,
@@ -96,7 +107,27 @@ impl BarModel {
 
     /// The part of the state the drawing and the hit test need.
     pub fn view(&self) -> View {
-        View { scale: self.scale(), h: self.height, hot: self.hot, offer: self.offer.clone(), expanded: self.expanded && !self.offer.more.is_empty(), pick: self.pick_mode, accepted: self.accepted }
+        // the panel holds the PDF choice when it is open, the "More" list otherwise
+        let mut offer = self.offer.clone();
+        if !self.sub.is_empty() {
+            offer.more = self.sub.clone();
+        }
+        View { scale: self.scale(), h: self.height, hot: self.hot, expanded: self.expanded && !offer.more.is_empty(), offer, pick: self.pick_mode, accepted: self.accepted, choice: !self.sub.is_empty() }
+    }
+
+    /// The slots of the open panel: the PDF choice, or the "More" list.
+    fn panel(&self) -> &[Slot] {
+        if self.sub.is_empty() { &self.offer.more } else { &self.sub }
+    }
+
+    /// The format a hot id stands for, in the panel that is open.
+    fn pick(&self, hot: i32) -> Option<&Slot> {
+        if hot >= CHIP_BASE { self.panel().get((hot - CHIP_BASE) as usize).filter(|s| s.available) } else { self.offer.pick(hot) }
+    }
+
+    /// The files being dragged: how many there are (see `files`).
+    pub fn set_files(&mut self, n: usize) {
+        self.files = n;
     }
 
     /// The bar appears on `mon` (the monitor the pointer is on), sliding in from its right edge. `offscreen`: tests
@@ -111,6 +142,7 @@ impl BarModel {
         self.hot = -1;
         self.shown = true;
         self.expanded = false;
+        self.sub.clear();
         self.accepted = None;
         self.fade_start = None; // a new drag while the last bar was still fading
         self.anim_start = Some(now);
@@ -125,6 +157,8 @@ impl BarModel {
         self.hot = -1;
         self.expanded = false;
         self.pick_mode = false;
+        self.sub.clear();
+        self.files = 0;
         self.accepted = None;
         self.pick_paths.clear();
         self.anim_start = None;
@@ -154,19 +188,36 @@ impl BarModel {
     pub fn hover(&mut self, hot: i32) -> Hover {
         let changed = std::mem::replace(&mut self.hot, hot) != hot;
         if !changed {
-            return Hover { changed: false, expand_timer: false };
+            return Hover { changed: false, expand_timer: false, expand_ms: 0 };
         }
-        // hovering "More" for a moment opens the full list
-        let expand_timer = hot >= 0 && hot < CHIP_BASE && self.offer.is_more_slot(hot as usize) && !self.expanded_now();
-        Hover { changed: true, expand_timer }
+        // moving on to another format takes the PDF choice away (the chips and the gap before them keep it)
+        let on_pdf = self.offer.pdf_choice(hot, self.files).is_some();
+        if !self.sub.is_empty() && hot >= 0 && hot < CHIP_BASE && !on_pdf {
+            self.sub.clear();
+            self.expanded = self.sub_from_list;
+        }
+        // hovering "More" for a moment opens the full list; resting on PDF with several files opens the choice
+        let more_timer = hot >= 0 && hot < CHIP_BASE && self.offer.is_more_slot(hot as usize) && !self.expanded_now();
+        let choice_timer = on_pdf && self.sub.is_empty();
+        Hover { changed: true, expand_timer: more_timer || choice_timer, expand_ms: if choice_timer { CHOICE_AFTER_MS } else { EXPAND_AFTER_MS } }
     }
 
     fn expanded_now(&self) -> bool {
         self.expanded && !self.offer.more.is_empty()
     }
 
-    /// Opens the full list. False when there is nothing behind "More" or it is open already.
+    /// Opens what the pointer rests on: the PDF choice, or the full list behind "More". False when there is
+    /// nothing to open or it is open already.
     pub fn expand(&mut self) -> bool {
+        if let Some(choice) = self.offer.pdf_choice(self.hot, self.files) {
+            if !self.sub.is_empty() {
+                return false;
+            }
+            self.sub_from_list = self.hot >= CHIP_BASE;
+            self.sub = choice;
+            self.expanded = true;
+            return true;
+        }
         if self.offer.more.is_empty() || self.expanded {
             return false;
         }
@@ -183,7 +234,7 @@ impl BarModel {
             self.hot = -1;
             return Drop::Pick;
         }
-        match self.offer.pick(hot) {
+        match self.pick(hot) {
             Some(slot) => Drop::Submit(slot.clone()),
             None => Drop::Nothing,
         }
@@ -195,7 +246,7 @@ impl BarModel {
         if !self.pick_mode {
             return None;
         }
-        self.offer.pick(hot).map(|s| (s.clone(), self.pick_paths.clone()))
+        self.pick(hot).map(|s| (s.clone(), self.pick_paths.clone()))
     }
 
     /// The files were handed to the queue: show "started" on the bar for `ACCEPTED_MS`, then take the bar away.
@@ -289,12 +340,98 @@ mod tests {
         let mut m = with_offer(&["png"]);
         m.begin_show(&mon(), false, true, Instant::now());
         let more = (m.offer.slots.len() - 1) as i32;
-        assert_eq!(m.hover(0), Hover { changed: true, expand_timer: false });
-        assert_eq!(m.hover(0), Hover { changed: false, expand_timer: false });
-        assert_eq!(m.hover(more), Hover { changed: true, expand_timer: true });
+        let h = |changed, expand_timer| Hover { changed, expand_timer, expand_ms: if expand_timer { EXPAND_AFTER_MS } else { 0 } };
+        let quiet = |hv: Hover| Hover { expand_ms: 0, ..hv };
+        assert_eq!(quiet(m.hover(0)), h(true, false));
+        assert_eq!(m.hover(0), h(false, false));
+        assert_eq!(m.hover(more), h(true, true));
         m.expand();
-        assert_eq!(m.hover(0), Hover { changed: true, expand_timer: false });
-        assert_eq!(m.hover(more), Hover { changed: true, expand_timer: false }, "the list is open: no timer");
+        assert_eq!(quiet(m.hover(0)), h(true, false));
+        assert_eq!(quiet(m.hover(more)), h(true, false), "the list is open: no timer");
+    }
+
+    /// `n` files of these types dragged to the bar.
+    fn dragging(exts: &[&str], n: usize) -> BarModel {
+        let mut m = with_offer(exts);
+        m.set_files(n);
+        m.begin_show(&mon(), false, true, Instant::now());
+        m
+    }
+
+    /// The hot id of the PDF format: a main slot, or a chip of the "More" list (pictures have it there).
+    fn pdf_hot(m: &BarModel) -> i32 {
+        match m.offer.slots.iter().position(|s| s.id == "pdf") {
+            Some(i) => i as i32,
+            None => CHIP_BASE + m.offer.more.iter().position(|s| s.id == "pdf").expect("the files can become a PDF") as i32,
+        }
+    }
+
+    fn pdf_is_available(m: &BarModel) -> bool {
+        m.offer.slots.iter().chain(&m.offer.more).any(|s| s.id == "pdf" && s.available)
+    }
+
+    #[test]
+    fn resting_on_pdf_with_several_files_opens_the_choice_after_a_second() {
+        // two spreadsheets: PDF is one of the formats on the bar itself
+        let mut m = dragging(&["xlsx"], 2);
+        if !pdf_is_available(&m) {
+            return; // no engine for the spreadsheets on this PC: nothing to choose
+        }
+        let pdf = pdf_hot(&m);
+        assert!(pdf < CHIP_BASE);
+        let h = m.hover(pdf);
+        assert!(h.changed && h.expand_timer);
+        assert_eq!(h.expand_ms, CHOICE_AFTER_MS, "a second, not the 260 ms of \"More\"");
+        assert!(m.expand());
+        assert!(m.expanded && m.view().choice, "the panel shows the choice");
+        let view = m.view();
+        let ids: Vec<&str> = view.offer.more.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, [offer::MERGE_ID, "pdf"]);
+        assert!(!m.expand(), "already open");
+        // a drop on the first chip is one merged PDF, on the second one PDF per file
+        let files = vec![PathBuf::from("a.xlsx"), PathBuf::from("b.xlsx")];
+        assert_eq!(m.drop_on(CHIP_BASE, files.clone()), Drop::Submit(m.sub[0].clone()));
+        assert!(matches!(m.drop_on(CHIP_BASE + 1, files), Drop::Submit(s) if s.id == "pdf"));
+        // the pointer crossing the gap to the chips (-1) keeps the choice; another format takes it away
+        m.hover(-1);
+        assert!(!m.sub.is_empty());
+        let other = (0..m.offer.slots.len() as i32).find(|&i| i != pdf).expect("a second format");
+        m.hover(other);
+        assert!(m.sub.is_empty() && !m.expanded, "back to the plain bar");
+    }
+
+    #[test]
+    fn pictures_have_their_pdf_behind_more_and_the_choice_opens_from_there_and_gives_the_list_back() {
+        let mut m = dragging(&["png", "jpg"], 3);
+        if !pdf_is_available(&m) {
+            return;
+        }
+        let pdf = pdf_hot(&m);
+        assert!(pdf >= CHIP_BASE, "a picture's PDF is a chip of the list");
+        let more = (m.offer.slots.len() - 1) as i32;
+        m.hover(more);
+        assert!(m.expand(), "the list opens first");
+        let h = m.hover(pdf);
+        assert!(h.expand_timer && h.expand_ms == CHOICE_AFTER_MS);
+        assert!(m.expand() && !m.sub.is_empty());
+        let files = vec![PathBuf::from("a.png"), PathBuf::from("b.jpg"), PathBuf::from("c.png")];
+        assert!(matches!(m.drop_on(CHIP_BASE, files), Drop::Submit(s) if s.id == offer::MERGE_ID));
+        // leaving for a main format closes the choice and the list of formats is there again
+        m.hover(0);
+        assert!(m.sub.is_empty() && m.expanded, "the list the choice came from is back");
+        assert_eq!(m.view().offer.more, m.offer.more);
+    }
+
+    #[test]
+    fn a_single_file_or_a_plain_drop_on_pdf_converts_each_file_as_before() {
+        let mut m = dragging(&["xlsx"], 1);
+        let pdf = pdf_hot(&m);
+        assert!(!m.hover(pdf).expand_timer, "one file: nothing to merge");
+        let mut m = dragging(&["xlsx"], 2);
+        let pdf = pdf_hot(&m);
+        if pdf_is_available(&m) {
+            assert!(matches!(m.drop_on(pdf, vec![]), Drop::Submit(s) if s.id == "pdf"), "no waiting: one PDF per file");
+        }
     }
 
     #[test]

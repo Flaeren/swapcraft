@@ -2,6 +2,12 @@
 
 All notable changes to SwapCraft (formerly voidflare) are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **One PDF from many files, from the drop bar.** Drag two or more files that can become a PDF and rest on "PDF" for a second: a small choice opens beside the bar, "one PDF" (every file is converted, then merged in the order of the file names, one bookmark per file, saved beside the first file as `<first name> +N.pdf`) or "separate PDFs" (what a plain drop did before, still instant). For pictures, whose PDF sits behind "More", the same choice opens from the PDF entry of that list.
+
 ## [0.8.1] - 2026-11-23
 
 ### Fixed

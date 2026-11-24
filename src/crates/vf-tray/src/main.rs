@@ -8,6 +8,8 @@
 //!   swapcraft-tray --render-glow <png> orange|green|red   the glow's bitmap
 //!   swapcraft-tray --render-queue <png>                   the queue card with sample entries
 //!   swapcraft-tray --render-bar <png> <ext> [n]           the drop bar for that file type, formats from the n-th on dimmed
+//!   swapcraft-tray --render-choice <png>                  the bar with the "one PDF or several" choice open
+//!   swapcraft-tray --selftest-merge <file>...             the files as one PDF through the real queue, no window
 
 #![cfg_attr(not(windows), allow(dead_code))]
 #![cfg_attr(windows, windows_subsystem = "windows")]
@@ -120,6 +122,15 @@ fn main() {
             let ext = args.get(2).cloned().unwrap_or_else(|| "docx".to_owned());
             let missing_from = args.get(3).and_then(|s| s.parse().ok());
             bar::render_png(args.get(1).map(String::as_str).unwrap_or("bar.png"), &ext, missing_from);
+        }
+        Some("--render-choice") => {
+            let _ = bar_view::render(&bar_view::choice_demo()).save_png(args.get(1).map(String::as_str).unwrap_or("choice.png"));
+        }
+        Some("--selftest-merge") => {
+            if let Err(e) = queue::selftest_merge(&args[1..]) {
+                println!("selftest failed: {e}");
+                std::process::exit(1);
+            }
         }
         Some("--render-queue") => {
             queue::push_demo();

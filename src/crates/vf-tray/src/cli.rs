@@ -4,6 +4,8 @@
 //!   --render-glow <png> orange|green|red   the glow's bitmap
 //!   --render-queue <png>                   the queue card with sample entries
 //!   --render-bar <png> <ext> [n]           the drop bar for that file type, formats from the n-th on dimmed
+//!   --render-choice <png>                  the bar with the "one PDF or several" choice open
+//!   --selftest-merge <file>...             the files as one PDF through the real queue
 
 use crate::bar_view::{View, render};
 use crate::draw::{self, GREEN, Mon, ORANGE, RED, Rect};
@@ -36,8 +38,17 @@ pub fn render_command(args: &[String]) -> bool {
                 }
             }
             let expanded = !o.more.is_empty();
-            let v = View { scale: 1.0, h: 720, hot: -1, offer: o, expanded, pick: false, accepted: None };
+            let v = View { scale: 1.0, h: 720, hot: -1, offer: o, expanded, pick: false, accepted: None, choice: false };
             let _ = render(&v).save_png(path(1, "bar.png"));
+        }
+        Some("--render-choice") => {
+            let _ = render(&crate::bar_view::choice_demo()).save_png(path(1, "choice.png"));
+        }
+        Some("--selftest-merge") => {
+            if let Err(e) = queue::selftest_merge(&args[1..]) {
+                println!("selftest failed: {e}");
+                std::process::exit(1);
+            }
         }
         _ => return false,
     }

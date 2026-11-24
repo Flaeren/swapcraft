@@ -58,6 +58,36 @@ impl Offer {
 /// Hot ids from here on are the formats of the opened "More" list; below are the main slots.
 pub const CHIP_BASE: i32 = 100;
 
+/// The id of "all the files into ONE PDF" (the queue knows it; it is not a route).
+pub const MERGE_ID: &str = "pdf-merged";
+
+/// How long the pointer rests on PDF before the "one PDF or several" choice opens.
+pub const CHOICE_AFTER_MS: u32 = 1000;
+
+impl Offer {
+    /// The choice behind PDF when more than one file is dragged: everything into one PDF, or one PDF per file (what
+    /// a plain drop on PDF does). `hot` is a main slot or, for pictures (their PDF is behind "More"), a chip of the
+    /// list. `None` for any other format, for a single file, or when PDF is not available. Merging itself needs no
+    /// engine (it is done in-process), only the conversions do.
+    pub fn pdf_choice(&self, hot: i32, files: usize) -> Option<Vec<Slot>> {
+        if files < 2 || hot < 0 {
+            return None;
+        }
+        let pdf = if hot >= CHIP_BASE {
+            self.more.get((hot - CHIP_BASE) as usize)
+        } else if self.is_more_slot(hot as usize) {
+            None
+        } else {
+            self.slots.get(hot as usize)
+        }
+        .filter(|s| s.id == "pdf" && s.available)?;
+        Some(vec![
+            Slot { id: MERGE_ID.to_owned(), label: "PDF unico".to_owned(), ext: String::new(), available: true },
+            Slot { id: pdf.id.clone(), label: "PDF separati".to_owned(), ext: String::new(), available: true },
+        ])
+    }
+}
+
 /// The file types of `paths` (lower case, no dot; a file with no extension counts by its content), sorted, once each.
 pub fn exts_of(paths: &[PathBuf]) -> Vec<String> {
     let mut v: Vec<String> = paths.iter().filter(|p| p.is_file()).map(|p| routes::ext_of(p)).filter(|e| !e.is_empty()).collect();
