@@ -44,7 +44,7 @@
 SwapCraft is built the way the [ArtCraft](https://getartcraft.com) apps are: in Rust, with the same egui interface the Craft launchers use, and on top of the suite's own command-line engines (WordCraft, GridCraft, DeckCraft, PdfCraft, CADCraft, PhotoCraft, SoundCraft, FilmCraft and MailCraft), which do the converting.
 
 <p align="center">
-  <img src="docs/img/right-drag.gif" alt="Dragging three Word files with the right mouse button onto a folder in File Explorer, choosing Convert here with SwapCraft, then PDF: the three PDFs appear in that folder" width="720">
+  <img src="docs/img/right-drag.gif" alt="Two clips in a loop. First: dragging three Word files with the right mouse button onto a folder in File Explorer, choosing Convert here with SwapCraft, then PDF. Then: the drop bar, where files dragged to the screen edge are converted by letting go on a format" width="720">
 </p>
 
 **Recipes: several steps, one click.** Line up converting, merging, shrinking and OCR once. Then run it from the hub, from the right-click menu on a file, or by dragging files with the right mouse button onto a folder: a DWG becomes PDF sheets, merged and shrunk; scans become a searchable PDF; a mixed folder becomes one single PDF.
