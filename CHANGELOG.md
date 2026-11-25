@@ -2,6 +2,20 @@
 
 All notable changes to SwapCraft (formerly voidflare) are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.3] - 2026-11-25
+
+### Added
+
+- **A notification for each app updated.** When SwapCraft is minimized or behind another window, a system notification says which app has been updated, or that its update failed. With "Update all" there is one per app.
+
+### Fixed
+
+- **Updates stopped while the window was minimized.** "Update all" finished the app it was on and waited for the window to come back before starting the next one.
+
+### Changed
+
+- PdfCraft 0.22.0 and MailCraft 0.15.0.
+
 ## [0.8.2] - 2026-11-24
 
 ### Added

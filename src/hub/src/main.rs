@@ -4,6 +4,7 @@
 mod catalog;
 mod icons;
 mod menu;
+mod notify;
 mod recipes;
 mod settings;
 mod single;
@@ -154,6 +155,8 @@ enum Packs {
 struct Job {
     app: usize,
     removing: bool,
+    /// An app that had an update, not a first install: its end is worth a notification.
+    update: bool,
     rx: mpsc::Receiver<JobMsg>,
     cancel: Arc<AtomicBool>,
     stage: String,
@@ -179,6 +182,8 @@ struct Hub {
     confirm_remove: Option<usize>,
     /// UPDATE ALL: the apps still waiting for their turn (the one running is in `job`).
     queue: Vec<usize>,
+    /// Notifications waiting to be shown (the text, and whether it is bad news).
+    notes: Vec<(String, bool)>,
     /// What each app's `pack.json` says (None: not installed by this installer), same order as `APPS`.
     installed: Vec<Option<packs::Installed>>,
     status: Vec<Option<Status>>,
@@ -266,6 +271,7 @@ impl Hub {
             pending_install: None,
             confirm_remove: None,
             queue: Vec::new(),
+            notes: Vec::new(),
             installed: vec![None; APPS.len()],
             status: vec![None; APPS.len()],
             health: vec![Health::NotInstalled; APPS.len()],
@@ -339,14 +345,27 @@ impl Hub {
 }
 
 impl eframe::App for Hub {
+    /// Runs before every frame, and alone while the window is minimized or covered (eframe calls no `ui` then): what
+    /// must go on without anyone watching is taken in here, so UPDATE ALL does not stop at the app it was on.
+    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.poll_packs(ctx);
+        self.poll_job(ctx);
+        for (text, error) in std::mem::take(&mut self.notes) {
+            if notify::out_of_sight(ctx, frame) {
+                notify::show(frame, &text, error);
+            }
+        }
+    }
+
+    fn on_exit(&mut self) {
+        notify::clear();
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         vf_ui::shell::fit_to_screen(ui.ctx());
         let t = Tokens::get(ui.ctx());
         self.poll();
         self.poll_update();
-        self.poll_packs(ui.ctx());
-        let ctx = ui.ctx().clone();
-        self.poll_job(&ctx);
         let handed: Vec<Vec<PathBuf>> = self.later_starts.as_ref().map(|rx| rx.try_iter().collect()).unwrap_or_default();
         if let Some(files) = handed.into_iter().rev().find(|f| !f.is_empty())
             && !self.running
@@ -529,7 +548,8 @@ impl Hub {
         let (release, sums, apps_dir) = (l.release.clone(), l.sums.clone(), self.apps_dir.clone());
         let (tx, rx) = mpsc::channel();
         let cancel = Arc::new(AtomicBool::new(false));
-        let job = Job { app: i, removing: false, rx, cancel: cancel.clone(), stage: "app".into(), done: 0, total: 0 };
+        let update = matches!(self.status[i], Some(Status::UpdateAvailable));
+        let job = Job { app: i, removing: false, update, rx, cancel: cancel.clone(), stage: "app".into(), done: 0, total: 0 };
         self.job = Some(job);
         let ctx = ctx.clone();
         std::thread::spawn(move || {
@@ -551,7 +571,7 @@ impl Hub {
             return;
         }
         let (tx, rx) = mpsc::channel();
-        self.job = Some(Job { app: i, removing: true, rx, cancel: Arc::new(AtomicBool::new(false)), stage: "remove".into(), done: 0, total: 0 });
+        self.job = Some(Job { app: i, removing: true, update: false, rx, cancel: Arc::new(AtomicBool::new(false)), stage: "remove".into(), done: 0, total: 0 });
         let (apps_dir, id, ctx) = (self.apps_dir.clone(), APPS[i].id, ctx.clone());
         std::thread::spawn(move || {
             let _ = tx.send(JobMsg::Removed(packs::remove(&apps_dir, id)));
@@ -592,6 +612,7 @@ impl Hub {
             }
         }
         if let Some((app, result, removed)) = finished {
+            let update = job.update;
             self.job = None;
             let result_was_cancel = matches!(&result, Err(e) if e.contains("ancel"));
             self.notice = match result {
@@ -600,6 +621,10 @@ impl Hub {
                 Err(e) => Some(Said::raw(format!("{}: {e}", APPS[app].name))),
             };
             let _ = removed;
+            if update && !result_was_cancel {
+                let key = if self.notice.is_none() { "hub.note_updated" } else { "hub.note_update_failed" };
+                self.notes.push((trf(key, &[("app", APPS[app].name)]), self.notice.is_some()));
+            }
             self.refresh_packs();
             // a failed or cancelled update stops the rest of UPDATE ALL; a good one hands over to the next app
             if self.notice.is_some() || result_was_cancel {
@@ -1640,6 +1665,46 @@ fn clipped(text: &str, font: FontId, color: Color32, width: f32, rows: usize) ->
     let mut job = LayoutJob::simple(text.to_owned(), font, color, width.max(1.0));
     job.wrap.max_rows = rows;
     job
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// While the window is minimized eframe calls only `App::logic`: a finished job must be taken in there, or
+    /// UPDATE ALL stops until the window comes back.
+    #[test]
+    fn a_finished_job_is_taken_in_while_the_window_is_hidden() {
+        let ctx = egui::Context::default();
+        let mut hub = Hub::fresh(&ctx, std::env::temp_dir().join("swapcraft-hidden-test"));
+        let (tx, rx) = mpsc::channel();
+        hub.job = Some(Job { app: 0, removing: true, update: false, rx, cancel: Arc::new(AtomicBool::new(false)), stage: "remove".into(), done: 0, total: 0 });
+        tx.send(JobMsg::Removed(Ok(()))).unwrap();
+
+        eframe::App::logic(&mut hub, &ctx, &mut eframe::Frame::_new_kittest());
+
+        assert!(hub.job.is_none(), "the job is still waiting for the window to be shown");
+    }
+
+    /// One notification for each app that was updated or failed to; none for a first install or a cancel.
+    #[test]
+    fn only_updates_leave_a_notification() {
+        let ctx = egui::Context::default();
+        let mut hub = Hub::fresh(&ctx, std::env::temp_dir().join("swapcraft-note-test"));
+        let done = || Ok(packs::Installed { id: APPS[0].id.into(), version: "1".into(), app_sha256: String::new(), engine: None });
+        let mut run = |update: bool, result: Result<packs::Installed, String>| {
+            let (tx, rx) = mpsc::channel();
+            hub.job = Some(Job { app: 0, removing: false, update, rx, cancel: Arc::new(AtomicBool::new(false)), stage: "app".into(), done: 0, total: 0 });
+            tx.send(JobMsg::Installed(result)).unwrap();
+            hub.poll_job(&ctx);
+            std::mem::take(&mut hub.notes)
+        };
+        let name = [("app", APPS[0].name)];
+        assert_eq!(run(true, done()), [(trf("hub.note_updated", &name), false)]);
+        assert_eq!(run(true, Err("disk full".into())), [(trf("hub.note_update_failed", &name), true)]);
+        assert_eq!(run(true, Err("cancelled".into())), []);
+        assert_eq!(run(false, done()), []);
+    }
 }
 
 fn main() -> eframe::Result {

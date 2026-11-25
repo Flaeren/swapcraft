@@ -21,7 +21,7 @@ arboard = { version = "3.7.0", default-features = false, features = ["wayland-da
 
 [target.'cfg(windows)'.dependencies]
 raw-window-handle = "0.6.2"
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 # Puts the flame icon and the product name into the exe itself (Explorer, pinned shortcuts).
 [target.'cfg(windows)'.build-dependencies]

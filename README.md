@@ -53,7 +53,7 @@ SwapCraft is built the way the [ArtCraft](https://getartcraft.com) apps are: in 
   <img src="docs/img/recipes.png" alt="The SwapCraft hub on the Recipes tab: a three-step recipe that converts, merges and shrinks" width="720">
 </p>
 
-> **Status:** early (v0.8.2). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
+> **Status:** early (v0.8.3). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
 
 ## Principles
 

@@ -282,3 +282,5 @@ route.eml_messages	EML messages	Messaggi EML	Mensajes EML	Messages EML	EML-Nachr
 route.calendar_ics	Calendar (ICS)	Calendario (ICS)	Calendario (ICS)	Calendrier (ICS)	Kalender (ICS)
 route.contacts_vcf	Contacts (VCF)	Contatti (VCF)	Contactos (VCF)	Contacts (VCF)	Kontakte (VCF)
 route.mp3_sound	MP3 (sound)	MP3 (solo audio)	MP3 (solo audio)	MP3 (audio seul)	MP3 (nur Ton)
+hub.note_updated	{app} is up to date.	{app} è aggiornata.	{app} está actualizada.	{app} est à jour.	{app} ist aktuell.
+hub.note_update_failed	Updating {app} failed. Open SwapCraft for the details.	Aggiornamento di {app} non riuscito. Apri SwapCraft per i dettagli.	No se pudo actualizar {app}. Abre SwapCraft para ver los detalles.	La mise à jour de {app} a échoué. Ouvrez SwapCraft pour les détails.	{app} konnte nicht aktualisiert werden. Öffnen Sie SwapCraft für Details.
