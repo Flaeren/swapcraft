@@ -66,7 +66,8 @@ for i in $(seq 0 $((n - 1))); do
     [ -x "$top/bin/$name-cli" ] || { echo "$asset has no bin/$name-cli" >&2; exit 1; }
     cp -p "$top/bin/$name-cli" "$dest/"
     # licences, notices, attributions (README too: it is the engine's own documentation)
-    if [ -d "$top/share/doc/$name" ]; then cp -p "$top/share/doc/$name"/* "$dest/"; fi
+    # (PdfCraft 0.22.0 added a licenses/ folder inside)
+    if [ -d "$top/share/doc/$name" ]; then cp -pR "$top/share/doc/$name"/. "$dest/"; fi
     # the engine's data folder (PdfCraft: models/), which the program finds beside itself
     if [ -d "$top/share/$name" ]; then cp -pr "$top/share/$name"/. "$dest/"; fi
   fi
