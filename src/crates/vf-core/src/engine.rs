@@ -45,7 +45,8 @@ impl Engine {
         if let Some(p) = std::env::var_os(self.env) {
             candidates.push(PathBuf::from(p));
         }
-        if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+        // the command line and the drop bar run from `bin\`: their engines are found from the folder above
+        if let Some(dir) = std::env::current_exe().ok().and_then(|e| crate::layout::home_of(&e)) {
             candidates.push(dir.join(self.folder.to_lowercase()).join(self.cli));
             // The hub sits above the apps: `apps\<app>\<engine>\`.
             if let Ok(apps) = std::fs::read_dir(dir.join("apps")) {

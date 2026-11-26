@@ -23,8 +23,7 @@ const WINDOW_CLASS: &str = "SwapCraftTray";
 
 /// The helper that sits next to the hub program `hub_exe`, if it is there.
 pub fn exe_beside(hub_exe: &Path) -> Option<PathBuf> {
-    let p = hub_exe.with_file_name(EXE_NAME);
-    p.is_file().then_some(p)
+    crate::layout::helper(hub_exe, EXE_NAME)
 }
 
 /// `reg.exe` with the arguments, no console window; its standard output when it succeeded.

@@ -123,7 +123,8 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
 /// Starts the SwapCraft hub that sits next to this program, if there is one.
 fn open_hub() {
     let Ok(exe) = std::env::current_exe() else { return };
-    let Some(dir) = exe.parent() else { return };
+    // from `bin\` the hub is one folder up
+    let Some(dir) = vf_core::layout::home_of(&exe) else { return };
     // SwapCraft.exe / voidflare.exe in the portable folder, voidflare-hub.exe in a build folder
     for name in ["SwapCraft.exe", "voidflare.exe", "voidflare-hub.exe"] {
         let p = dir.join(name);

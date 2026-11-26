@@ -2,6 +2,20 @@
 
 All notable changes to SwapCraft (formerly voidflare) are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.0] - 2026-11-26
+
+### Added
+
+- **Install all.** With two or more apps missing, one button downloads and installs them one after the other, with their engines; resting on it says how much that is. When SwapCraft is minimized or behind another window, a notification says which app has been installed.
+
+### Changed
+
+- **A tidier folder (Windows).** `SwapCraft.exe` stays on top; the command line, the drop bar and the drag-and-drop DLL move into `bin\` the first time the new hub starts. If a script or an MCP client names `swapcraft-cli.exe` by its path, point it to `bin\swapcraft-cli.exe`.
+
+### Fixed
+
+- In a narrow window the search box gives way to "Update all" instead of lying under it.
+
 ## [0.8.3] - 2026-11-25
 
 ### Added

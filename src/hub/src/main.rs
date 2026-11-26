@@ -155,7 +155,7 @@ enum Packs {
 struct Job {
     app: usize,
     removing: bool,
-    /// An app that had an update, not a first install: its end is worth a notification.
+    /// An app that had an update, not a first install (the notification says which of the two).
     update: bool,
     rx: mpsc::Receiver<JobMsg>,
     cancel: Arc<AtomicBool>,
@@ -180,7 +180,7 @@ struct Hub {
     pending_install: Option<usize>,
     /// The card whose REMOVE was clicked once and now asks to be confirmed.
     confirm_remove: Option<usize>,
-    /// UPDATE ALL: the apps still waiting for their turn (the one running is in `job`).
+    /// UPDATE ALL and INSTALL ALL: the apps still waiting for their turn (the one running is in `job`).
     queue: Vec<usize>,
     /// Notifications waiting to be shown (the text, and whether it is bad news).
     notes: Vec<(String, bool)>,
@@ -233,6 +233,8 @@ impl Hub {
             std::thread::sleep(std::time::Duration::from_secs(3));
             update::cleanup_after_update();
         });
+        // The command line, the drop bar and the DLL go into `bin\` before anything looks for them.
+        tidy_folder();
         // The right-click menu added by an older hub has no drag-and-drop part yet: write it once.
         menu::upgrade_if_needed();
         // the drop bar starts with Windows from where the hub is now (the portable folder may have moved)
@@ -397,11 +399,14 @@ impl eframe::App for Hub {
                     ui.vertical_centered(|ui| ui.label(RichText::new(tr("hub.no_match")).color(t.muted)));
                     return;
                 }
-                for (label, group) in [(tr("hub.group_installed"), &ready), (tr("hub.group_available"), &available), (tr("hub.group_soon"), &planned)] {
+                for (n, (label, group)) in [(tr("hub.group_installed"), &ready), (tr("hub.group_available"), &available), (tr("hub.group_soon"), &planned)].into_iter().enumerate() {
                     if group.is_empty() {
                         continue;
                     }
-                    section_label(ui, &t, &label, group.len());
+                    let heading = section_label(ui, &t, &label, group.len());
+                    if n == 1 {
+                        self.install_all_button(ui, &t, heading);
+                    }
                     match self.view {
                         View::Grid => self.grid(ui, &t, group),
                         View::List => self.list(ui, &t, group),
@@ -584,6 +589,28 @@ impl Hub {
         (0..APPS.len()).filter(|&i| matches!(self.status[i], Some(Status::UpdateAvailable))).collect()
     }
 
+    /// The apps the release offers that are not on this PC, same order as `APPS`; none until the list is read.
+    fn missing(&self) -> Vec<usize> {
+        let Packs::Ready(l) = &self.packs else { return Vec::new() };
+        missing_apps(&self.found, |id| l.manifest.packs.iter().any(|p| p.id == id))
+    }
+
+    /// What installing `apps` downloads: each app brings its own engine unless the PC's one is used.
+    fn download_size(&self, apps: &[usize]) -> u64 {
+        let Packs::Ready(l) = &self.packs else { return 0 };
+        apps.iter().filter_map(|&i| l.plans.get(APPS[i].id)).map(|p| p.download_bytes).sum()
+    }
+
+    /// INSTALL ALL: installs every missing app, one after the other, through the same queue as UPDATE ALL.
+    fn install_all(&mut self, ctx: &egui::Context) {
+        if self.job.is_some() {
+            return;
+        }
+        self.notice = None;
+        self.queue = self.missing();
+        self.next_queued(ctx);
+    }
+
     /// UPDATE ALL: updates every app that can be updated, one after the other.
     fn update_all(&mut self, ctx: &egui::Context) {
         if self.job.is_some() {
@@ -620,13 +647,17 @@ impl Hub {
                 Err(e) if e.contains("ancel") => None,
                 Err(e) => Some(Said::raw(format!("{}: {e}", APPS[app].name))),
             };
-            let _ = removed;
-            if update && !result_was_cancel {
-                let key = if self.notice.is_none() { "hub.note_updated" } else { "hub.note_update_failed" };
+            if !removed && !result_was_cancel {
+                let key = match (update, self.notice.is_none()) {
+                    (true, true) => "hub.note_updated",
+                    (true, false) => "hub.note_update_failed",
+                    (false, true) => "hub.note_installed",
+                    (false, false) => "hub.note_install_failed",
+                };
                 self.notes.push((trf(key, &[("app", APPS[app].name)]), self.notice.is_some()));
             }
             self.refresh_packs();
-            // a failed or cancelled update stops the rest of UPDATE ALL; a good one hands over to the next app
+            // a failure or a cancel stops the rest of the queue; a good one hands over to the next app
             if self.notice.is_some() || result_was_cancel {
                 self.queue.clear();
             } else {
@@ -951,6 +982,11 @@ fn footer_link(ui: &mut egui::Ui, t: &Tokens, bar: Rect, right: f32, label: &str
     rect.left()
 }
 
+/// The apps in `APPS` order that have a pack in the release and no program on this PC.
+fn missing_apps(found: &[Option<PathBuf>], in_release: impl Fn(&str) -> bool) -> Vec<usize> {
+    (0..APPS.len()).filter(|&i| APPS[i].pack && found[i].is_none() && in_release(APPS[i].id)).collect()
+}
+
 fn human_size(bytes: u64) -> String {
     const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
     let mut v = bytes as f64;
@@ -1018,9 +1054,10 @@ fn FOOT() -> FontId {
     FontId::proportional(12.0)
 }
 
-fn section_label(ui: &mut egui::Ui, t: &Tokens, label: &str, n: usize) {
+fn section_label(ui: &mut egui::Ui, t: &Tokens, label: &str, n: usize) -> Rect {
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::hover());
     ui.painter().text(pos2(rect.left() + PAD, rect.bottom() - 12.0), Align2::LEFT_BOTTOM, format!("{label} · {n}"), FontId::proportional(13.0), t.muted);
+    rect
 }
 
 impl Hub {
@@ -1064,11 +1101,28 @@ impl Hub {
         }
     }
 
+    /// Shows when two or more apps are missing (with one, its card has INSTALL), nothing is running and no search
+    /// narrows what is on screen.
+    fn install_all_button(&mut self, ui: &mut egui::Ui, t: &Tokens, heading: Rect) {
+        let missing = self.missing();
+        if missing.len() < 2 || self.job.is_some() || !self.queue.is_empty() || !self.query.trim().is_empty() {
+            return;
+        }
+        let size = human_size(self.download_size(&missing));
+        let room = Rect::from_min_max(pos2(heading.left() + PAD, heading.bottom() - 36.0), pos2(heading.right() - PAD, heading.bottom() - 6.0));
+        let mut row = ui.new_child(UiBuilder::new().max_rect(room).layout(Layout::right_to_left(Align::Center)));
+        let label = trf("hub.install_all", &[("n", &missing.len().to_string())]);
+        let b = egui::Button::new(RichText::new(label).font(strong(12.5)).color(t.invert_fg)).fill(t.invert_bg);
+        if row.add(b).on_hover_text(trf("hub.install_all_hint", &[("size", &size)])).clicked() {
+            let ctx = ui.ctx().clone();
+            self.install_all(&ctx);
+        }
+    }
+
     fn toolbar(&mut self, ui: &mut egui::Ui, t: &Tokens) {
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), BAR_H), Sense::hover());
         let mut bar = ui.new_child(UiBuilder::new().max_rect(rect.shrink2(vec2(PAD, 0.0))).layout(Layout::left_to_right(Align::Center)));
         bar.spacing_mut().item_spacing.x = 12.0;
-        bar.add(egui::TextEdit::singleline(&mut self.query).hint_text(tr("hub.search")).font(FontId::proportional(13.5)).desired_width(260.0).margin(vec2(14.0, 8.0)));
         // UPDATE ALL shows only when two or more installed apps have an update (with one, its card has UPDATE)
         let n_update = self.updatable().len();
         let queued = !self.queue.is_empty() || self.job.as_ref().is_some_and(|j| !j.removing && self.status[j.app] == Some(Status::UpdateAvailable));
@@ -1093,6 +1147,11 @@ impl Hub {
                     go_update_all = true;
                 }
             }
+            // added last, laid out from the left: the search box gets the room the others leave, up to 260
+            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                let width = ui.available_width().min(260.0);
+                ui.add(egui::TextEdit::singleline(&mut self.query).hint_text(tr("hub.search")).font(FontId::proportional(13.5)).desired_width(width).margin(vec2(14.0, 8.0)));
+            });
         });
         if (self.view, self.sort) != before {
             save_view(self.view, self.sort);
@@ -1617,6 +1676,31 @@ impl Hub {
 
 /// Reads a release's pack list (checked against its checksums) and what each pack would do on this PC.
 /// Starts the hub at `exe` (the new one, same path as this one) and ends this process.
+/// Moves the programs beside the hub into `bin\` and points Windows at their new place: the right-click menu's
+/// drag-and-drop DLL, and a drop bar that is running (the start-with-Windows entry is rewritten right after).
+fn tidy_folder() {
+    let Ok(exe) = std::env::current_exe() else { return };
+    let moved = vf_core::layout::tidy(&exe);
+    if moved.contains(&vf_core::update::DRAG_DLL) && vf_core::menu::points_here(&exe) {
+        menu::refresh(&vf_core::recipe::load().unwrap_or_default());
+    }
+    if moved.contains(&vf_core::tray::EXE_NAME)
+        && vf_core::tray::running()
+        && let Some(tray) = vf_core::tray::exe_beside(&exe)
+    {
+        std::thread::spawn(move || {
+            vf_core::tray::stop();
+            for _ in 0..50 {
+                if !vf_core::tray::running() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let _ = vf_core::tray::start(&tray);
+        });
+    }
+}
+
 fn restart_into(exe: &std::path::Path) {
     let mut cmd = Command::new(exe);
     // this hub is still listening for later starts until it exits: the new one must not hand itself over to it
@@ -1686,9 +1770,19 @@ mod tests {
         assert!(hub.job.is_none(), "the job is still waiting for the window to be shown");
     }
 
-    /// One notification for each app that was updated or failed to; none for a first install or a cancel.
     #[test]
-    fn only_updates_leave_a_notification() {
+    fn install_all_takes_only_what_is_offered_and_not_there() {
+        let mut found: Vec<Option<PathBuf>> = vec![None; APPS.len()];
+        found[0] = Some(PathBuf::from("already-here"));
+        let got = missing_apps(&found, |id| id != APPS[1].id);
+        assert!(!got.contains(&0), "an app on the PC is left alone");
+        assert!(!got.contains(&1), "an app the release does not carry cannot be installed");
+        assert_eq!(got.len(), APPS.iter().filter(|a| a.pack).count() - 2);
+    }
+
+    /// One notification for each app installed or updated, or that failed to; none for a cancel or a removal.
+    #[test]
+    fn each_install_and_update_leaves_a_notification() {
         let ctx = egui::Context::default();
         let mut hub = Hub::fresh(&ctx, std::env::temp_dir().join("swapcraft-note-test"));
         let done = || Ok(packs::Installed { id: APPS[0].id.into(), version: "1".into(), app_sha256: String::new(), engine: None });
@@ -1703,7 +1797,14 @@ mod tests {
         assert_eq!(run(true, done()), [(trf("hub.note_updated", &name), false)]);
         assert_eq!(run(true, Err("disk full".into())), [(trf("hub.note_update_failed", &name), true)]);
         assert_eq!(run(true, Err("cancelled".into())), []);
-        assert_eq!(run(false, done()), []);
+        assert_eq!(run(false, done()), [(trf("hub.note_installed", &name), false)]);
+        assert_eq!(run(false, Err("disk full".into())), [(trf("hub.note_install_failed", &name), true)]);
+        assert_eq!(run(false, Err("cancelled".into())), []);
+        let (tx, rx) = mpsc::channel();
+        hub.job = Some(Job { app: 0, removing: true, update: false, rx, cancel: Arc::new(AtomicBool::new(false)), stage: "remove".into(), done: 0, total: 0 });
+        tx.send(JobMsg::Removed(Ok(()))).unwrap();
+        hub.poll_job(&ctx);
+        assert_eq!(hub.notes, [], "a removal says nothing");
     }
 }
 

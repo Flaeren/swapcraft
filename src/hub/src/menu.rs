@@ -60,7 +60,7 @@ pub fn uninstall() -> Result<(), String> {
 /// part by writing the menu again, in the background. Nothing happens when the menu is not added.
 pub fn upgrade_if_needed() {
     let Ok(exe) = std::env::current_exe() else { return };
-    let has_dll = exe.with_file_name(menu::dragmenu::DLL_NAME).is_file();
+    let has_dll = vf_core::layout::helper(&exe, menu::dragmenu::DLL_NAME).is_some();
     let has_file = menu::dragmenu::path().is_some_and(|p| p.is_file());
     // Also rewritten when the saved drag menu has an old title (the name changed from voidflare to SwapCraft in
     // 0.4.1), so the menu in File Explorer follows the program's name.

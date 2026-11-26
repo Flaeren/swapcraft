@@ -53,7 +53,7 @@ SwapCraft is built the way the [ArtCraft](https://getartcraft.com) apps are: in 
   <img src="docs/img/recipes.png" alt="The SwapCraft hub on the Recipes tab: a three-step recipe that converts, merges and shrinks" width="720">
 </p>
 
-> **Status:** early (v0.8.3). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
+> **Status:** early (v0.9.0). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
 
 ## Principles
 
@@ -135,16 +135,16 @@ Available in English, Italiano, Español, Français and Deutsch.
 
 ## For AI assistants (MCP)
 
-`swapcraft-cli.exe`, next to the hub, is a [Model Context Protocol](https://modelcontextprotocol.io) server, so an assistant can use every converter without opening a window. Add it to your client, for example in Claude Code:
+`swapcraft-cli.exe` (in `bin\` on Windows, next to the hub on Linux and macOS) is a [Model Context Protocol](https://modelcontextprotocol.io) server, so an assistant can use every converter without opening a window. Add it to your client, for example in Claude Code:
 
 ```
-claude mcp add swapcraft -- C:\SwapCraft\swapcraft-cli.exe mcp --allow C:\Users\you\Documents
+claude mcp add swapcraft -- C:\SwapCraft\bin\swapcraft-cli.exe mcp --allow C:\Users\you\Documents
 ```
 
 Or in any client's JSON configuration:
 
 ```json
-{ "mcpServers": { "swapcraft": { "command": "C:\\SwapCraft\\swapcraft-cli.exe", "args": ["mcp", "--allow", "C:\\Users\\you\\Documents"] } } }
+{ "mcpServers": { "swapcraft": { "command": "C:\\SwapCraft\\bin\\swapcraft-cli.exe", "args": ["mcp", "--allow", "C:\\Users\\you\\Documents"] } } }
 ```
 
 Tools: `voidflare_formats` (what converts to what), `voidflare_convert`, `voidflare_pdf_merge`, `voidflare_pdf_split`, `voidflare_pdf_extract`, `voidflare_pdf_ocr`, `voidflare_pdf_shrink`, `voidflare_info`, `voidflare_engines`. The server can only read and write inside the folder it was started in and each `--allow` folder you give it; `--allow-all` removes that limit. Nothing leaves your PC. The same engines are available from a terminal: `swapcraft-cli formats`, `swapcraft-cli convert book.epub --to pdf`.

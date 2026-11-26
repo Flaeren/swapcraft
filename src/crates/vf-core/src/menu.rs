@@ -181,8 +181,7 @@ fn drag_file() -> Option<PathBuf> {
 /// Registers the DLL next to `exe` and writes its menu file; without the DLL (a build that has none) any older
 /// registration is taken away, so Explorer never looks for a DLL that is not there.
 fn install_drag(exe: &Path, recipes: &[Recipe], texts: &Texts, app_name: &dyn Fn(&str) -> Option<String>) -> Result<(), String> {
-    let dll = exe.parent().map(|d| d.join(voidflare_dragdrop::config::DLL_NAME));
-    match dll.filter(|d| d.is_file()) {
+    match crate::layout::helper(exe, voidflare_dragdrop::config::DLL_NAME) {
         Some(dll) => {
             if let Some(p) = drag_file() {
                 if let Some(dir) = p.parent() {

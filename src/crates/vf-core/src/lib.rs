@@ -11,6 +11,7 @@ pub mod film;
 pub mod i18n;
 pub mod iwork;
 pub mod job;
+pub mod layout;
 pub mod mail;
 pub mod markup;
 pub mod menu;

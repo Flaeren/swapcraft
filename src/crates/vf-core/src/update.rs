@@ -249,7 +249,7 @@ pub fn install_from_zip(zip: &Path, exe: &Path, work: &Path) -> Result<(), Strin
     // Best effort: an MCP client may be holding it, and a stale command line never stops the hub.
     let new_cli = [CLI_NAME, LEGACY_CLI_NAME].iter().map(|n| unpacked.join(n)).find(|p| is_exe(p)).unwrap_or_else(|| unpacked.join(CLI_NAME));
     if is_exe(&new_cli) {
-        let cli = exe.with_file_name(CLI_NAME);
+        let cli = place_for(exe, CLI_NAME);
         if cli.exists() {
             let _ = replace_exe(&cli, &new_cli);
         } else {
@@ -259,7 +259,7 @@ pub fn install_from_zip(zip: &Path, exe: &Path, work: &Path) -> Result<(), Strin
     // So does the drag-and-drop DLL (same name, so the registry entry stays right). Explorer may have it loaded:
     // the old one is parked under a new name and Explorer picks up the new one the next time it loads it. Best
     // effort: an old DLL keeps working with the new hub.
-    let dll = exe.with_file_name(DRAG_DLL);
+    let dll = place_for(exe, DRAG_DLL);
     let new_dll = unpacked.join(DRAG_DLL);
     if is_exe(&new_dll) {
         if dll.exists() {
@@ -274,9 +274,23 @@ pub fn install_from_zip(zip: &Path, exe: &Path, work: &Path) -> Result<(), Strin
     Ok(())
 }
 
+/// Where the new copy of a helper goes (its folder is made when missing). A copy still beside the hub is replaced
+/// where it is: left there, the next start would move it over the new one in `bin\`.
+fn place_for(exe: &Path, name: &str) -> PathBuf {
+    let beside = exe.with_file_name(name);
+    if beside.is_file() {
+        return beside;
+    }
+    let place = crate::layout::helper_place(exe, name);
+    if let Some(dir) = place.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    place
+}
+
 /// Puts the drop bar's program from the unpacked ZIP beside `exe`, replacing the one there. Best effort.
 fn place_tray(exe: &Path, unpacked: &Path) {
-    let tray = exe.with_file_name(crate::tray::EXE_NAME);
+    let tray = place_for(exe, crate::tray::EXE_NAME);
     let new_tray = unpacked.join(crate::tray::EXE_NAME);
     if is_exe(&new_tray) {
         if tray.exists() {
@@ -314,7 +328,7 @@ pub fn tray_from_zip(zip: &Path, exe: &Path, work: &Path) -> Result<PathBuf, Str
         return Err(format!("The release has no {}; nothing was changed.", crate::tray::EXE_NAME));
     }
     place_tray(exe, &unpacked);
-    let placed = exe.with_file_name(crate::tray::EXE_NAME);
+    let placed = place_for(exe, crate::tray::EXE_NAME);
     if is_exe(&placed) { Ok(placed) } else { Err(format!("Cannot put {} next to the hub.", crate::tray::EXE_NAME)) }
 }
 
@@ -379,9 +393,11 @@ pub fn replace_exe(exe: &Path, new: &Path) -> Result<(), String> {
 pub fn cleanup_after_update() {
     if let Ok(exe) = std::env::current_exe() {
         let _ = fs::remove_file(old_name(&exe));
-        let _ = fs::remove_file(old_name(&exe.with_file_name(CLI_NAME)));
-        // fails while Explorer still has the old DLL loaded; a later start removes it
-        let _ = fs::remove_file(old_name(&exe.with_file_name(DRAG_DLL)));
+        // fails while a program still runs or Explorer has the old DLL loaded; a later start removes it
+        for name in crate::layout::HELPERS {
+            let _ = fs::remove_file(old_name(&exe.with_file_name(name)));
+            let _ = fs::remove_file(old_name(&crate::layout::helper_place(&exe, name)));
+        }
         if let Some(dir) = exe.parent() {
             let _ = fs::remove_dir_all(dir.join(STAGING));
         }
@@ -667,7 +683,12 @@ mod tests {
         let _ = fs::remove_file(root.join("swapcraft-tray.exe"));
         zip_with(&zip, &[("SwapCraft.exe", b"MZ-newer-hub"), ("swapcraft-tray.exe", b"MZ-newer-tray")]);
         install_from_zip(&zip, &exe, &root.join(".work2")).expect("the swap works");
-        assert_eq!(fs::read(root.join("swapcraft-tray.exe")).unwrap(), b"MZ-newer-tray");
+        assert_eq!(fs::read(root.join("bin").join("swapcraft-tray.exe")).unwrap(), b"MZ-newer-tray");
+        // and once it lives there, that is where it is replaced
+        zip_with(&zip, &[("SwapCraft.exe", b"MZ-newest-hub"), ("swapcraft-tray.exe", b"MZ-newest-tray")]);
+        install_from_zip(&zip, &exe, &root.join(".work3")).expect("the swap works");
+        assert_eq!(fs::read(root.join("bin").join("swapcraft-tray.exe")).unwrap(), b"MZ-newest-tray");
+        assert!(!root.join("swapcraft-tray.exe").exists());
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -699,7 +720,7 @@ mod tests {
         let zip = root.join("hub.zip");
         zip_with(&zip, &[("SwapCraft.exe", b"MZ-zip-hub"), ("swapcraft-cli.exe", b"MZ-zip-cli"), ("swapcraft-tray.exe", b"MZ-zip-tray")]);
         let placed = tray_from_zip(&zip, &exe, &root.join(".work")).expect("the bar is taken out");
-        assert_eq!(placed, root.join("swapcraft-tray.exe"));
+        assert_eq!(placed, root.join("bin").join("swapcraft-tray.exe"));
         assert_eq!(fs::read(&placed).unwrap(), b"MZ-zip-tray");
         assert_eq!(fs::read(&exe).unwrap(), b"MZ-my-hub", "the running hub is left alone");
         assert!(!root.join("swapcraft-cli.exe").exists(), "nothing else is taken");
@@ -723,7 +744,7 @@ mod tests {
         zip_with(&zip, &[("voidflare.exe", b"MZ-new-hub"), ("voidflare-cli.exe", b"MZ-new-cli")]);
         install_from_zip(&zip, &exe, &root.join(".work")).expect("the swap works");
         assert_eq!(fs::read(&exe).unwrap(), b"MZ-new-hub");
-        assert_eq!(fs::read(root.join("swapcraft-cli.exe")).unwrap(), b"MZ-new-cli", "the old command line arrives under the new name");
+        assert_eq!(fs::read(root.join("bin").join("swapcraft-cli.exe")).unwrap(), b"MZ-new-cli", "the old command line arrives under the new name");
         let _ = fs::remove_dir_all(&root);
     }
 
