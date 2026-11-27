@@ -29,6 +29,7 @@
   <a href="#quick-start">Quick start</a> ·
   <a href="#what-it-converts">What it converts</a> ·
   <a href="#how-it-works">How it works</a> ·
+  <a href="#roadmap">Roadmap</a> ·
   <a href="#built-on-artcraft-credits-and-licences">Credits and licences</a> ·
   <a href="#build-from-source">Build</a> ·
   <a href="#contributing">Contributing</a> ·
@@ -53,7 +54,7 @@ SwapCraft is built the way the [ArtCraft](https://getartcraft.com) apps are: in 
   <img src="docs/img/recipes.png" alt="The SwapCraft hub on the Recipes tab: a three-step recipe that converts, merges and shrinks" width="720">
 </p>
 
-> **Status:** early (v0.9.0). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
+> **Status:** early (v0.9.1). The programs are not code-signed yet, so Windows SmartScreen may warn on first run (see Quick start).
 
 ## Principles
 
@@ -62,6 +63,22 @@ SwapCraft is built the way the [ArtCraft](https://getartcraft.com) apps are: in 
 - **Only versions we have tried.** Each engine is pinned to an official release and checked by its SHA-256. An ArtCraft engine already on your PC is reused only if that exact version passed our engine test.
 - **Every download is checked.** Apps, engines and hub updates are compared with the release's `SHA256SUMS.txt` before they are installed; if a file does not match, nothing changes.
 - **Install only what you use.** The hub is a few megabytes; each converter is a separate download.
+
+## Roadmap
+
+| Done | Next |
+|---|---|
+| ✅ Recipes and the right-click menu | 🔜 Pages and Keynote files |
+| ✅ Right-button drag onto a folder (Windows) | 🔜 A sturdier update |
+| ✅ Linux version | 🔜 Code signing, so Windows stops warning |
+| ✅ Mail files: EML, MBOX, PST | 🔜 The drop bar on the Mac too |
+| ✅ Mac version |  |
+| ✅ Numbers files and HEIC photos |  |
+| ✅ Bar on the screen edge: drag with the left button and let go on a format (Windows and Linux) |  |
+| ✅ Several files into one PDF |  |
+| ✅ “Install all” |  |
+
+**Being studied:** a browser version, only if your files stay on your device.
 
 ## Built on ArtCraft: credits and licences
 
@@ -89,7 +106,7 @@ SwapCraft's conversions are done by command-line engines of the **[ArtCraft](htt
 
 1. Download `swapcraft-hub-<version>-windows.zip` from the [Releases](../../releases) page (about 11 MB).
 2. Unzip it to a short path, for example `C:\SwapCraft`, and run `SwapCraft.exe`.
-3. Press **Install** on the converters you need. Each card says what it will download before you click: the app (about 6 MB) plus its engine (5 to 50 MB), or only the app when your PC's ArtCraft engine is a version we have tested. Every download is checked against the release's `SHA256SUMS.txt` before it is installed.
+3. Press **Install** on the converters you need. Each card says what it will download before you click: the app (about 6 MB) plus its engine (5 to 50 MB), or only the app when your PC's ArtCraft engine is a version we have tested. Every download is checked against the release's `SHA256SUMS.txt` before it is installed. If two or more are missing, *Install all* downloads them one after the other.
 4. Drop a file on the hub.
 
 **No network where you work?** Download `swapcraft-<version>-windows.zip` instead (about 470 MB): the hub and all ten apps with their engines in one file, nothing else to fetch.
@@ -131,7 +148,7 @@ Available in English, Italiano, Español, Français and Deutsch.
 - **The apps** have the full options: batches and folders, merging, page ranges, OCR, drawing sheets or the whole drawing.
 - **The engines** are separate command-line programs. An app uses the copy in its own folder first, then a regular ArtCraft installation. When you install an app, SwapCraft reuses the ArtCraft engine already on your PC only if that exact version is listed in [`src/engine-compat.json`](src/engine-compat.json), meaning we ran it against the real engine; any other version, including a newer one nobody has tried, gets our own tested copy. If ArtCraft later updates to a version we have not tested, the card says so and offers *Bundle engine*. DWG to PDF always brings its own CADCraft, because the official build still draws blocks with a tilted extrusion wrongly ([cadcraft#1158](https://github.com/storytold/cadcraft/issues/1158)).
 - **Nothing is sent anywhere.** Conversions run locally and there is no telemetry.
-- **Updates.** When the hub starts it asks `github.com/Flaeren/swapcraft` once for the latest release (one HTTPS request, no identifier, nothing about you). The *Auto-check* switch in the footer turns this off; the *Check for updates* link does it on demand. The same request reads the release's list of apps. If there is a newer hub, *UPDATE NOW* downloads its small ZIP, checks its SHA-256 against the release's `SHA256SUMS.txt`, swaps it in place of the running hub (the old one is kept as `SwapCraft.old.exe` until the next start) and restarts it; if the new file does not check out, nothing changes. Only `SwapCraft.exe` is replaced: the apps you installed are left alone and update from their own cards (*Install*, *Update* and *Remove* install into `apps\` next to the hub, after the same checksum check). SwapCraft never downloads anything without a click.
+- **Updates.** When the hub starts it asks `github.com/Flaeren/swapcraft` once for the latest release (one HTTPS request, no identifier, nothing about you). The *Auto-check* switch in the footer turns this off; the *Check for updates* link does it on demand. The same request reads the release's list of apps. If there is a newer hub, *UPDATE NOW* downloads its small ZIP, checks its SHA-256 against the release's `SHA256SUMS.txt`, swaps it in place of the running hub (the old one is kept as `SwapCraft.old.exe` until the next start) and restarts it; if the new file does not check out, nothing changes. The hub and the programs that come with it are replaced; the apps you installed are left alone and update from their own cards (*Install*, *Update* and *Remove* install into `apps\` next to the hub, after the same checksum check). SwapCraft never downloads anything without a click.
 
 ## For AI assistants (MCP)
 

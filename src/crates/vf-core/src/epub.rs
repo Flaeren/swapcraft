@@ -25,6 +25,8 @@ pub struct Book {
     pub language: String,
     pub chapters: Vec<Chapter>,
     pub images: Vec<Image>,
+    /// The book's own style sheets, made safe to put in a page (see [`safe_css`]).
+    pub css: String,
 }
 
 #[derive(Clone, Debug)]
@@ -259,9 +261,12 @@ pub fn read_epub(bytes: &[u8]) -> Result<Book, String> {
     let mut book = Book { language: "en".into(), ..Book::default() };
     let mut manifest: HashMap<String, (String, String)> = HashMap::new();
     let mut spine: Vec<String> = Vec::new();
+    // the cover picture: EPUB 3 marks the manifest item, EPUB 2 names its id in the metadata
+    let (mut cover_marked, mut cover_named) = (None, None);
     for (i, t) in toks.iter().enumerate() {
         let Tok::Start { name, attrs, .. } = t else { continue };
-        match name.as_str() {
+        // some books write the package elements with a prefix (`opf:item`)
+        match name.strip_prefix("opf:").unwrap_or(name) {
             "dc:title" if book.title.is_empty() => book.title = text_of(&toks, i + 1),
             "dc:creator" => {
                 let a = text_of(&toks, i + 1);
@@ -278,8 +283,12 @@ pub fn read_epub(bytes: &[u8]) -> Result<Book, String> {
             "item" => {
                 if let (Some(id), Some(href)) = (attr(attrs, "id"), attr(attrs, "href")) {
                     manifest.insert(id.to_owned(), (href.to_owned(), attr(attrs, "media-type").unwrap_or("").to_owned()));
+                    if attr(attrs, "properties").is_some_and(|p| p.split_whitespace().any(|w| w == "cover-image")) {
+                        cover_marked = Some(id.to_owned());
+                    }
                 }
             }
+            "meta" if attr(attrs, "name") == Some("cover") => cover_named = attr(attrs, "content").map(str::to_owned),
             "itemref" => {
                 if let Some(id) = attr(attrs, "idref") {
                     spine.push(id.to_owned());
@@ -292,6 +301,11 @@ pub fn read_epub(bytes: &[u8]) -> Result<Book, String> {
         return Err("this EPUB has no reading order (spine)".to_owned());
     }
     let mut images = Images::default();
+    // the pages in reading order, read first: a link can point at a page further on
+    let mut pages: Vec<(String, Vec<Tok>)> = Vec::new();
+    // the style the pages ask for, in the order they ask: a package can carry themes no page uses
+    let mut sheets: Vec<String> = Vec::new();
+    let mut linked_sheets: Vec<String> = Vec::new();
     for id in spine {
         let Some((href, media)) = manifest.get(&id) else { continue };
         if !(media.contains("html") || media.is_empty()) {
@@ -299,27 +313,190 @@ pub fn read_epub(bytes: &[u8]) -> Result<Book, String> {
         }
         let Some(path) = resolve(&opf_dir, href) else { continue };
         let Some(raw) = read(&path) else { continue };
-        let toks = tokenize(&String::from_utf8_lossy(&raw));
+        let text = String::from_utf8_lossy(&raw);
+        let toks = tokenize(&text);
         let dir = path.rsplit_once('/').map(|(d, _)| format!("{d}/")).unwrap_or_default();
-        let body = markup::to_xhtml(&toks, &mut |src| {
-            let p = resolve(&dir, src)?;
-            let data = read(&p)?;
-            images.add(&p, data)
-        });
+        for t in &toks {
+            let Tok::Start { name, attrs, .. } = t else { continue };
+            if name == "link"
+                && attr(attrs, "rel").is_some_and(|r| r.eq_ignore_ascii_case("stylesheet"))
+                && !attr(attrs, "media").is_some_and(|m| m.contains("amzn"))
+                && let Some(sheet) = attr(attrs, "href").and_then(|h| resolve(&dir, h))
+                && !linked_sheets.contains(&sheet)
+            {
+                if let Some(data) = read(&sheet) {
+                    sheets.push(String::from_utf8_lossy(&data).into_owned());
+                }
+                linked_sheets.push(sheet);
+            }
+        }
+        for css in inline_styles(&text) {
+            if !sheets.iter().any(|s| s == css) {
+                sheets.push(css.to_owned());
+            }
+        }
+        pages.push((path, toks));
+    }
+    let links = Links::of(&pages);
+    for (path, toks) in pages {
+        let dir = path.rsplit_once('/').map(|(d, _)| format!("{d}/")).unwrap_or_default();
+        let linked = markup::Linked {
+            href: &|href| links.href(&path, href),
+            anchor: &|id| links.anchor(&path, id),
+        };
+        let mut body = markup::to_linked_xhtml(
+            &toks,
+            &mut |src| {
+                let p = resolve(&dir, src)?;
+                let data = read(&p)?;
+                images.add(&p, data)
+            },
+            &linked,
+        );
         if body.trim().is_empty() {
             continue;
+        }
+        if let Some(key) = links.anchor(&path, "") {
+            body.insert_str(0, &format!("<a name=\"{key}\"></a>"));
         }
         let title = chapter_title(&toks).unwrap_or_else(|| format!("Chapter {}", book.chapters.len() + 1));
         book.chapters.push(Chapter { title, body });
     }
-    book.images = images.list;
+    book.css = safe_css(&sheets.join("\n"));
     if book.title.is_empty() {
         book.title = "Untitled".into();
     }
     if book.chapters.is_empty() {
         return Err("this EPUB has no readable text".to_owned());
     }
+    if let Some((href, media)) = cover_marked.or(cover_named).and_then(|id| manifest.get(&id))
+        && media.starts_with("image/")
+        && let Some(path) = resolve(&opf_dir, href)
+        && let Some(data) = read(&path)
+        && let Some(name) = images.add(&path, data)
+    {
+        put_cover_first(&mut book.chapters, &name);
+    }
+    book.images = images.list;
     Ok(book)
+}
+
+/// The places the book's links lead to, each under a short name: (page, id), the id empty for the page itself.
+struct Links {
+    keys: HashMap<(String, String), String>,
+}
+
+/// The page and id a link of the page at `from` leads to, `None` for an address outside the book.
+fn link_target(from: &str, href: &str) -> Option<(String, String)> {
+    if href.split(['/', '?', '#']).next().is_some_and(|first| first.contains(':')) {
+        return None;
+    }
+    let (file, id) = href.split_once('#').unwrap_or((href, ""));
+    let page = if file.is_empty() {
+        from.to_owned()
+    } else {
+        let dir = from.rsplit_once('/').map(|(d, _)| format!("{d}/")).unwrap_or_default();
+        resolve(&dir, file)?
+    };
+    Some((page, percent_decode(id)))
+}
+
+impl Links {
+    fn of(pages: &[(String, Vec<Tok>)]) -> Links {
+        // what exists: every page, and every id in it
+        let mut there: Vec<(&str, &str)> = Vec::new();
+        for (path, toks) in pages {
+            there.push((path, ""));
+            there.extend(toks.iter().filter_map(|t| match t {
+                Tok::Start { attrs, .. } => attr(attrs, "id").map(|id| (path.as_str(), id)),
+                _ => None,
+            }));
+        }
+        let mut keys = HashMap::new();
+        for (path, toks) in pages {
+            for t in toks {
+                let Tok::Start { name, attrs, .. } = t else { continue };
+                if name != "a" {
+                    continue;
+                }
+                let Some((page, id)) = attr(attrs, "href").and_then(|h| link_target(path, h)) else { continue };
+                // an id that is not there still opens the right page
+                let id = if there.contains(&(page.as_str(), id.as_str())) { id } else { String::new() };
+                if there.contains(&(page.as_str(), "")) {
+                    let n = keys.len() + 1;
+                    keys.entry((page, id)).or_insert_with(|| format!("swc{n}"));
+                }
+            }
+        }
+        Links { keys }
+    }
+
+    fn anchor(&self, page: &str, id: &str) -> Option<String> {
+        self.keys.get(&(page.to_owned(), id.to_owned())).cloned()
+    }
+
+    /// Web and mail addresses stay; a link inside the book goes to its anchor; anything else is dropped.
+    fn href(&self, from: &str, href: &str) -> Option<String> {
+        match link_target(from, href) {
+            None => ["http:", "https:", "mailto:"].iter().any(|s| href.starts_with(s)).then(|| href.to_owned()),
+            Some((page, id)) => self.anchor(&page, &id).or_else(|| self.anchor(&page, "")).map(|key| format!("#{key}")),
+        }
+    }
+}
+
+/// What is written between `<style>` and `</style>` (the tokenizer keeps only the tags).
+fn inline_styles(page: &str) -> Vec<&str> {
+    // ASCII lowering keeps byte positions
+    let lower = page.to_ascii_lowercase();
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(open) = lower[from..].find("<style").map(|i| from + i) {
+        let Some(start) = lower[open..].find('>').map(|i| open + i + 1) else { break };
+        let Some(end) = lower[start..].find("</style").map(|i| start + i) else { break };
+        out.push(&page[start..end]);
+        from = end;
+    }
+    out
+}
+
+/// A book's style sheet made safe for our page: nothing it names is fetched, and it cannot close its own tag.
+fn safe_css(css: &str) -> String {
+    let mut out = String::new();
+    // no backslashes: an escape could spell `url(` in disguise
+    for line in css.replace(['<', '\\'], "").lines() {
+        if line.trim_start().to_ascii_lowercase().starts_with("@import") {
+            continue;
+        }
+        let mut rest = line;
+        // ASCII lowering keeps byte positions
+        while let Some(at) = rest.to_ascii_lowercase().find("url(") {
+            out.push_str(&rest[..at]);
+            out.push_str("none(");
+            rest = &rest[at + 4..];
+        }
+        out.push_str(rest);
+        out.push('\n');
+    }
+    out
+}
+
+/// A page that is a picture and nothing else.
+fn is_picture_only(body: &str) -> bool {
+    body.contains("<img") && markup::to_text(&tokenize(body)).trim().is_empty()
+}
+
+/// Makes the book open with its cover: the cover page of the first few is moved to the front, a book without one
+/// gets a page with the picture. A picture that shares its page with text stays where the author put it.
+fn put_cover_first(chapters: &mut Vec<Chapter>, image: &str) {
+    let source = format!("src=\"{image}\"");
+    match chapters.iter().take(3).position(|c| c.body.contains(&source)) {
+        Some(i) if is_picture_only(&chapters[i].body) => {
+            let cover = chapters.remove(i);
+            chapters.insert(0, cover);
+        }
+        Some(_) => {}
+        None => chapters.insert(0, Chapter { title: "Cover".into(), body: format!("<img {source} alt=\"\"/>") }),
+    }
 }
 
 // ---------------------------------------------------------------- other sources
@@ -393,7 +570,7 @@ pub fn from_html(html: &str, base: Option<&Path>, fallback_title: &str) -> Book 
     if chapters.is_empty() {
         chapters.push(Chapter { title: title.clone(), body: "<p></p>".into() });
     }
-    Book { title, language: "en".into(), chapters, images: images.list, authors: Vec::new() }
+    Book { title, language: "en".into(), chapters, images: images.list, ..Book::default() }
 }
 
 // ---------------------------------------------------------------- writing
@@ -428,25 +605,35 @@ impl Book {
         let mut body = String::new();
         // a book that opens with its own title page does not need the title said twice
         let opening: String = self.chapters.first().map(|c| markup::to_text(&tokenize(&c.body))).unwrap_or_default().chars().take(200).collect();
-        if title_page && !opening.to_lowercase().contains(&self.title.to_lowercase()) {
+        // nor does one that opens with its cover
+        let covered = self.chapters.first().is_some_and(|c| is_picture_only(&c.body));
+        if title_page && !covered && !opening.to_lowercase().contains(&self.title.to_lowercase()) {
             body.push_str(&format!("<h1 class=\"book-title\">{}</h1>", markup::escape_text(&self.title)));
             if !self.authors.is_empty() {
                 body.push_str(&format!("<p class=\"book-author\">{}</p>", markup::escape_text(&self.authors.join(", "))));
             }
         }
         for c in &self.chapters {
-            body.push_str("<section>");
-            body.push_str(&c.body);
-            body.push_str("</section>");
+            // our own class: a rule on `section` would also break the page at every section inside the book
+            body.push_str("<div class=\"swc-page\">");
+            if is_picture_only(&c.body) {
+                body.push_str(&format!("<div style=\"text-align:center\">{}</div>", c.body));
+            } else {
+                body.push_str(&c.body);
+            }
+            body.push_str("</div>");
         }
         for img in &self.images {
             body = body.replace(&format!("src=\"{}\"", img.name), &format!("src=\"data:{};base64,{}\"", img.mime, base64_encode(&img.data)));
         }
         format!(
-            "<!DOCTYPE html>\n<html lang=\"{lang}\"><head><meta charset=\"utf-8\"/><title>{title}</title><style>{css}</style></head><body>{body}</body></html>\n",
+            "<!DOCTYPE html>\n<html lang=\"{lang}\"><head><meta charset=\"utf-8\"/><title>{title}</title><style>{css}\n{own}{last}</style></head><body>{body}</body></html>\n",
             lang = markup::escape_attr(&self.language),
             title = markup::escape_text(&self.title),
             css = CSS,
+            own = self.css,
+            // what must hold whatever the book's sheet says
+            last = ".swc-page{page-break-before:always}img{max-width:100%;height:auto}",
         )
     }
 
@@ -467,7 +654,7 @@ impl Book {
             "META-INF/container.xml",
             b"<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<container version=\"1.0\" xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\"><rootfiles><rootfile full-path=\"OEBPS/content.opf\" media-type=\"application/oebps-package+xml\"/></rootfiles></container>\n",
         )?;
-        put("OEBPS/style.css", CSS.as_bytes())?;
+        put("OEBPS/style.css", format!("{CSS}\n{}", self.css).as_bytes())?;
         let lang = markup::escape_attr(&self.language);
         let mut manifest = String::from(
             "<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/><item id=\"ncx\" href=\"toc.ncx\" media-type=\"application/x-dtbncx+xml\"/><item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>",
@@ -512,11 +699,159 @@ impl Book {
 const CSS: &str = "body{font-family:Georgia,'Times New Roman',serif;line-height:1.5;margin:1em auto;max-width:42em;padding:0 1em}\
 h1,h2,h3{line-height:1.25}p{margin:0 0 .8em}img{max-width:100%;height:auto}blockquote{margin:1em 2em}\
 .book-title{text-align:center;margin-top:2em}.book-author{text-align:center;font-style:italic;margin-bottom:3em}\
-section{page-break-before:always}table{border-collapse:collapse}td,th{border:1px solid #888;padding:.2em .5em}";
+.swc-page{page-break-before:always}table{border-collapse:collapse}td,th{border:1px solid #888;padding:.2em .5em}";
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A small EPUB: `pages` are the files of the reading order, `extra` goes into the manifest as it is.
+    fn epub_with(pages: &[(&str, &str)], extra: &str, metadata: &str) -> Vec<u8> {
+        let mut z = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        let mut put = |name: &str, data: &[u8]| {
+            z.start_file(name, options).unwrap();
+            z.write_all(data).unwrap();
+        };
+        put("META-INF/container.xml", b"<container><rootfiles><rootfile full-path=\"p.opf\"/></rootfiles></container>");
+        let (mut manifest, mut spine) = (String::new(), String::new());
+        for (name, body) in pages {
+            manifest.push_str(&format!("<item id=\"{name}\" href=\"{name}.xhtml\" media-type=\"application/xhtml+xml\"/>"));
+            spine.push_str(&format!("<itemref idref=\"{name}\"/>"));
+            put(&format!("{name}.xhtml"), format!("<html><head><title>{name}</title></head><body>{body}</body></html>").as_bytes());
+        }
+        put("c.png", b"\x89PNG\r\n\x1a\nnot-really-a-picture");
+        put("s.css", b".centre{text-align:center}");
+        put("p.opf", format!("<package><metadata><dc:title>Test Book</dc:title>{metadata}</metadata><manifest>{manifest}{extra}</manifest><spine>{spine}</spine></package>").as_bytes());
+        z.finish().unwrap().into_inner()
+    }
+
+    const COVER_ITEM: &str = "<item id=\"img\" href=\"c.png\" media-type=\"image/png\" properties=\"cover-image\"/>";
+
+    #[test]
+    fn hidden_page_numbers_and_landmarks_are_not_printed() {
+        let nav = "<nav epub:type=\"toc\"><h1>Contents</h1><ol><li><a href=\"t.xhtml\">One</a><ol><li>Inner</li></ol></li></ol></nav>\
+            <nav epub:type=\"page-list\" hidden=\"hidden\"><ol><li>PAGEMARK</li></ol></nav>\
+            <nav epub:type=\"landmarks\"><ol><li>LANDMARK</li></ol></nav><nav hidden=\"\"><p>HIDDEN</p></nav><p>After</p>";
+        let book = read_epub(&epub_with(&[("nav", nav)], "", "")).unwrap();
+        let body = &book.chapters[0].body;
+        for gone in ["PAGEMARK", "LANDMARK", "HIDDEN"] {
+            assert!(!body.contains(gone), "{gone} is printed: {body}");
+        }
+        assert!(body.contains("One") && body.contains("Inner") && body.contains("After"), "{body}");
+        // the contents are not a numbered list, and the inner level stays indented
+        assert!(!body.contains("<ol") && !body.contains("<li"), "{body}");
+        assert!(body.contains("margin-left"), "{body}");
+    }
+
+    #[test]
+    fn a_list_in_the_text_stays_a_list() {
+        let book = read_epub(&epub_with(&[("t", "<ol><li>first</li></ol>")], "", "")).unwrap();
+        assert!(book.chapters[0].body.contains("<ol><li>first</li></ol>"), "{}", book.chapters[0].body);
+    }
+
+    #[test]
+    fn only_our_chapters_start_a_new_page() {
+        let book = read_epub(&epub_with(&[("t", "<section><p>Title</p></section><section><p>Author</p></section>")], "", "")).unwrap();
+        let html = book.to_html();
+        assert!(html.contains(".swc-page{page-break-before:always}"), "{html}");
+        assert!(!html.contains("section{page-break-before"), "the book's own sections must not break the page");
+        assert_eq!(html.matches("<div class=\"swc-page\">").count(), 1, "{html}");
+    }
+
+    #[test]
+    fn a_cover_drawn_with_svg_opens_the_book_with_no_title_page() {
+        let cover = "<svg viewBox=\"0 0 6 9\"><image width=\"6\" height=\"9\" xlink:href=\"c.png\"/></svg>";
+        let book = read_epub(&epub_with(&[("cover", cover), ("t", "<p>Text</p>")], COVER_ITEM, "")).unwrap();
+        assert_eq!(book.chapters.len(), 2, "the cover is not added twice");
+        assert!(book.chapters[0].body.contains("<img src=\"images/"), "{}", book.chapters[0].body);
+        assert!(!book.to_html().contains("class=\"book-title\""));
+    }
+
+    #[test]
+    fn a_cover_named_only_by_the_package_is_put_first() {
+        let named_the_old_way = "<item id=\"img\" href=\"c.png\" media-type=\"image/png\"/>";
+        for (extra, metadata) in [(COVER_ITEM, ""), (named_the_old_way, "<meta name=\"cover\" content=\"img\"/>")] {
+            let book = read_epub(&epub_with(&[("t", "<p>Text</p>")], extra, metadata)).unwrap();
+            assert_eq!(book.chapters.len(), 2);
+            assert!(book.chapters[0].body.starts_with("<img src=\"images/"), "{}", book.chapters[0].body);
+            assert!(!book.to_html().contains("class=\"book-title\""));
+        }
+    }
+
+    #[test]
+    fn a_cover_further_in_moves_to_the_front() {
+        let book = read_epub(&epub_with(&[("half", "<p>Half title</p>"), ("cover", "<div><img src=\"c.png\"/></div>")], COVER_ITEM, "")).unwrap();
+        assert_eq!(book.chapters.len(), 2);
+        assert!(book.chapters[0].body.contains("<img"), "{}", book.chapters[0].body);
+    }
+
+    #[test]
+    fn links_inside_the_book_point_at_anchors_the_engine_can_follow() {
+        let contents = "<p><a href=\"two.xhtml#part\">Part</a> <a href=\"two.xhtml\">Two</a> <a href=\"https://example.org/a#b\">Web</a> <a href=\"gone.xhtml\">Gone</a></p>";
+        let two = "<h1 id=\"part\">Part</h1><p id=\"unused\">Text <a href=\"#part\">up</a></p>";
+        let book = read_epub(&epub_with(&[("one", contents), ("two", two)], "", "")).unwrap();
+        let (one, two) = (&book.chapters[0].body, &book.chapters[1].body);
+        let key = |after: &str, body: &str| body.split(after).next().unwrap().rsplit("href=\"#").next().unwrap().split('"').next().unwrap().to_owned();
+        let (part, start) = (key(">Part</a>", one), key(">Two</a>", one));
+        assert_ne!(part, start);
+        assert!(two.contains(&format!("<a name=\"{part}\"></a>")), "{two}");
+        assert!(two.starts_with(&format!("<a name=\"{start}\"></a>")), "{two}");
+        assert!(two.contains(&format!("href=\"#{part}\">up</a>")), "{two}");
+        assert!(one.contains("href=\"https://example.org/a#b\""), "{one}");
+        assert!(!one.contains("gone.xhtml"), "a link to nothing is not kept: {one}");
+        assert_eq!(two.matches("<a name=").count(), 2, "only places something links to are marked: {two}");
+    }
+
+    #[test]
+    fn the_books_own_style_comes_along() {
+        let page = "<p class=\"centre\" style=\"text-indent:2em\">Title</p>";
+        let css = "<item id=\"s\" href=\"s.css\" media-type=\"text/css\"/>";
+        let unused = read_epub(&epub_with(&[("t", page)], css, "")).unwrap();
+        assert!(unused.css.trim().is_empty(), "a sheet no page asks for is left out: {}", unused.css);
+        let page = "<link rel=\"stylesheet\" href=\"s.css\"/><p class=\"centre\" style=\"text-indent:2em\">Title</p>";
+        let book = read_epub(&epub_with(&[("t", page)], css, "")).unwrap();
+        assert!(book.chapters[0].body.contains("class=\"centre\"") && book.chapters[0].body.contains("style=\"text-indent:2em\""), "{}", book.chapters[0].body);
+        assert!(book.to_html().contains(".centre{text-align:center}"), "{}", book.to_html());
+    }
+
+    #[test]
+    fn a_style_on_an_element_cannot_name_an_address() {
+        let page = "<p style=\"background:URL(http://x/p.png)\">a</p><p style=\"background:u\\72l(http://x/q.png)\">b</p><p style=\"text-align:center\">c</p>";
+        let book = read_epub(&epub_with(&[("t", page)], "", "")).unwrap();
+        let body = &book.chapters[0].body;
+        assert!(!body.contains("http://x/") && body.contains("text-align:center"), "{body}");
+        assert!(!safe_css("p{background:u\\72l(http://x/y.png)}").contains('\\'));
+    }
+
+    #[test]
+    fn a_style_sheet_cannot_fetch_anything_or_leave_its_tag() {
+        let css = safe_css("@import url(http://x/y.css);\np{color:red;background:URL(http://x/p.png)}</style><script>");
+        assert!(!css.to_lowercase().contains("url(") && !css.contains("@import") && !css.contains('<'), "{css}");
+        assert!(css.contains("color:red"), "{css}");
+    }
+
+    #[test]
+    fn a_footnote_hidden_on_screen_is_still_printed() {
+        let page = "<style>.note{display:none}</style><p>Text<span class=\"note\">NOTE-ONE</span></p><aside hidden=\"\">NOTE-TWO</aside>";
+        let book = read_epub(&epub_with(&[("t", page)], "", "")).unwrap();
+        assert!(book.chapters[0].body.contains("NOTE-ONE") && book.chapters[0].body.contains("NOTE-TWO"), "{}", book.chapters[0].body);
+    }
+
+    #[test]
+    fn a_package_written_with_a_prefix_is_read() {
+        let mut z = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        for (name, data) in [
+            ("META-INF/container.xml", "<container><rootfiles><rootfile full-path=\"p.opf\"/></rootfiles></container>"),
+            ("p.opf", "<opf:package xmlns:opf=\"x\"><opf:manifest><opf:item id=\"t\" href=\"t.xhtml\" media-type=\"application/xhtml+xml\"/></opf:manifest><opf:spine><opf:itemref idref=\"t\"/></opf:spine></opf:package>"),
+            ("t.xhtml", "<body><p>Read</p></body>"),
+        ] {
+            z.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+            z.write_all(data.as_bytes()).unwrap();
+        }
+        let book = read_epub(&z.finish().unwrap().into_inner()).unwrap();
+        assert!(book.chapters[0].body.contains("Read"));
+    }
 
     #[test]
     fn base64_round_trips() {

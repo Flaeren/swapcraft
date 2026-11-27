@@ -314,13 +314,68 @@ const KEEP_ATTRS: &[&str] = &["href", "src", "alt", "id", "title", "colspan", "r
 /// hidden (`title`, `style`, `script`) is dropped, prefixed tags (`mbp:pagebreak`) are dropped but their content
 /// kept, only a few attributes survive, every tag is closed, text is escaped. `src` is passed through
 /// `rewrite_src`, which may return a new value (an image moved into the book) or `None` to drop the image.
+///
+/// An e-book hides things this output has no way to hide, so they are dealt with here: the page-number map, the
+/// landmarks and any hidden `nav` are left out; the table of contents becomes indented blocks instead of a list (the
+/// engine numbers every list); a picture drawn through `svg` (the usual cover page) becomes a plain `img`.
 pub fn to_xhtml(toks: &[Tok], rewrite_src: &mut dyn FnMut(&str) -> Option<String>) -> String {
+    clean(toks, rewrite_src, None)
+}
+
+/// What an e-book needs on top of [`to_xhtml`]: its own look and its internal links.
+pub struct Linked<'a> {
+    /// The new address of a link, `None` to drop it.
+    pub href: &'a dyn Fn(&str) -> Option<String>,
+    /// The anchor to put where the element with this `id` starts, `None` when nothing links to it.
+    pub anchor: &'a dyn Fn(&str) -> Option<String>,
+}
+
+/// Like [`to_xhtml`], keeping `class` and `style` and rewriting links and their targets.
+pub fn to_linked_xhtml(toks: &[Tok], rewrite_src: &mut dyn FnMut(&str) -> Option<String>, linked: &Linked) -> String {
+    clean(toks, rewrite_src, Some(linked))
+}
+
+fn clean(toks: &[Tok], rewrite_src: &mut dyn FnMut(&str) -> Option<String>, linked: Option<&Linked>) -> String {
     let mut out = String::new();
-    let mut open: Vec<String> = Vec::new();
+    // (the name in the source, the name written out)
+    let mut open: Vec<(String, &str)> = Vec::new();
     let mut hidden = 0usize;
+    let mut svg = 0usize;
+    // the element being left out, and how many of the same name are open inside it
+    let mut skipped: Option<(String, usize)> = None;
+    // how many tags were open when the table of contents started
+    let mut contents: Option<usize> = None;
     for t in toks {
+        if let Some((gone, depth)) = &mut skipped {
+            match t {
+                Tok::Start { name, selfclose: false, .. } if name == gone => *depth += 1,
+                Tok::End(name) if name == gone => *depth -= 1,
+                _ => {}
+            }
+            if *depth == 0 {
+                skipped = None;
+            }
+            continue;
+        }
         match t {
             Tok::Start { name, attrs, selfclose } => {
+                // Only navigation is left out. Text the book hides on screen (footnotes shown as pop-ups, for one)
+                // is printed: a page has no other way to show it.
+                if name == "nav" && is_never_shown(attrs) {
+                    if !selfclose {
+                        skipped = Some((name.clone(), 1));
+                    }
+                    continue;
+                }
+                if name == "svg" && !selfclose {
+                    svg += 1;
+                }
+                if name == "image" && svg > 0 {
+                    if let Some(new) = attr(attrs, "xlink:href").or_else(|| attr(attrs, "href")).and_then(&mut *rewrite_src) {
+                        out.push_str(&format!("<img src=\"{}\" alt=\"\"/>", escape_attr(&new)));
+                    }
+                    continue;
+                }
                 if is_hidden(name) {
                     if !selfclose {
                         hidden += 1;
@@ -330,16 +385,33 @@ pub fn to_xhtml(toks: &[Tok], rewrite_src: &mut dyn FnMut(&str) -> Option<String
                 if hidden > 0 || matches!(name.as_str(), "html" | "body") || name.contains(':') || !name.chars().all(|c| c.is_ascii_alphanumeric()) {
                     continue;
                 }
-                let mut tag = format!("<{name}");
+                if name == "nav" && attr(attrs, "epub:type").is_some_and(|v| v.split_whitespace().any(|w| w == "toc")) {
+                    contents.get_or_insert(open.len());
+                }
+                let list = matches!(name.as_str(), "ol" | "ul");
+                let as_block = contents.is_some() && (list || name == "li");
+                let written: &str = if as_block { "div" } else { name };
+                let mut tag = format!("<{written}");
                 let mut drop_tag = false;
                 for (k, v) in attrs {
-                    if !KEEP_ATTRS.contains(&k.as_str()) {
+                    let own_look = linked.is_some() && matches!(k.as_str(), "class" | "style");
+                    if !own_look && !KEEP_ATTRS.contains(&k.as_str()) {
+                        continue;
+                    }
+                    // a style that names an address (a backslash could spell it in disguise) is left out
+                    if k == "style" && (v.contains('\\') || v.to_ascii_lowercase().contains("url(")) {
                         continue;
                     }
                     if k == "src" {
                         match rewrite_src(v) {
                             Some(new) => tag.push_str(&format!(" src=\"{}\"", escape_attr(&new))),
                             None => drop_tag = true,
+                        }
+                    } else if k == "href"
+                        && let Some(l) = linked
+                    {
+                        if let Some(new) = (l.href)(v) {
+                            tag.push_str(&format!(" href=\"{}\"", escape_attr(&new)));
                         }
                     } else if k == "href" && (v.starts_with("kindle:") || v.starts_with("javascript:")) {
                         // a Kindle position or script: nothing to point at once the book is converted
@@ -350,27 +422,55 @@ pub fn to_xhtml(toks: &[Tok], rewrite_src: &mut dyn FnMut(&str) -> Option<String
                 if drop_tag {
                     continue;
                 }
+                // each entry of an inner level is indented: the engine does not pass a margin on from the list around it
+                if as_block && name == "li" {
+                    let level = open.iter().filter(|(n, w)| matches!(n.as_str(), "ol" | "ul") && *w == "div").count();
+                    if level > 1 {
+                        let indent = format!("margin-left:{}em", 1.5 * (level - 1) as f32);
+                        match tag.find(" style=\"") {
+                            Some(at) => tag.insert_str(at + 8, &format!("{indent};")),
+                            None => tag.push_str(&format!(" style=\"{indent}\"")),
+                        }
+                    }
+                }
                 if name == "img" && !tag.contains(" alt=") {
                     tag.push_str(" alt=\"\"");
                 }
-                if *selfclose || is_void(name) {
+                // the engine follows a link to `<a name>`, not to an `id`
+                let mark = linked.and_then(|l| attr(attrs, "id").and_then(|id| (l.anchor)(id))).map(|key| format!("<a name=\"{key}\"></a>"));
+                // an anchor inside a paragraph, heading or cell; before anything it cannot sit in
+                let inside = matches!(written, "p" | "div" | "li" | "td" | "th" | "span" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6");
+                let closes = *selfclose || is_void(name);
+                if let Some(mark) = mark.as_ref().filter(|_| !inside || closes) {
+                    out.push_str(mark);
+                }
+                if closes {
                     tag.push_str("/>");
                 } else {
-                    open.push(name.clone());
+                    open.push((name.clone(), written));
                     tag.push('>');
                 }
                 out.push_str(&tag);
+                if let Some(mark) = mark.filter(|_| inside && !closes) {
+                    out.push_str(&mark);
+                }
             }
             Tok::End(name) => {
+                if name == "svg" {
+                    svg = svg.saturating_sub(1);
+                }
                 if is_hidden(name) {
                     hidden = hidden.saturating_sub(1);
-                } else if hidden == 0 && open.contains(name) {
+                } else if hidden == 0 && open.iter().any(|(n, _)| n == name) {
                     // close what was left open inside it, then it
-                    while let Some(top) = open.pop() {
-                        out.push_str(&format!("</{top}>"));
+                    while let Some((top, written)) = open.pop() {
+                        out.push_str(&format!("</{written}>"));
                         if &top == name {
                             break;
                         }
+                    }
+                    if contents.is_some_and(|depth| open.len() <= depth) {
+                        contents = None;
                     }
                 }
             }
@@ -378,10 +478,15 @@ pub fn to_xhtml(toks: &[Tok], rewrite_src: &mut dyn FnMut(&str) -> Option<String
             Tok::Text(_) => {}
         }
     }
-    while let Some(top) = open.pop() {
-        out.push_str(&format!("</{top}>"));
+    while let Some((_, written)) = open.pop() {
+        out.push_str(&format!("</{written}>"));
     }
     out
+}
+
+/// A `nav` a reading system never prints: the printed page numbers, the landmarks, or one marked hidden.
+fn is_never_shown(attrs: &[(String, String)]) -> bool {
+    attr(attrs, "hidden").is_some() || attr(attrs, "epub:type").is_some_and(|v| v.split_whitespace().any(|w| w == "page-list" || w == "landmarks"))
 }
 
 #[cfg(test)]

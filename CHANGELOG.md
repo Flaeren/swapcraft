@@ -2,6 +2,20 @@
 
 All notable changes to SwapCraft (formerly voidflare) are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.1] - 2026-11-27
+
+### Added
+
+- **Links inside e-books.** In a PDF or Word file made from an EPUB, the table of contents, notes and cross-references take you to the right place.
+- **The book's own look.** Centring, indents, spacing and text sizes from the book's style sheet are kept.
+
+### Fixed
+
+- A book's own sections no longer start a new page each, so a title page or a table of contents stays together.
+- The hidden page-number list and landmarks are no longer printed as pages of numbers, and the table of contents is no longer numbered a second time.
+- The book's cover comes first, also when it is drawn with SVG, and no title page is added in front of it.
+- EPUB files that write their package with an `opf:` prefix open instead of saying they have no reading order.
+
 ## [0.9.0] - 2026-11-26
 
 ### Added
